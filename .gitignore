@@ -1,0 +1,27 @@
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+.cache/
+
+# Environment files & Secrets
+.env
+.env.local
+.env.*.local
+*.pem
+
+# IDEs
+.vscode/
+.idea/

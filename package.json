@@ -1,0 +1,12 @@
+{
+  "name": "resumehack-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:extension": "npm --prefix extension run dev",
+    "build:extension": "npm --prefix extension run build",
+    "dev:backend": "npm --prefix backend run dev",
+    "build:backend": "npm --prefix backend run build",
+    "test": "npm --prefix backend run test"
+  }
+}
