@@ -4,6 +4,8 @@ import {
   DocumentLayoutInfo,
   StructuralParagraph,
   LayoutAuditReport,
+  SelfProjectsAudit,
+  ProductionExperienceAudit,
 } from '../types/index.js';
 import { LayoutAnalyzerService } from './layout-analyzer.js';
 
@@ -176,8 +178,213 @@ const WEAK_PASSIVE_VERBS = [
   'involved in', 'supported', 'attempted', 'duties included'
 ];
 
+// ── HackerRank-Inspired Category Lexicons (Deterministic Text Patterns) ──────
+
+const PRODUCTION_KEYWORDS = [
+  'production', 'deployed', 'deploying', 'shipped', 'shipping', 'on-call', 'on call', 'pagerduty',
+  'incident response', 'root cause analysis', 'post-mortem', 'postmortem', 'outage',
+  'sla', 'slo', 'sli', '99.9%', '99.99%', 'uptime', 'zero downtime', 'zero-downtime',
+  'monitoring', 'datadog', 'prometheus', 'grafana', 'sentry', 'cloudwatch', 'new relic',
+  'opentelemetry', 'distributed tracing', 'alerting', 'logging', 'logstash', 'elk stack',
+  'kubernetes', 'k8s', 'docker', 'helm', 'terraform', 'ansible', 'ci/cd', 'github actions',
+  'gitlab ci', 'jenkins', 'argo cd', 'argocd', 'aws', 'gcp', 'azure', 'cloud infrastructure',
+  'ec2', 's3', 'ecs', 'eks', 'gke', 'lambda', 'cloud functions', 'fargate',
+  'microservices', 'load balancer', 'horizontal scaling', 'multi-tenant', 'multi-region',
+  'database migration', 'failover', 'disaster recovery', 'rate limiting', 'p95', 'p99',
+  'high availability', 'fault tolerant', 'circuit breaker', 'throughput', 'concurrency',
+  'code review', 'code reviews', 'rfc', 'design doc', 'design documents', 'agile', 'sprints',
+  'cross-functional', 'stakeholders', 'enterprise', 'compliance', 'soc2', 'security audit'
+];
+
+const PROJECT_COMPLEXITY_KEYWORDS = [
+  'distributed', 'microservices', 'caching', 'concurrency', 'async', 'asynchronous',
+  'websocket', 'websockets', 'event-driven', 'event driven', 'message queue', 'pub/sub',
+  'kafka', 'rabbitmq', 'redis', 'dragonfly', 'vector search', 'embeddings', 'rag', 'llm',
+  'neural network', 'deep learning', 'transformer', 'pytorch', 'tensorflow', 'scikit-learn',
+  'ast', 'compiler', 'interpreter', 'parser', 'lexer', 'crdt', 'sharding', 'indexeddb',
+  'sqlite', 'postgresql', 'fastapi', 'graphql', 'grpc', 'oauth', 'oauth2', 'jwt',
+  'webrtc', 'webassembly', 'wasm', 'webgl', 'three.js', 'canvas', 'pwa', 'state management',
+  'custom hook', 'middleware', 'data pipeline', 'etl', 'scraper', 'crawler', 'consensus', 'raft'
+];
+
+const PROJECT_IMPACT_KEYWORDS = [
+  'users', 'dau', 'mau', 'stars', 'github stars', 'downloads', 'installs', 'active users',
+  'requests', 'qps', 'rps', 'latency', 'speedup', 'accelerated', 'optimized by', 'reduced by',
+  'featured on', 'product hunt', 'hackathon winner', '1st place', 'community', 'contributors',
+  'forks', 'subscribers', 'daily active', 'monthly active'
+];
+
+const TUTORIAL_FLAG_PATTERNS = [
+  /(?:followed|follow)\s+(?:a\s+)?(?:youtube|udemy|coursera|online\s+)?(?:tutorial|guide|course|video)/i,
+  /(?:youtube|udemy|coursera|edx|codecademy|freecodecamp)\s+(?:tutorial|course|project|video)/i,
+  /(?:class|course|academic|school|coursework|homework|capstone)\s+project/i,
+  /completed\s+(?:a\s+)?(?:course|tutorial|class)\s+project/i,
+  /(?:todo\s+list|calculator|weather)\s+app/i,
+  /(?:clone|copy)\s+of\s+(?:netflix|spotify|amazon|airbnb|twitter|instagram|facebook)\s+(?:from|following|via|tutorial)/i,
+  /built\s+(?:a\s+)?clone\s+following/i,
+  /guided\s+project/i
+];
+
+const URL_PATTERN = /(?:https?:\/\/)?(?:www\.)?(?:github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+|gitlab\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+|[a-zA-Z0-9_.-]+\.(?:vercel\.app|netlify\.app|herokuapp\.com|github\.io|dev|app|io|tech|com)\/[^\s)]*)/gi;
+
 export class AtsScorerService {
   private layoutAnalyzer = new LayoutAnalyzerService();
+
+  /**
+   * Evaluates "Self Projects" category (inspired by HackerRank rubric).
+   * Analyzes text for complexity, impact, live/demo links, and penalizes tutorial projects.
+   * Deterministic text and pattern-based calculation.
+   */
+  public auditSelfProjects(resumeText: string): SelfProjectsAudit {
+    const norm = resumeText.toLowerCase();
+    const rawLines = resumeText.split(/\n+/).map(l => l.trim()).filter(Boolean);
+
+    // 1. Extract Links from Text
+    const linksFound = resumeText.match(URL_PATTERN) || [];
+    const hasWorkingLinks = linksFound.length > 0;
+
+    // 2. Identify Tutorial / Coursework Flags
+    const tutorialFlags: string[] = [];
+    for (const pattern of TUTORIAL_FLAG_PATTERNS) {
+      const match = resumeText.match(pattern);
+      if (match) {
+        tutorialFlags.push(match[0]);
+      }
+    }
+
+    // 3. Detect Complexity Signals
+    const complexitySignals: string[] = [];
+    for (const kw of PROJECT_COMPLEXITY_KEYWORDS) {
+      if (new RegExp(`\\b${kw}\\b`, 'i').test(norm)) {
+        complexitySignals.push(kw);
+      }
+    }
+
+    // 4. Detect Impact Signals
+    const impactSignals: string[] = [];
+    for (const kw of PROJECT_IMPACT_KEYWORDS) {
+      if (new RegExp(`\\b${kw}\\b`, 'i').test(norm)) {
+        impactSignals.push(kw);
+      }
+    }
+
+    // 5. Estimate Project count
+    const projectHeaderCount = rawLines.filter(l => 
+      /projects?/i.test(l) || 
+      (l.includes('|') && (l.includes('github.com') || l.includes('React') || l.includes('Go') || l.includes('Python') || l.includes('TypeScript')))
+    ).length;
+    const projectCount = Math.max(1, projectHeaderCount > 0 ? projectHeaderCount : (hasWorkingLinks ? 1 : 0));
+
+    // 6. Find Representative Quote for Evidence
+    let bestQuote = '';
+    const projectLines = rawLines.filter(l => 
+      (l.startsWith('•') || l.startsWith('-') || l.startsWith('*')) && 
+      (complexitySignals.some(c => l.toLowerCase().includes(c)) || tutorialFlags.some(f => l.toLowerCase().includes(f.toLowerCase())))
+    );
+    if (projectLines.length > 0) {
+      bestQuote = projectLines[0].replace(/^[•\-*]\s*/, '').slice(0, 120);
+    } else if (rawLines.length > 0) {
+      bestQuote = rawLines[0].slice(0, 100);
+    }
+
+    // 7. Calculate Deterministic Score
+    let score = 35;
+    if (hasWorkingLinks) score += 15;
+    score += Math.min(30, complexitySignals.length * 6);
+    score += Math.min(25, impactSignals.length * 6);
+    if (tutorialFlags.length > 0) {
+      score -= tutorialFlags.length * 25;
+    }
+    score = Math.max(15, Math.min(100, Math.round(score)));
+
+    // 8. Construct Deterministic Evidence String
+    let evidence = '';
+    if (tutorialFlags.length > 0) {
+      evidence = `Self Projects: ${score}/100 — Flagged ${tutorialFlags.length} tutorial-like phrase(s) (${tutorialFlags.map(f => `"${f}"`).join(', ')}). Evidence: "${bestQuote}" indicates coursework/tutorial-guided work rather than independent architecture.`;
+    } else if (hasWorkingLinks || complexitySignals.length > 0) {
+      evidence = `Self Projects: ${score}/100 — Identified ${projectCount} project(s) with ${complexitySignals.length} complexity signal(s) (${complexitySignals.slice(0, 3).join(', ')})\${hasWorkingLinks ? \` and verified repo/demo link (\${linksFound[0]})\` : ''}. Evidence: "${bestQuote}" demonstrates ${impactSignals.length > 0 ? 'measurable outcomes and ' : ''}technical depth.`;
+    } else {
+      evidence = `Self Projects: ${score}/100 — No dedicated repository links or complex standalone projects identified in resume text. Adding independent projects with live demo URLs will strengthen portfolio evaluation.`;
+    }
+
+    return {
+      score,
+      evidence,
+      projectCount,
+      hasWorkingLinks,
+      linksFound,
+      complexitySignals,
+      impactSignals,
+      tutorialFlags,
+    };
+  }
+
+  /**
+   * Evaluates "Production Experience" category (inspired by HackerRank rubric).
+   * Distinguishes professional roles from projects using production language, tenure, and infrastructure density.
+   * Deterministic text and pattern-based calculation.
+   */
+  public auditProductionExperience(resumeText: string): ProductionExperienceAudit {
+    const norm = resumeText.toLowerCase();
+    const rawLines = resumeText.split(/\n+/).map(l => l.trim()).filter(Boolean);
+
+    // 1. Detect Tenure Signals (Date Ranges)
+    const dateRegex = /(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\d{4})\s*[-–—]\s*(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\d{4}|Present|Current)/gi;
+    const tenureSignals = resumeText.match(dateRegex) || [];
+
+    // 2. Detect Role Count
+    const roleRegex = /(?:software\s+engineer(?:ing)?|developer|architect|team\s+lead|tech\s+lead|intern(?:ship)?|analyst|manager|consultant)/gi;
+    const roleMatches = resumeText.match(roleRegex) || [];
+    const roleCount = Math.max(tenureSignals.length, Math.min(4, Math.floor(roleMatches.length / 2)) || (resumeText.includes('EXPERIENCE') ? 1 : 0));
+
+    // 3. Detect Production Keywords
+    const productionKeywordsFound: string[] = [];
+    for (const kw of PRODUCTION_KEYWORDS) {
+      if (new RegExp(`\\b${kw}\\b`, 'i').test(norm)) {
+        productionKeywordsFound.push(kw);
+      }
+    }
+
+    // 4. Calculate Production Density Ratio
+    const bullets = rawLines.filter(l => l.startsWith('•') || l.startsWith('-') || l.startsWith('*'));
+    const prodBullets = bullets.filter(b => productionKeywordsFound.some(kw => b.toLowerCase().includes(kw)));
+    const productionRatio = bullets.length > 0 ? Number((prodBullets.length / bullets.length).toFixed(2)) : 0;
+    const isProductionHeavy = roleCount >= 2 || (productionKeywordsFound.length >= 6 && productionRatio >= 0.4);
+
+    // 5. Best Representative Quote
+    let bestQuote = '';
+    if (prodBullets.length > 0) {
+      bestQuote = prodBullets[0].replace(/^[•\-*]\s*/, '').slice(0, 120);
+    } else if (bullets.length > 0) {
+      bestQuote = bullets[0].replace(/^[•\-*]\s*/, '').slice(0, 100);
+    }
+
+    // 6. Calculate Deterministic Score
+    let score = 25;
+    if (roleCount > 0) score += Math.min(35, roleCount * 18);
+    score += Math.min(30, productionKeywordsFound.length * 4);
+    if (productionKeywordsFound.some(k => ['kubernetes', 'k8s', 'docker', 'ci/cd', 'aws', 'gcp'].includes(k))) score += 10;
+    if (productionKeywordsFound.some(k => ['sla', 'slo', '99.9%', '99.99%', 'uptime', 'on-call', 'pagerduty', 'monitoring'].includes(k))) score += 10;
+    score = Math.max(15, Math.min(100, Math.round(score)));
+
+    // 7. Construct Evidence String
+    let evidence = '';
+    if (roleCount > 0 && productionKeywordsFound.length > 0) {
+      evidence = `Production Experience: ${score}/100 — Identified ${roleCount} professional role(s) with ${productionKeywordsFound.length} production signal(s) (${productionKeywordsFound.slice(0, 4).join(', ')}). Evidence: "${bestQuote}" demonstrates ${isProductionHeavy ? 'enterprise reliability, SLA ownership, and ' : ''}production engineering maturity.`;
+    } else {
+      evidence = `Production Experience: ${score}/100 — No industry employment or production engineering history identified in resume text. Emphasize internships or work with live production infrastructure.`;
+    }
+
+    return {
+      score,
+      evidence,
+      roleCount,
+      productionKeywordsFound,
+      tenureSignals,
+      productionRatio,
+      isProductionHeavy,
+    };
+  }
 
   /**
    * General Master Resume ATS Audit (Not tied to any single job opening).
@@ -199,7 +406,7 @@ export class AtsScorerService {
         category: 'Hard Skill',
         foundInResume: found,
         frequencyInJD: 1,
-        importance: 'Critical'
+        importance: 'Critical',
       });
     }
 
@@ -224,14 +431,32 @@ export class AtsScorerService {
     const matchedCount = keywords.filter(k => k.foundInResume).length;
     const domainScore = Math.round((matchedCount / (keywords.length || 1)) * 100);
 
+    // 5. HackerRank-Inspired Category Audits
+    const selfProjectsAudit = this.auditSelfProjects(resumeText);
+    const productionExperienceAudit = this.auditProductionExperience(resumeText);
+
+    // Revised 7-Factor ATS Formula:
+    // 30% Hard Skills, 15% Production Experience, 10% Self Projects, 15% Metrics, 15% Action Verbs, 10% Domain, 5% Formatting
     const overallScore = Math.round(
-      (domainScore * 0.35) +
-      (verbScore * 0.25) +
-      (metricScore * 0.25) +
-      (formattingScore * 0.15)
+      (domainScore * 0.30) +
+      (productionExperienceAudit.score * 0.15) +
+      (selfProjectsAudit.score * 0.10) +
+      (verbScore * 0.15) +
+      (metricScore * 0.15) +
+      (domainScore * 0.10) +
+      (formattingScore * 0.05)
     );
 
     const suggestions: string[] = [];
+    if (selfProjectsAudit.tutorialFlags.length > 0) {
+      suggestions.push(`Self Projects: Replace generic tutorial phrasing (${selfProjectsAudit.tutorialFlags.slice(0, 2).map(f => `"${f}"`).join(', ')}) with original system architectures.`);
+    }
+    if (selfProjectsAudit.hasWorkingLinks === false && selfProjectsAudit.projectCount > 0) {
+      suggestions.push('Self Projects: Add GitHub repository or live deployment URLs directly next to your project titles.');
+    }
+    if (productionExperienceAudit.score < 60) {
+      suggestions.push('Production Experience: Emphasize CI/CD, Kubernetes/Docker, monitoring (Datadog/Prometheus), and SLA/uptime metrics in work experience.');
+    }
     if (weakCount > 0) {
       suggestions.push(`Found ${weakCount} passive phrases (${weakVerbsFound.slice(0, 3).map(v => `"${v}"`).join(', ')}). Upgrade to Tier-1 STAR action verbs (e.g. Architected, Engineered, Spearheaded).`);
     }
@@ -252,11 +477,13 @@ export class AtsScorerService {
       overallScore,
       breakdown: {
         hardSkillsScore: domainScore,
-        experienceRelevanceScore: verbScore,
+        experienceRelevanceScore: Math.round((productionExperienceAudit.score * 0.6) + (domainScore * 0.4)),
         softSkillsScore: metricScore,
         formattingScore,
         starImpactScore: Math.round((verbScore + metricScore) / 2),
-        actionVerbVitalityScore: verbScore
+        actionVerbVitalityScore: verbScore,
+        selfProjectsScore: selfProjectsAudit.score,
+        productionExperienceScore: productionExperienceAudit.score,
       },
       totalKeywords: keywords.length,
       matchedKeywordsCount: matchedCount,
@@ -265,18 +492,20 @@ export class AtsScorerService {
       improvementSuggestions: suggestions.length ? suggestions : ['Your master resume is in excellent ATS-ready shape!'],
       summaryFeedback: overallScore >= 80 
         ? 'Great universal ATS health! High action verb density and strong standard structure.'
-        : 'Good foundation. Enhancing action verbs and quantifiable metrics will increase ATS parsing score.',
+        : 'Good foundation. Enhancing action verbs, production signals, and quantifiable metrics will increase ATS parsing score.',
       actionVerbStrength: {
         strongCount,
         weakCount,
-        weakVerbsFound
+        weakVerbsFound,
       },
       quantificationStats: {
         quantifiedBullets,
         totalBullets,
-        percentage: metricPercentage
+        percentage: metricPercentage,
       },
-      layoutReport
+      selfProjectsAudit,
+      productionExperienceAudit,
+      layoutReport,
     };
   }
 
@@ -305,7 +534,7 @@ export class AtsScorerService {
           category: meta.category,
           foundInResume: resumeMatch,
           frequencyInJD: 1,
-          importance: meta.importance
+          importance: meta.importance,
         });
       }
     }
@@ -351,18 +580,39 @@ export class AtsScorerService {
     const verbScore = Math.min(100, Math.max(30, Math.round(((tier1Count * 1.5 + strongCount) / (strongCount + weakCount * 2 || 1)) * 100)));
     const starImpactScore = Math.min(100, Math.max(30, Math.round((verbScore * 0.5) + (metricPercentage * 0.5))));
 
-    // Multi-dimensional ATS Algorithm Weights:
-    // 40% Hard Skills/Tools, 20% Metric Quantification, 15% Action Verb Vitality, 15% Domain Relevance, 10% Formatting Hygiene
+    // HackerRank-Inspired Category Audits
+    const selfProjectsAudit = this.auditSelfProjects(resumeText);
+    const productionExperienceAudit = this.auditProductionExperience(resumeText);
+
+    // Revised 7-Factor ATS Formula:
+    // - 30% Hard Skills/Tools
+    // - 15% Production Experience & Engineering Maturity
+    // - 10% Self Projects (Complexity, Live Links, Anti-Tutorial)
+    // - 15% Metric Quantification (%, $, scale)
+    // - 15% Action Verb Vitality (Tier-1 STAR Verbs)
+    // - 10% Domain Relevance
+    // - 5% Formatting & Layout Hygiene
     const rawScore = Math.round(
-      (hardScore * 0.40) +
-      (metricPercentage * 0.20) +
+      (hardScore * 0.30) +
+      (productionExperienceAudit.score * 0.15) +
+      (selfProjectsAudit.score * 0.10) +
+      (metricPercentage * 0.15) +
       (verbScore * 0.15) +
-      (domainScore * 0.15) +
-      (formattingScore * 0.10)
+      (domainScore * 0.10) +
+      (formattingScore * 0.05)
     );
     const overallScore = Math.min(100, Math.max(15, rawScore));
 
     const suggestions: string[] = [];
+    if (selfProjectsAudit.tutorialFlags.length > 0) {
+      suggestions.push(`Self Projects: Upgrade tutorial-following project phrasing (${selfProjectsAudit.tutorialFlags.slice(0, 2).map(f => `"${f}"`).join(', ')}) with original system designs.`);
+    }
+    if (selfProjectsAudit.hasWorkingLinks === false && selfProjectsAudit.projectCount > 0) {
+      suggestions.push('Self Projects: Add GitHub repository or live deployment URLs directly next to your project titles.');
+    }
+    if (productionExperienceAudit.score < 60) {
+      suggestions.push('Production Experience: Weave CI/CD pipelines, container orchestration (Docker/Kubernetes), and SLA/uptime metrics into work experience.');
+    }
     if (missing.some(k => k.importance === 'Critical')) {
       const critMissing = missing.filter(k => k.importance === 'Critical').slice(0, 3).map(k => k.keyword).join(', ');
       suggestions.push(`High priority missing keywords: ${critMissing}. Weave these into your project or experience bullets.`);
@@ -386,11 +636,13 @@ export class AtsScorerService {
       overallScore,
       breakdown: {
         hardSkillsScore: hardScore,
-        experienceRelevanceScore: Math.round((hardScore + domainScore) / 2),
+        experienceRelevanceScore: Math.round((productionExperienceAudit.score * 0.6) + (domainScore * 0.4)),
         softSkillsScore: softScore,
         formattingScore,
         starImpactScore,
-        actionVerbVitalityScore: verbScore
+        actionVerbVitalityScore: verbScore,
+        selfProjectsScore: selfProjectsAudit.score,
+        productionExperienceScore: productionExperienceAudit.score,
       },
       totalKeywords,
       matchedKeywordsCount: matched.length,
@@ -405,14 +657,16 @@ export class AtsScorerService {
       actionVerbStrength: {
         strongCount,
         weakCount,
-        weakVerbsFound
+        weakVerbsFound,
       },
       quantificationStats: {
         quantifiedBullets,
         totalBullets,
-        percentage: metricPercentage
+        percentage: metricPercentage,
       },
-      layoutReport
+      selfProjectsAudit,
+      productionExperienceAudit,
+      layoutReport,
     };
   }
 
@@ -514,7 +768,7 @@ export class AtsScorerService {
           category: 'Domain Knowledge',
           foundInResume: this.matchKeywordWithAliases(term, normResume),
           frequencyInJD: 1,
-          importance: 'Recommended'
+          importance: 'Recommended',
         });
       }
     }

@@ -83,7 +83,11 @@ export class GoogleDriveService {
 
     if (!fallbackRes.ok) {
       const errData = await fallbackRes.json().catch(() => ({}));
-      throw new Error(errData?.error?.message || `Failed to export PDF (HTTP ${fallbackRes.status})`);
+      const rawMsg = errData?.error?.message || '';
+      if (fallbackRes.status === 404 || fallbackRes.status === 403 || rawMsg.toLowerCase().includes('not found') || rawMsg.toLowerCase().includes('permission')) {
+        throw new Error(`Google Drive PDF export error: This document has not been authorized under the 'drive.file' scope. Please open Settings and click 'Select from Google Drive' via the Google Picker to authorize access.`);
+      }
+      throw new Error(rawMsg || `Failed to export PDF (HTTP ${fallbackRes.status})`);
     }
 
     return await fallbackRes.arrayBuffer();

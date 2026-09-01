@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ResumeHack — AI Career & Resume Copilot</title>
+  <meta name="description" content="ResumeHack is an AI Career & Resume Copilot that tailors your resume to job postings and applies suggestions directly in Google Docs.">
+  <link rel="icon" type="image/png" href="icons/icon-48.png">
+  <style>
+    :root {
+      --brand-primary: #4f46e5;
+      --brand-dark: #3730a3;
+      --brand-light: #eef2ff;
+      --slate-900: #0f172a;
+      --slate-800: #1e293b;
+      --slate-700: #334155;
+      --slate-600: #475569;
+      --slate-100: #f1f5f9;
+      --slate-50: #f8fafc;
+      --emerald-600: #059669;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--slate-50);
+      color: var(--slate-800);
+      line-height: 1.6;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem;
+      flex: 1;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+
+    .mascot-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 72px;
+      height: 72px;
+      background: var(--brand-light);
+      border-radius: 20px;
+      margin-bottom: 1.25rem;
+      border: 1px solid #c7d2fe;
+      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.12);
+    }
+
+    .mascot-badge img {
+      width: 48px;
+      height: 48px;
+    }
+
+    h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      color: var(--slate-900);
+      letter-spacing: -0.025em;
+      margin-bottom: 0.5rem;
+    }
+
+    .tagline {
+      font-size: 1.25rem;
+      color: var(--brand-primary);
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+    }
+
+    .hero-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 2rem;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+      margin-bottom: 2rem;
+    }
+
+    .description {
+      font-size: 1.125rem;
+      color: var(--slate-700);
+      line-height: 1.75;
+      margin-bottom: 1.5rem;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-top: 1.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid #f1f5f9;
+    }
+
+    .feature-item {
+      background: var(--slate-50);
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 1rem;
+    }
+
+    .feature-item h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--slate-900);
+      margin-bottom: 0.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .feature-item p {
+      font-size: 0.85rem;
+      color: var(--slate-600);
+      line-height: 1.4;
+    }
+
+    .cta-row {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 2rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background-color: var(--brand-primary);
+      color: #ffffff;
+      box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
+    }
+
+    .btn-primary:hover {
+      background-color: var(--brand-dark);
+    }
+
+    .btn-secondary {
+      background-color: #ffffff;
+      color: var(--slate-700);
+      border: 1px solid #cbd5e1;
+    }
+
+    .btn-secondary:hover {
+      background-color: var(--slate-100);
+      color: var(--slate-900);
+    }
+
+    footer {
+      background: #ffffff;
+      border-top: 1px solid #e2e8f0;
+      padding: 2rem 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--slate-600);
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .footer-links a {
+      color: var(--brand-primary);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .footer-links a:hover {
+      text-decoration: underline;
+    }
+
+    .disclaimer {
+      font-size: 0.775rem;
+      color: var(--slate-600);
+      max-width: 600px;
+      margin: 0.5rem auto 0;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <div class="mascot-badge">
+        <img src="icons/icon-128.png" alt="Hacky the ResumeHack Owl Mascot">
+      </div>
+      <h1>ResumeHack</h1>
+      <p class="tagline">AI Career & Resume Copilot</p>
+    </header>
+
+    <main>
+      <div class="hero-card">
+        <p class="description">
+          <strong>ResumeHack</strong> is an AI Career & Resume Copilot that tailors your resume to job postings and applies suggestions directly in Google Docs.
+        </p>
+
+        <div class="feature-grid">
+          <div class="feature-item">
+            <h3>📝 Direct Google Docs Apply</h3>
+            <p>Applies tailored STAR bullet optimizations and keyword enhancements directly to your Google Doc with atomic reverse-index batch updates.</p>
+          </div>
+          <div class="feature-item">
+            <h3>🔒 Scoped Drive Integration</h3>
+            <p>Built with Google's strict <code>drive.file</code> scope and Google Drive Picker, accessing only documents you explicitly choose.</p>
+          </div>
+          <div class="feature-item">
+            <h3>🎯 ATS Rubric Scoring</h3>
+            <p>Deterministic 7-factor scoring inspired by engineering evaluation rubrics—analyzing production experience, projects, metrics, and verbs.</p>
+          </div>
+          <div class="feature-item">
+            <h3>🛡️ Local Privacy First</h3>
+            <p>OAuth tokens are stored locally on your device in browser storage. Your resume text is never permanently stored on proxy servers.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="cta-row">
+        <a href="privacy.html" class="btn btn-primary">
+          View Privacy Policy
+        </a>
+        <a href="https://github.com/aaronnguyen26/resumehack" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">
+          GitHub Repository
+        </a>
+      </div>
+    </main>
+  </div>
+
+  <footer>
+    <div class="footer-links">
+      <a href="index.html">Home</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="https://github.com/aaronnguyen26/resumehack" target="_blank" rel="noopener noreferrer">Source Code</a>
+      <a href="mailto:minh78988888@gmail.com">Contact Support</a>
+    </div>
+    <p>&copy; 2026 ResumeHack Open Source Project. All rights reserved.</p>
+    <p class="disclaimer">
+      ResumeHack is an independent open-source project and is not affiliated with, endorsed by, or sponsored by Google LLC. Google Docs and Google Drive are registered trademarks of Google LLC.
+    </p>
+  </footer>
+
+</body>
+</html>

@@ -66,20 +66,16 @@ export async function getGoogleAccessToken(): Promise<string | undefined> {
   try {
     const settings = await getStoredSettings();
     const now = Date.now();
-    const isExpired = settings.googleTokenExpiresAt ? settings.googleTokenExpiresAt <= now + 60000 : false;
+    const isExpired = settings.googleTokenExpiresAt && settings.googleTokenExpiresAt > 0
+      ? settings.googleTokenExpiresAt <= now + 60000
+      : false;
 
-    // If token is present and not expired, return it
+    // 1. If token is present and not expired, return it immediately
     if (settings.googleAccessToken && !isExpired) {
       return settings.googleAccessToken;
     }
 
-    // If token is expired, proactively invalidate it from Chrome cache
-    if (settings.googleAccessToken && isExpired) {
-      console.log('[storage] Stored access token is expired (>55m old), invalidating cached token...');
-      await invalidateCachedGoogleToken(settings.googleAccessToken);
-    }
-
-    // If a Refresh Token is available, auto-renew in background
+    // 2. If token is expired or missing, and a Refresh Token is available, auto-renew
     if (settings.googleRefreshToken) {
       try {
         const refreshResult = await refreshGoogleAccessToken(
@@ -95,8 +91,13 @@ export async function getGoogleAccessToken(): Promise<string | undefined> {
       }
     }
 
-    // If not expired, return whatever is left, otherwise undefined
-    return isExpired ? undefined : settings.googleAccessToken;
+    // 3. Fallback: Return existing access token if available without destroying it from storage.
+    // The Google Docs API service handles live HTTP 401 retries dynamically.
+    if (settings.googleAccessToken && settings.googleAccessToken.trim().length > 0) {
+      return settings.googleAccessToken.trim();
+    }
+
+    return undefined;
   } catch {
     return undefined;
   }
@@ -133,31 +134,26 @@ export async function invalidateCachedGoogleToken(token?: string): Promise<void>
   } catch (err) {
     console.debug('[storage] removeCachedAuthToken note:', err);
   }
-
-  await saveStoredSettings({ googleAccessToken: '', googleTokenExpiresAt: 0 });
-  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-    await new Promise<void>((resolve) => {
-      chrome.storage.local.remove(['google_access_token', 'google_token_expires_at'], () => resolve());
-    });
-  }
-  try {
-    localStorage.removeItem('google_access_token');
-    localStorage.removeItem('google_token_expires_at');
-  } catch {}
 }
 
 export async function removeGoogleAccessToken(): Promise<void> {
   await invalidateCachedGoogleToken();
-  await saveStoredSettings({ googleAccessToken: '', googleRefreshToken: '', googleTokenExpiresAt: 0 });
+  await saveStoredSettings({ googleAccessToken: '', googleRefreshToken: '', googleTokenExpiresAt: 0, googleUserEmail: '' });
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
     return new Promise((resolve) => {
-      chrome.storage.local.remove(['google_access_token', 'google_refresh_token', 'google_token_expires_at'], () => resolve());
+      chrome.storage.local.remove([
+        'google_access_token',
+        'google_refresh_token',
+        'google_token_expires_at',
+        'google_user_email'
+      ], () => resolve());
     });
   }
   try {
     localStorage.removeItem('google_access_token');
     localStorage.removeItem('google_refresh_token');
     localStorage.removeItem('google_token_expires_at');
+    localStorage.removeItem('google_user_email');
   } catch {}
 }
 
@@ -267,6 +263,8 @@ export async function getStoredSettings(): Promise<StoredSettings> {
           'google_refresh_token',
           'google_client_id',
           'google_client_secret',
+          'google_token_expires_at',
+          'google_user_email',
         ],
         (result) => {
           const stored = result?.resumehack_settings || result?.resumehack_stored_settings || {};
@@ -287,6 +285,8 @@ export async function getStoredSettings(): Promise<StoredSettings> {
           const googleClientId =
             result?.google_client_id || stored.googleClientId || DEFAULT_SETTINGS.googleClientId;
           const googleClientSecret = result?.google_client_secret || stored.googleClientSecret;
+          const googleTokenExpiresAt = result?.google_token_expires_at || stored.googleTokenExpiresAt;
+          const googleUserEmail = result?.google_user_email || stored.googleUserEmail;
 
           resolve({
             ...DEFAULT_SETTINGS,
@@ -295,6 +295,8 @@ export async function getStoredSettings(): Promise<StoredSettings> {
             googleRefreshToken,
             googleClientId,
             googleClientSecret,
+            googleTokenExpiresAt,
+            googleUserEmail,
           });
         }
       );
@@ -312,11 +314,20 @@ export async function getStoredSettings(): Promise<StoredSettings> {
       localStorage.getItem('google_refresh_token') ||
       parsed.googleRefreshToken ||
       DEFAULT_SETTINGS.googleRefreshToken;
+    const googleTokenExpiresAt =
+      Number(localStorage.getItem('google_token_expires_at')) ||
+      parsed.googleTokenExpiresAt;
+    const googleUserEmail =
+      localStorage.getItem('google_user_email') ||
+      parsed.googleUserEmail;
+
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
       googleAccessToken,
       googleRefreshToken,
+      googleTokenExpiresAt,
+      googleUserEmail,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -345,6 +356,12 @@ export async function saveStoredSettings(settings: Partial<StoredSettings>): Pro
       if (settings.googleClientSecret !== undefined) {
         payload.google_client_secret = settings.googleClientSecret.trim();
       }
+      if (settings.googleTokenExpiresAt !== undefined) {
+        payload.google_token_expires_at = settings.googleTokenExpiresAt;
+      }
+      if (settings.googleUserEmail !== undefined) {
+        payload.google_user_email = settings.googleUserEmail.trim();
+      }
       chrome.storage.local.set(payload, () => resolve());
     });
   }
@@ -356,6 +373,12 @@ export async function saveStoredSettings(settings: Partial<StoredSettings>): Pro
     }
     if (settings.googleRefreshToken !== undefined) {
       localStorage.setItem('google_refresh_token', settings.googleRefreshToken.trim());
+    }
+    if (settings.googleTokenExpiresAt !== undefined) {
+      localStorage.setItem('google_token_expires_at', String(settings.googleTokenExpiresAt));
+    }
+    if (settings.googleUserEmail !== undefined) {
+      localStorage.setItem('google_user_email', settings.googleUserEmail.trim());
     }
   } catch {}
 }
@@ -395,4 +418,3 @@ export async function saveStoredApplications(apps: ApplicationRecord[]): Promise
   }
   localStorage.setItem('resumehack_applications', JSON.stringify(apps));
 }
-

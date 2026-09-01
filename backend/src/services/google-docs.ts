@@ -502,7 +502,11 @@ export class GoogleDocsService {
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData?.error?.message || `Google Docs API returned HTTP ${res.status}`);
+      const rawMsg = errData?.error?.message || '';
+      if (res.status === 404 || res.status === 403 || rawMsg.toLowerCase().includes('not found') || rawMsg.toLowerCase().includes('permission')) {
+        throw new Error(`Google Drive permission error: This document has not been authorized under the 'drive.file' scope. Please open Settings and click 'Select from Google Drive' via the Google Picker to authorize access.`);
+      }
+      throw new Error(rawMsg || `Google Docs API returned HTTP ${res.status}`);
     }
     const doc = await res.json();
     return { doc, paragraphs: extractStructuralParagraphs(doc) };
@@ -595,7 +599,18 @@ export class GoogleDocsService {
       } else {
         const errData = await res.json().catch(() => ({}));
         console.error(`[GoogleDocsService] batchUpdate HTTP ${res.status}:`, errData);
-        return { success: false, updatedCount: 0, occurrencesChanged: 0, requestsExecuted: requests.length, apiExecuted: false, error: errData?.error?.message || `Google Docs API HTTP ${res.status}` };
+        const rawMsg = errData?.error?.message || '';
+        const isPermissionOrNotFound = res.status === 404 || res.status === 403 || rawMsg.toLowerCase().includes('not found') || rawMsg.toLowerCase().includes('permission');
+        return {
+          success: false,
+          updatedCount: 0,
+          occurrencesChanged: 0,
+          requestsExecuted: requests.length,
+          apiExecuted: false,
+          error: isPermissionOrNotFound
+            ? `Google Drive permission error: This document has not been authorized under the 'drive.file' scope. Please open Settings and click 'Select from Google Drive' via the Google Picker to authorize access.`
+            : (rawMsg || `Google Docs API HTTP ${res.status}`),
+        };
       }
     } catch (err: any) {
       console.error('[GoogleDocsService] Network error during applyBatchUpdates:', err);

@@ -137,7 +137,7 @@ describe('Token Refresh Resilience & Scope Verification', () => {
     expect(batchUpdateAttempts).toBe(2); // Retried seamlessly
   });
 
-  it('Fix 1 & Fix 2 (files.export PDF): Seamlessly exports PDF and recovers from 401 with drive.readonly scope', async () => {
+  it('Fix 1 & Fix 2 (files.export PDF): Seamlessly exports PDF and recovers from 401 with drive.file scope', async () => {
     const mockPdfBinary = Buffer.from('%PDF-1.5 %Sample PDF binary content for visual snapshot analysis');
     let exportAttempts = 0;
 

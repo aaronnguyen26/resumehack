@@ -3,7 +3,6 @@ export const GOOGLE_EXTENSION_CLIENT_ID = '412130143258-4b1t8drhkii7hqagt7sdvd8n
 
 export const GOOGLE_OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/documents',
-  'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',

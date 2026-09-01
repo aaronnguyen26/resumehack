@@ -465,7 +465,7 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
             </div>
           )}
 
-          {/* 4-Dimensional ATS Scoring Grid */}
+          {/* 6-Dimensional ATS Scoring Grid (HackerRank-Inspired Rubric) */}
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-white p-2.5 rounded-stitch border border-slate-200 shadow-sm space-y-1">
               <div className="flex items-center justify-between">
@@ -475,7 +475,31 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
                 </span>
               </div>
               <p className="text-[10px] text-slate-500 leading-tight">
-                {tailorData.atsReport.matchedKeywordsCount} of {tailorData.atsReport.totalKeywords} keywords matched.
+                {tailorData.atsReport.matchedKeywordsCount} of {tailorData.atsReport.totalKeywords} keywords matched (30% wt).
+              </p>
+            </div>
+
+            <div className="bg-white p-2.5 rounded-stitch border border-slate-200 shadow-sm space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-slate-500 block">Production Exp</span>
+                <span className="font-mono font-bold text-xs text-emerald-600">
+                  {tailorData.atsReport.breakdown.productionExperienceScore ?? tailorData.atsReport.productionExperienceAudit?.score ?? 85}%
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-500 leading-tight">
+                {tailorData.atsReport.productionExperienceAudit?.roleCount ?? 1} roles &bull; {tailorData.atsReport.productionExperienceAudit?.productionKeywordsFound?.length ?? 0} infra signals (15% wt).
+              </p>
+            </div>
+
+            <div className="bg-white p-2.5 rounded-stitch border border-slate-200 shadow-sm space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-slate-500 block">Self Projects</span>
+                <span className="font-mono font-bold text-xs text-violet-600">
+                  {tailorData.atsReport.breakdown.selfProjectsScore ?? tailorData.atsReport.selfProjectsAudit?.score ?? 80}%
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-500 leading-tight">
+                {tailorData.atsReport.selfProjectsAudit?.hasWorkingLinks ? 'Live link detected' : 'Code complexity audit'} (10% wt).
               </p>
             </div>
 
@@ -491,7 +515,7 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
               <p className="text-[10px] text-slate-500 leading-tight">
                 {tailorData.atsReport.actionVerbStrength?.weakCount
                   ? `Flagged ${tailorData.atsReport.actionVerbStrength.weakCount} passive verbs.`
-                  : 'High STAR power verb density.'}
+                  : 'High STAR power verb density (15% wt).'}
               </p>
             </div>
 
@@ -506,7 +530,7 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
               </div>
               <p className="text-[10px] text-slate-500 leading-tight">
                 {tailorData.atsReport.quantificationStats
-                  ? `${tailorData.atsReport.quantificationStats.quantifiedBullets} of ${tailorData.atsReport.quantificationStats.totalBullets} bullets have metrics.`
+                  ? `${tailorData.atsReport.quantificationStats.quantifiedBullets} of ${tailorData.atsReport.quantificationStats.totalBullets} bullets have metrics (15% wt).`
                   : 'Measurable metric density.'}
               </p>
             </div>
@@ -523,11 +547,90 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
               <p className="text-[10px] text-slate-500 leading-tight">
                 {tailorData.atsReport.layoutReport?.summary ||
                   (tailorData.atsReport.breakdown.formattingScore >= 90
-                    ? 'Standard single-column flow.'
+                    ? 'Standard single-column flow (5% wt).'
                     : 'Formatting issues detected.')}
               </p>
             </div>
           </div>
+
+          {/* HackerRank-Inspired Evaluation Rubrics & Inline Evidence */}
+          {(tailorData.atsReport.selfProjectsAudit || tailorData.atsReport.productionExperienceAudit) && (
+            <div className="bg-slate-50 p-3 rounded-stitch border border-slate-200/80 shadow-xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-brand-600" />
+                  <span className="font-headline font-bold text-[11px] text-slate-900">
+                    Evaluation Rubric &amp; Verified Evidence
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-500 font-medium">Text-Derivable Audit</span>
+              </div>
+
+              {/* Self Projects Evidence */}
+              {tailorData.atsReport.selfProjectsAudit && (
+                <div className="bg-white p-2 rounded border border-slate-200/70 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1">
+                      <span>💻 Self Projects:</span>
+                      <span className="font-mono text-violet-600">
+                        {tailorData.atsReport.selfProjectsAudit.score}/100
+                      </span>
+                    </span>
+                    {tailorData.atsReport.selfProjectsAudit.hasWorkingLinks && (
+                      <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
+                        🔗 Link Detected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-600 leading-relaxed italic bg-slate-50/70 p-1.5 rounded border border-slate-100">
+                    {tailorData.atsReport.selfProjectsAudit.evidence}
+                  </p>
+                  {tailorData.atsReport.selfProjectsAudit.complexitySignals.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                      <span className="text-[9px] text-slate-400 font-medium">Signals:</span>
+                      {tailorData.atsReport.selfProjectsAudit.complexitySignals.slice(0, 4).map((sig, idx) => (
+                        <span key={idx} className="px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 text-[9px] font-mono">
+                          {sig}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Production Experience Evidence */}
+              {tailorData.atsReport.productionExperienceAudit && (
+                <div className="bg-white p-2 rounded border border-slate-200/70 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1">
+                      <span>🏢 Production Experience:</span>
+                      <span className="font-mono text-emerald-600">
+                        {tailorData.atsReport.productionExperienceAudit.score}/100
+                      </span>
+                    </span>
+                    {tailorData.atsReport.productionExperienceAudit.isProductionHeavy && (
+                      <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
+                        🚀 High Production Maturity
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-600 leading-relaxed italic bg-slate-50/70 p-1.5 rounded border border-slate-100">
+                    {tailorData.atsReport.productionExperienceAudit.evidence}
+                  </p>
+                  {tailorData.atsReport.productionExperienceAudit.productionKeywordsFound.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                      <span className="text-[9px] text-slate-400 font-medium">Infra Signals:</span>
+                      {tailorData.atsReport.productionExperienceAudit.productionKeywordsFound.slice(0, 4).map((sig, idx) => (
+                        <span key={idx} className="px-1 py-0.2 rounded bg-emerald-50 text-emerald-700 text-[9px] font-mono">
+                          {sig}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Dedicated ATS Layout & Structural + Visual Polish Suggestions */}
           {tailorData.atsReport.layoutReport && tailorData.atsReport.layoutReport.issues.length > 0 && (

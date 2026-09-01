@@ -55,7 +55,8 @@ describe('Universal Web OAuth & PKCE Flow (Comet, Brave, Chrome Compatibility)',
     expect(parsed.searchParams.get('access_type')).toBe('offline');
     expect(parsed.searchParams.get('prompt')).toBe('consent');
     expect(parsed.searchParams.get('scope')).toContain('https://www.googleapis.com/auth/documents');
-    expect(parsed.searchParams.get('scope')).toContain('https://www.googleapis.com/auth/drive.readonly');
+    expect(parsed.searchParams.get('scope')).toContain('https://www.googleapis.com/auth/drive.file');
+    expect(parsed.searchParams.get('scope')).not.toContain('https://www.googleapis.com/auth/drive.readonly');
   });
 
   it('exchanges authorization code for access and refresh tokens at token endpoint', async () => {

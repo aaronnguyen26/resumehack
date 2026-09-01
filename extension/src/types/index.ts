@@ -118,6 +118,27 @@ export interface KeywordMatch {
   contextSnippet?: string;
 }
 
+export interface SelfProjectsAudit {
+  score: number; // 0 - 100
+  evidence: string;
+  projectCount: number;
+  hasWorkingLinks: boolean;
+  linksFound: string[];
+  complexitySignals: string[];
+  impactSignals: string[];
+  tutorialFlags: string[];
+}
+
+export interface ProductionExperienceAudit {
+  score: number; // 0 - 100
+  evidence: string;
+  roleCount: number;
+  productionKeywordsFound: string[];
+  tenureSignals: string[];
+  productionRatio: number; // 0 - 1
+  isProductionHeavy: boolean;
+}
+
 export interface AtsScoreReport {
   overallScore: number;
   breakdown: {
@@ -127,6 +148,8 @@ export interface AtsScoreReport {
     formattingScore: number;
     starImpactScore?: number;
     actionVerbVitalityScore?: number;
+    selfProjectsScore?: number;
+    productionExperienceScore?: number;
   };
   totalKeywords: number;
   matchedKeywordsCount: number;
@@ -144,6 +167,8 @@ export interface AtsScoreReport {
     totalBullets: number;
     percentage: number;
   };
+  selfProjectsAudit?: SelfProjectsAudit;
+  productionExperienceAudit?: ProductionExperienceAudit;
   layoutReport?: LayoutAuditReport;
 }
 

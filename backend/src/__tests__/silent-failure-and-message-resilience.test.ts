@@ -64,7 +64,7 @@ describe('Google Docs Apply Message Resilience & Error Propagation', () => {
     const result = await googleDocs.applyBatchUpdates('invalid-doc-id', sampleDiffs, 'ya29.valid_token');
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Requested entity was not found');
+    expect(result.error).toContain('Google Drive permission error');
   });
 
   it('correctly executes full atomic batchUpdate when docId and token are valid', async () => {

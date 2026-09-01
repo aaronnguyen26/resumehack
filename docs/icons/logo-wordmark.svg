@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 180" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="wmBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b" />
+      <stop offset="50%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+
+    <!-- Hack Gradient -->
+    <linearGradient id="hackGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#34d399" />
+    </linearGradient>
+
+    <!-- Mascot Gradients -->
+    <linearGradient id="wmOwlGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#4338ca" />
+    </linearGradient>
+
+    <linearGradient id="wmTasselGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+
+    <linearGradient id="wmBeakGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+  </defs>
+
+  <!-- Banner Background -->
+  <rect width="720" height="180" rx="24" fill="url(#wmBgGrad)" stroke="rgba(255,255,255,0.08)" stroke-width="2" />
+
+  <!-- Left Icon Mascot Emblem (Scale & Position) -->
+  <g transform="translate(40, 20) scale(0.28)">
+    <!-- Base Squircle -->
+    <rect width="500" height="500" rx="110" fill="#312e81" opacity="0.6" />
+    <rect width="492" height="492" x="4" y="4" rx="106" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="6" />
+
+    <!-- Hacky Mascot -->
+    <!-- Head/Body -->
+    <path d="M 160 170 L 190 220 L 322 220 L 352 170 L 372 260 C 372 360 320 420 256 420 C 192 420 140 360 140 260 Z" fill="url(#wmOwlGrad)" />
+    <!-- Chest -->
+    <path d="M 200 300 C 200 380 230 410 256 410 C 282 410 312 380 312 300 C 312 280 200 280 200 300 Z" fill="#f8fafc" />
+
+    <!-- Glasses & Eyes -->
+    <circle cx="206" cy="272" r="48" fill="#ffffff" stroke="#1e1b4b" stroke-width="12" />
+    <circle cx="306" cy="272" r="48" fill="#ffffff" stroke="#1e1b4b" stroke-width="12" />
+    <path d="M 250 268 Q 256 260 262 268" fill="none" stroke="#1e1b4b" stroke-width="12" stroke-linecap="round" />
+
+    <!-- Pupils -->
+    <circle cx="214" cy="272" r="24" fill="#0f172a" />
+    <circle cx="298" cy="272" r="24" fill="#0f172a" />
+    <circle cx="206" cy="264" r="8" fill="#ffffff" />
+    <circle cx="290" cy="264" r="8" fill="#ffffff" />
+
+    <!-- Beak -->
+    <polygon points="256,284 242,314 270,314" fill="url(#wmBeakGrad)" />
+
+    <!-- Graduation Cap -->
+    <path d="M 216 160 C 216 148 296 148 296 160 L 286 182 L 226 182 Z" fill="#0f172a" />
+    <polygon points="256,110 376,148 256,186 136,148" fill="#1e293b" stroke="#334155" stroke-width="4" />
+    <circle cx="256" cy="148" r="8" fill="#10b981" />
+    <path d="M 256 148 Q 330 150 348 190 Q 354 215 350 240" fill="none" stroke="url(#wmTasselGrad)" stroke-width="8" stroke-linecap="round" />
+    <rect x="342" y="236" width="16" height="26" rx="6" fill="url(#wmTasselGrad)" />
+  </g>
+
+  <!-- Typography: Wordmark -->
+  <text x="210" y="94" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif" font-size="52" font-weight="800" letter-spacing="-1">
+    <tspan fill="#ffffff">Resume</tspan><tspan fill="url(#hackGrad)">Hack</tspan>
+  </text>
+
+  <!-- Subtitle -->
+  <text x="212" y="132" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif" font-size="19" font-weight="500" fill="#94a3b8" letter-spacing="0.2">
+    AI Career &amp; Resume Copilot <tspan fill="#34d399">by Hacky</tspan>
+  </text>
+</svg>
