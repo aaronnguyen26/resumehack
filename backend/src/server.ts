@@ -5,6 +5,7 @@ import { AtsScorerService } from './services/ats-scorer.js';
 import { LlmTailorService } from './services/llm-tailor.js';
 import { GoogleDocsService } from './services/google-docs.js';
 import { GoogleDriveService } from './services/google-drive.js';
+import { VisualLayoutAnalyzerService } from './services/visual-layout-analyzer.js';
 import { CURATED_JOB_LISTINGS } from './data/curated-jobs.js';
 import { ApplicationRecord, TailorResumeResponse, ResumeBullet } from './types/index.js';
 
@@ -14,12 +15,13 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 const atsScorer = new AtsScorerService();
 const llmTailor = new LlmTailorService();
 const googleDocs = new GoogleDocsService();
 const googleDrive = new GoogleDriveService();
+const visualAnalyzer = new VisualLayoutAnalyzerService();
 
 // In-memory application CRM store
 const applicationStore: ApplicationRecord[] = [
@@ -94,6 +96,36 @@ app.post('/api/analyze', (req: Request, res: Response) => {
 
   const report = atsScorer.analyze(resumeText, jobDescription);
   res.json(report);
+});
+
+// 3.1. Visual Layout Snapshot & Aesthetic Quality Analysis
+app.post('/api/visual-layout/analyze', async (req: Request, res: Response) => {
+  try {
+    const {
+      documentId,
+      accessToken,
+      structuralParagraphs,
+      layoutInfo,
+      jobDescription,
+      domain,
+      aiSettings,
+    } = req.body;
+
+    const report = await visualAnalyzer.analyzeVisualSnapshot({
+      documentId,
+      accessToken,
+      structuralParagraphs,
+      layoutInfo,
+      jobDescription,
+      domain,
+      settings: aiSettings,
+    });
+
+    res.json(report);
+  } catch (error: any) {
+    console.error('Visual layout analysis error:', error);
+    res.status(500).json({ error: error.message || 'Visual layout analysis failed' });
+  }
 });
 
 // 4. Full Resume Tailoring & Diff Generation
@@ -227,6 +259,104 @@ app.patch('/api/applications/:id', (req: Request, res: Response) => {
   };
 
   res.json(applicationStore[index]);
+});
+
+// 8. Google OAuth PKCE & Web Application Token Exchange
+app.post('/api/auth/google/exchange', async (req: Request, res: Response) => {
+  try {
+    const { code, codeVerifier, redirectUri, clientId } = req.body;
+    if (!code || !codeVerifier) {
+      return res.status(400).json({ error: 'code and codeVerifier are required.' });
+    }
+
+    const activeClientId = clientId || process.env.GOOGLE_WEB_CLIENT_ID || '';
+    const activeClientSecret = process.env.GOOGLE_WEB_CLIENT_SECRET || '';
+    const activeRedirectUri = redirectUri || process.env.GOOGLE_REDIRECT_URI || '';
+
+    const bodyParams = new URLSearchParams({
+      client_id: activeClientId.trim(),
+      client_secret: activeClientSecret.trim(),
+      code: code.trim(),
+      code_verifier: codeVerifier.trim(),
+      grant_type: 'authorization_code',
+      redirect_uri: activeRedirectUri,
+    });
+
+    const googleRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: bodyParams.toString(),
+    });
+
+    const data = await googleRes.json().catch(() => ({}));
+
+    if (!googleRes.ok) {
+      console.warn('[Backend Auth] Google token exchange rejected:', data);
+      return res.status(googleRes.status).json({
+        error: data?.error_description || data?.error || `Google OAuth Error (${googleRes.status})`,
+        details: data,
+      });
+    }
+
+    res.json({
+      success: true,
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expiresIn: data.expires_in || 3600,
+      scope: data.scope,
+      tokenType: data.token_type,
+    });
+  } catch (err: any) {
+    console.error('[Backend Auth] Exchange error:', err);
+    res.status(500).json({ error: err?.message || 'Server error during OAuth exchange' });
+  }
+});
+
+// 9. Google OAuth Refresh Token Renewal
+app.post('/api/auth/google/refresh', async (req: Request, res: Response) => {
+  try {
+    const { refreshToken, clientId } = req.body;
+    if (!refreshToken) {
+      return res.status(400).json({ error: 'refreshToken is required.' });
+    }
+
+    const activeClientId = clientId || process.env.GOOGLE_WEB_CLIENT_ID || '';
+    const activeClientSecret = process.env.GOOGLE_WEB_CLIENT_SECRET || '';
+
+    const bodyParams = new URLSearchParams({
+      client_id: activeClientId.trim(),
+      client_secret: activeClientSecret.trim(),
+      refresh_token: refreshToken.trim(),
+      grant_type: 'refresh_token',
+    });
+
+    const googleRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: bodyParams.toString(),
+    });
+
+    const data = await googleRes.json().catch(() => ({}));
+
+    if (!googleRes.ok) {
+      return res.status(googleRes.status).json({
+        error: data?.error_description || data?.error || `Google OAuth Error (${googleRes.status})`,
+      });
+    }
+
+    res.json({
+      success: true,
+      accessToken: data.access_token,
+      expiresIn: data.expires_in || 3600,
+    });
+  } catch (err: any) {
+    console.error('[Backend Auth] Refresh error:', err);
+    res.status(500).json({ error: err?.message || 'Server error refreshing token' });
+  }
 });
 
 app.listen(PORT, () => {

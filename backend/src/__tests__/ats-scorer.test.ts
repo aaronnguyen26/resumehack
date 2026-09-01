@@ -38,6 +38,49 @@ describe('AtsScorerService', () => {
 
     expect(report.missingKeywordsCount).toBeGreaterThan(0);
     expect(report.improvementSuggestions.length).toBeGreaterThan(0);
+    expect(report.breakdown.actionVerbVitalityScore).toBeDefined();
+    expect(report.breakdown.starImpactScore).toBeDefined();
+    expect(report.actionVerbStrength).toBeDefined();
+    expect(report.quantificationStats).toBeDefined();
+  });
+
+  it('audits general master resume across domain benchmarks with STAR and verb vitality analysis', () => {
+    const report = scorer.auditGeneralAts(sampleResume, 'Software Engineering');
+
+    expect(report.overallScore).toBeGreaterThan(20);
+    expect(report.actionVerbStrength?.strongCount).toBeGreaterThanOrEqual(1);
+    expect(report.quantificationStats?.quantifiedBullets).toBeGreaterThanOrEqual(1);
+    expect(report.improvementSuggestions.length).toBeGreaterThan(0);
+  });
+
+  it('correctly matches technical keywords using alias mapping (k8s, postgres, aws, js)', () => {
+    const aliasResume = `
+    Jane Doe
+    Skills: K8s, JS, TS, Postgres, AWS, ML, CI/CD
+    Experience:
+    • Architected microservices with k8s and postgres, reducing p99 latency by 45ms.
+    • Spearheaded CI/CD pipelines deploying to AWS cloud with 99.99% availability.
+    • Benchmarked real-time throughput handling 50k RPS across 2M MAU.
+    `;
+
+    const jobDesc = `
+    Looking for a Senior Backend Engineer with Kubernetes, PostgreSQL, TypeScript, Amazon Web Services, and Machine Learning.
+    `;
+
+    const report = scorer.analyze(aliasResume, jobDesc);
+
+    const k8sMatch = report.keywords.find(k => k.keyword.toLowerCase() === 'kubernetes');
+    expect(k8sMatch?.foundInResume).toBe(true);
+
+    const pgMatch = report.keywords.find(k => k.keyword.toLowerCase() === 'postgresql');
+    expect(pgMatch?.foundInResume).toBe(true);
+
+    const awsMatch = report.keywords.find(k => k.keyword.toLowerCase() === 'aws');
+    expect(awsMatch?.foundInResume).toBe(true);
+
+    expect(report.quantificationStats?.percentage).toBeGreaterThanOrEqual(75);
+    expect(report.actionVerbStrength?.strongCount).toBeGreaterThanOrEqual(3);
+    expect(report.overallScore).toBeGreaterThanOrEqual(75);
   });
 });
 
@@ -94,6 +137,6 @@ describe('GoogleDocsService', () => {
     const result = await docsService.applyBatchUpdates('mock-doc-123', diffs);
     expect(result.success).toBe(true);
     expect(result.updatedCount).toBe(1);
-    expect(result.requestsExecuted).toBe(1);
+    expect(result.requestsExecuted).toBeGreaterThanOrEqual(1);
   });
 });

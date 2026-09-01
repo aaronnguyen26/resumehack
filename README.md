@@ -38,6 +38,16 @@
    - Warning: Amber Gold (`#F59E0B`)
    - Fonts: *Plus Jakarta Sans* (Headers), *Inter* (Body), *JetBrains Mono* (ATS metrics).
 
+8. **Always-On Desktop Screen Mascot ("Hacky") (Created with Stitch MCP)**
+   - **Always-On Screen Assistant**: Floats on the bottom right of your screen across all web pages.
+   - **1-Click Side Panel Trigger**: Single click directly launches the ResumeHack Copilot side panel.
+   - **Context-Aware Intelligence**:
+     - *Google Docs*: Instantly detects your master resume and offers 1-click ATS bullet tailoring.
+     - *Job Boards (LinkedIn, Greenhouse, Lever, Workday, Indeed)*: Recognizes job titles & companies and prepares customized resume diffs.
+     - *Application Forms*: 1-click candidate profile and link autofill.
+     - *Internship Alerts*: Real-time badges for newly synced 2026 tech roles.
+   - **Interactive Polish & Drag Physics**: Floating animations, eye blinking, holographic aura, sparkle particle burst on click, and draggable position memory.
+
 ---
 
 ## 🚀 How to Load into Google Chrome (1 Step)

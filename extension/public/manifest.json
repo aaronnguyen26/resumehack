@@ -1,16 +1,27 @@
 {
   "manifest_version": 3,
-  "name": "ResumeHack — AI Job & Screen Resume Copilot",
-  "version": "1.0.0",
-  "description": "Reads your resume screen directly in Google Docs or any webpage, tracks live GitHub internships, and tailors bullets with live ATS scoring.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArKQ+j+3/wXQiErIiY3qOzaQXeM1ov/FLYPM1mc8QwhlTtsOvCUso86/piyj/77+LCQxM2wCQsmh8fxkgI+JJqRSHNEMo4pYZ8vzwTVWnvfH5B+QxBbXfBHwr3BWymWkhtEEHvntE9VXV8z3hkGLhWPf8ocop8T/c1s2FXOUfF3TIgBskSQTdaYzMIpkr3wh7Q3XKlTKvcrnpIv8zHY2N51sdsLN0+tH5EIacFspj4VOrJKqPZzcvhU1isq0o4fkTzBWxgJ/s6JhZRHVXZ9wrZUKtUamHhWQcmT7GvfFQqnLKFF6clZVWdYQNDuXYQnmPzJoaGGGcl0z5ILCJQFREuQIDAQAB",
+  "name": "ResumeHack — AI Career & Resume Copilot by Hacky",
+  "version": "1.1.0",
+  "description": "Always-on desktop AI mascot Hacky that launches ResumeHack on click, reads resume screen in Google Docs, and tracks verified tech internships.",
   "permissions": [
     "sidePanel",
     "storage",
     "tabs",
     "activeTab",
     "scripting",
-    "identity"
+    "alarms",
+    "identity",
+    "debugger"
   ],
+  "oauth2": {
+    "client_id": "412130143258-4b1t8drhkii7hqagt7sdvd8n3qmchl8i.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/documents",
+      "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/drive.file"
+    ]
+  },
   "host_permissions": [
     "<all_urls>"
   ],
@@ -35,8 +46,17 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "https://docs.google.com/document/*"
+      ],
       "js": ["content-scripts/content_docs.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": ["content-scripts/content_mascot.js"],
       "run_at": "document_idle"
     },
     {
@@ -49,7 +69,18 @@
       "run_at": "document_idle"
     }
   ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "action": {
-    "default_title": "Open ResumeHack Copilot"
+    "default_title": "Open Hacky",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
   }
 }
+

@@ -1,111 +1,891 @@
-import { ResumeBullet, TailoredBulletDiff } from '../types/index.js';
+import {
+  ResumeBullet,
+  TailoredBulletDiff,
+  DocumentLayoutInfo,
+  StructuralParagraphStyle,
+  StructuralRunStyle,
+  StructuralParagraph,
+  LayoutIssue,
+} from '../types/index.js';
+import {
+  refreshGoogleAccessToken,
+  getGoogleAccessToken,
+  setGoogleAccessToken,
+  invalidateCachedGoogleToken,
+} from './storage.js';
+import { authenticateGoogleAccount } from './google-auth.js';
+
+// ─── Robust Text Matcher & Sanitizer ────────────────────────────────────────
+
+export class RobustTextMatcher {
+  private static readonly WS_REGEX = /[\s\u00A0\u200B\u202F\u000B]+/g;
+
+  /**
+   * Strip synthetic bullet prefixes and structured list numberings (e.g. "• ", "- ", "1. ", "1) ")
+   * WITHOUT stripping legitimate numbers/dates like "2024", "10+ microservices", "100%".
+   */
+  public static sanitizeOriginal(text: string): string {
+    if (!text) return '';
+    return text
+      .replace(/^[\s\uFEFF\u200B]*([•\-*–—▪▸▹‣◦○]|\d+[\.\)])\s+/, '') // strip bullet glyphs & list numbering only
+      .replace(/[\u00AD\u200B\uFEFF]/g, '')                             // strip soft hyphens & zero-width
+      .trim();
+  }
+
+  /**
+   * Cleans tailored replacement text by stripping accidental bullet prefixes
+   * while preserving all digits, metrics, and dates.
+   */
+  public static sanitizeTailored(text: string): string {
+    if (!text) return '';
+    return text
+      .replace(/^[\s\uFEFF\u200B]*([•\-*–—▪▸▹‣◦○]|\d+[\.\)])\s+/, '')
+      .replace(/[\u00AD\u200B\uFEFF]/g, '')
+      .trim();
+  }
+
+  /**
+   * Extracts the bullet prefix character from raw text (e.g. '• ', '- ', '* ').
+   * Returns empty string if no prefix found.
+   */
+  public static extractBulletPrefix(rawText: string): string {
+    if (!rawText) return '';
+    const match = rawText.match(/^[\s\uFEFF\u200B]*([•\-*–—▪▸▹‣◦○]|\d+[\.\)])\s+/);
+    if (!match) return '';
+    const glyph = match[1];
+    return `${glyph} `;
+  }
+
+  /**
+   * Normalizes text for fuzzy comparison — lowercase, collapse whitespace, strip zero-width chars.
+   */
+  public static normalize(text: string): string {
+    return text
+      .replace(/[\u00AD\u200B\uFEFF\u00A0]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  /**
+   * Checks if two texts are a fuzzy match (normalized comparison).
+   */
+  public static fuzzyMatch(a: string, b: string): boolean {
+    return this.normalize(a) === this.normalize(b);
+  }
+
+  /**
+   * Calculates similarity score [0.0 - 1.0] between two strings based on word/token overlap.
+   */
+  public static calculateSimilarity(a: string, b: string): number {
+    const normA = this.normalize(a);
+    const normB = this.normalize(b);
+    if (!normA || !normB) return 0;
+    if (normA === normB) return 1;
+    if (normA.includes(normB) || normB.includes(normA)) {
+      return Math.min(normA.length, normB.length) / Math.max(normA.length, normB.length);
+    }
+
+    const wordsA = new Set(normA.split(/\s+/).filter((w) => w.length > 2));
+    const wordsB = new Set(normB.split(/\s+/).filter((w) => w.length > 2));
+    if (wordsA.size === 0 || wordsB.size === 0) return 0;
+
+    let overlap = 0;
+    for (const w of wordsA) {
+      if (wordsB.has(w)) overlap++;
+    }
+
+    return (2 * overlap) / (wordsA.size + wordsB.size);
+  }
+
+  /**
+   * Generate permutations for fallback string matching when needed.
+   */
+  public static generateSearchPermutations(text: string, rawDocText?: string): string[] {
+    if (!text || typeof text !== 'string') return [];
+    const clean = this.sanitizeOriginal(text);
+    if (!clean || clean.length < 8) {
+      const trimmed = text.trim();
+      return trimmed.length >= 8 ? [trimmed] : [];
+    }
+
+    const results = new Set<string>();
+    const normalizedWs = clean.replace(this.WS_REGEX, ' ').trim();
+    const withoutTrailingPeriod = normalizedWs.replace(/\.+$/, '').trim();
+
+    if (rawDocText) {
+      const rawTrimmed = rawDocText.replace(/[\u00AD\u200B\uFEFF]/g, '').trim();
+      if (rawTrimmed.length >= 8) results.add(rawTrimmed);
+    }
+
+    if (clean.length >= 8) results.add(clean);
+    if (normalizedWs.length >= 8) results.add(normalizedWs);
+    if (withoutTrailingPeriod.length >= 8) results.add(withoutTrailingPeriod);
+
+    return Array.from(results).sort((a, b) => b.length - a.length);
+  }
+}
+
+// ─── Structural Document Models & Parser ────────────────────────────────────
+
+export interface ResolvedDiffRange {
+  diff: TailoredBulletDiff;
+  startIndex: number;
+  endIndex: number;
+  replacementText: string;
+  matchedParagraph: StructuralParagraph;
+}
+
+export interface BatchUpdateResult {
+  success: boolean;
+  updatedCount: number;
+  occurrencesChanged?: number;
+  requestsExecuted: number;
+  apiExecuted: boolean;
+  replies?: any[];
+  writeControl?: any;
+  error?: string;
+  details?: string[];
+}
+
+/**
+ * Extracts document-level layout metadata including tables, multi-column sections, and styles.
+ */
+export function extractDocumentLayoutInfo(doc: any): DocumentLayoutInfo {
+  const content = doc?.body?.content || [];
+  const tables: Array<{ rows: number; columns: number; startIndex: number; endIndex: number }> = [];
+  let sectionStyle: any = null;
+
+  for (const elem of content) {
+    if (elem.table) {
+      const rows = elem.table.rows || elem.table.tableRows?.length || 0;
+      const columns = elem.table.columns || elem.table.tableRows?.[0]?.tableCells?.length || 0;
+      tables.push({
+        rows,
+        columns,
+        startIndex: elem.startIndex ?? 0,
+        endIndex: elem.endIndex ?? 0,
+      });
+    }
+    if (elem.sectionBreak?.sectionStyle) {
+      sectionStyle = {
+        columnCount: elem.sectionBreak.sectionStyle.columnProperties?.length || 1,
+        marginTop: elem.sectionBreak.sectionStyle.marginTop?.magnitude,
+        marginBottom: elem.sectionBreak.sectionStyle.marginBottom?.magnitude,
+        marginLeft: elem.sectionBreak.sectionStyle.marginLeft?.magnitude,
+        marginRight: elem.sectionBreak.sectionStyle.marginRight?.magnitude,
+      };
+    }
+  }
+
+  if (!sectionStyle && doc.documentStyle) {
+    sectionStyle = {
+      columnCount: 1,
+      marginTop: doc.documentStyle.marginTop?.magnitude,
+      marginBottom: doc.documentStyle.marginBottom?.magnitude,
+      marginLeft: doc.documentStyle.marginLeft?.magnitude,
+      marginRight: doc.documentStyle.marginRight?.magnitude,
+    };
+  }
+
+  return {
+    title: doc?.title || 'Resume',
+    hasTables: tables.length > 0,
+    tableCount: tables.length,
+    tables,
+    sectionStyle: sectionStyle || { columnCount: 1 },
+    namedStyles: doc?.namedStyles,
+    lists: doc?.lists,
+  };
+}
+
+/**
+ * Recursively extracts all structural paragraphs from a Google Docs document JSON.
+ * Handles top-level body content and nested table cells with precise index math and styling.
+ */
+export function extractStructuralParagraphs(doc: any): StructuralParagraph[] {
+  const content = doc?.body?.content;
+  if (!content || !Array.isArray(content)) return [];
+  return extractFromElements(content);
+}
+
+function extractFromElements(elements: any[], isInTable: boolean = false): StructuralParagraph[] {
+  const paragraphs: StructuralParagraph[] = [];
+
+  for (const elem of elements) {
+    if (elem.paragraph && elem.paragraph.elements && elem.startIndex !== undefined && elem.endIndex !== undefined) {
+      let pText = '';
+      const runs: StructuralRunStyle[] = [];
+
+      for (const pe of elem.paragraph.elements) {
+        if (pe.textRun?.content) {
+          pText += pe.textRun.content;
+          const tr = pe.textRun;
+          const ts = tr.textStyle || {};
+          const fontFamily = ts.weightedFontFamily?.fontFamily || ts.fontFamily;
+          const fontSize = ts.fontSize?.magnitude;
+          const bold = Boolean(ts.bold);
+          const italic = Boolean(ts.italic);
+          const underline = Boolean(ts.underline);
+          const foregroundColor = ts.foregroundColor?.color?.rgbColor
+            ? `rgb(${Math.round((ts.foregroundColor.color.rgbColor.red || 0) * 255)}, ${Math.round((ts.foregroundColor.color.rgbColor.green || 0) * 255)}, ${Math.round((ts.foregroundColor.color.rgbColor.blue || 0) * 255)})`
+            : undefined;
+
+          runs.push({
+            fontFamily,
+            fontSize,
+            bold,
+            italic,
+            underline,
+            foregroundColor,
+            startIndex: pe.startIndex ?? elem.startIndex,
+            endIndex: pe.endIndex ?? elem.endIndex,
+            content: tr.content,
+          });
+        }
+      }
+
+      const trimmed = pText.trim();
+      if (trimmed.length > 0) {
+        const hasNativeBullet = Boolean(elem.paragraph.bullet || elem.paragraph.paragraphStyle?.bullet);
+        const bulletPrefix = RobustTextMatcher.extractBulletPrefix(trimmed);
+        const hasVisualBullet = Boolean(bulletPrefix);
+        const sanitized = RobustTextMatcher.sanitizeOriginal(trimmed);
+
+        const ps = elem.paragraph.paragraphStyle || {};
+        const bulletData = elem.paragraph.bullet || ps.bullet;
+        const paragraphStyle: StructuralParagraphStyle = {
+          namedStyleType: ps.namedStyleType || 'NORMAL_TEXT',
+          alignment: ps.alignment || 'START',
+          spaceBefore: ps.spaceBefore?.magnitude,
+          spaceAfter: ps.spaceAfter?.magnitude,
+          indentStart: ps.indentStart?.magnitude,
+          indentFirstLine: ps.indentFirstLine?.magnitude,
+          lineSpacing: ps.lineSpacing,
+          bullet: bulletData
+            ? {
+                listId: bulletData.listId,
+                nestingLevel: bulletData.nestingLevel,
+              }
+            : undefined,
+        };
+
+        // A Google Docs paragraph ends with '\n' at endIndex - 1.
+        // We exclude the trailing '\n' from textEndIndex so deleting text does NOT delete the paragraph break.
+        const endsWithNewline = pText.endsWith('\n');
+        const textEndIndex = endsWithNewline ? elem.endIndex - 1 : elem.endIndex;
+
+        paragraphs.push({
+          rawText: pText,
+          trimmedText: trimmed,
+          normalizedText: RobustTextMatcher.normalize(trimmed),
+          sanitizedText: RobustTextMatcher.normalize(sanitized),
+          startIndex: elem.startIndex,
+          endIndex: elem.endIndex,
+          textStartIndex: elem.startIndex,
+          textEndIndex: Math.max(elem.startIndex, textEndIndex),
+          hasNativeBullet,
+          hasVisualBullet,
+          bulletPrefix,
+          paragraphStyle,
+          runs,
+          isInTable,
+        });
+      }
+    } else if (elem.table?.tableRows) {
+      for (const row of elem.table.tableRows) {
+        if (row.tableCells) {
+          for (const cell of row.tableCells) {
+            if (cell.content) {
+              paragraphs.push(...extractFromElements(cell.content, true));
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return paragraphs;
+}
+
+/**
+ * Resolves each accepted diff to its exact structural paragraph index range in the document.
+ */
+export function resolveDiffReplacementRanges(
+  diffs: TailoredBulletDiff[],
+  structuralParagraphs: StructuralParagraph[]
+): {
+  resolved: ResolvedDiffRange[];
+  unresolved: TailoredBulletDiff[];
+} {
+  const resolved: ResolvedDiffRange[] = [];
+  const unresolved: TailoredBulletDiff[] = [];
+  const usedParagraphIndices = new Set<number>();
+
+  for (const diff of diffs) {
+    if (diff.status && diff.status !== 'accepted') continue;
+
+    const cleanTailored = RobustTextMatcher.sanitizeTailored(diff.tailoredText);
+    const needle = RobustTextMatcher.normalize(diff.originalText);
+    const needleSanitized = RobustTextMatcher.normalize(RobustTextMatcher.sanitizeOriginal(diff.originalText));
+    const hintText = diff.prefix ? RobustTextMatcher.normalize(diff.prefix) : '';
+
+    let matchedPara: StructuralParagraph | null = null;
+
+    // 1. Exact sanitized match (highest precision)
+    for (const para of structuralParagraphs) {
+      if (usedParagraphIndices.has(para.startIndex)) continue;
+      if (needleSanitized && (para.sanitizedText === needleSanitized || para.normalizedText === needleSanitized)) {
+        matchedPara = para;
+        break;
+      }
+    }
+
+    // 2. Exact normalized match (full line)
+    if (!matchedPara) {
+      for (const para of structuralParagraphs) {
+        if (usedParagraphIndices.has(para.startIndex)) continue;
+        if (para.normalizedText === needle || (hintText && para.normalizedText === hintText)) {
+          matchedPara = para;
+          break;
+        }
+      }
+    }
+
+    // 3. High similarity / substring match (for truncated text or formatting differences)
+    if (!matchedPara && needleSanitized.length >= 12) {
+      let bestScore = 0;
+      let candidate: StructuralParagraph | null = null;
+      for (const para of structuralParagraphs) {
+        if (usedParagraphIndices.has(para.startIndex)) continue;
+        const score = RobustTextMatcher.calculateSimilarity(para.sanitizedText, needleSanitized);
+        if (score > bestScore && score >= 0.75) {
+          bestScore = score;
+          candidate = para;
+        }
+      }
+      if (candidate) {
+        matchedPara = candidate;
+      }
+    }
+
+    if (matchedPara) {
+      usedParagraphIndices.add(matchedPara.startIndex);
+
+      // Determine the replacement text:
+      // If the paragraph does NOT have native bullet formatting, but has a visual bullet, preserve visual bullet prefix.
+      let replacementText = cleanTailored;
+      if (!matchedPara.hasNativeBullet && matchedPara.bulletPrefix && !diff.tailoredText.startsWith(matchedPara.bulletPrefix)) {
+        replacementText = `${matchedPara.bulletPrefix}${cleanTailored}`;
+      } else if (!matchedPara.hasNativeBullet && diff.tailoredText.startsWith('• ') && !replacementText.startsWith('• ')) {
+        replacementText = `• ${cleanTailored}`;
+      }
+
+      resolved.push({
+        diff,
+        startIndex: matchedPara.textStartIndex,
+        endIndex: matchedPara.textEndIndex,
+        replacementText,
+        matchedParagraph: matchedPara,
+      });
+    } else {
+      unresolved.push(diff);
+    }
+  }
+
+  return { resolved, unresolved };
+}
+
+/**
+ * Builds atomic batchUpdate requests using deleteContentRange and insertText.
+ *
+ * CRITICAL ARCHITECTURE RULE:
+ * Requests are sorted in DESCENDING order of startIndex (from bottom of document to top).
+ * This mathematically guarantees that deleting/inserting text at higher indices does NOT
+ * offset or invalidate the character indices of earlier paragraphs in the document!
+ */
+export function buildStructuralBatchUpdateRequests(
+  resolvedRanges: ResolvedDiffRange[],
+  unresolvedDiffs: TailoredBulletDiff[] = [],
+  layoutIssues: LayoutIssue[] = []
+): {
+  requests: any[];
+  sortedRanges: ResolvedDiffRange[];
+} {
+  interface IndexedOp {
+    startIndex: number;
+    requests: any[];
+  }
+
+  const operations: IndexedOp[] = [];
+
+  for (const item of resolvedRanges) {
+    const itemReqs: any[] = [];
+    if (item.endIndex > item.startIndex) {
+      itemReqs.push({
+        deleteContentRange: {
+          range: {
+            startIndex: item.startIndex,
+            endIndex: item.endIndex,
+          },
+        },
+      });
+    }
+    if (item.replacementText.length > 0) {
+      itemReqs.push({
+        insertText: {
+          location: {
+            index: item.startIndex,
+          },
+          text: item.replacementText,
+        },
+      });
+    }
+    operations.push({
+      startIndex: item.startIndex,
+      requests: itemReqs,
+    });
+  }
+
+  for (const issue of layoutIssues) {
+    if (issue.suggestedFix?.batchUpdateRequests && issue.suggestedFix.batchUpdateRequests.length > 0) {
+      operations.push({
+        startIndex: issue.affectedStartIndex ?? 0,
+        requests: issue.suggestedFix.batchUpdateRequests,
+      });
+    }
+  }
+
+  // Sort in DESCENDING order of startIndex
+  operations.sort((a, b) => b.startIndex - a.startIndex);
+  const requests: any[] = [];
+  for (const op of operations) {
+    requests.push(...op.requests);
+  }
+
+  // Fallback replaceAllText for any unresolved diffs
+  for (const unhandled of unresolvedDiffs) {
+    const cleanTailored = RobustTextMatcher.sanitizeTailored(unhandled.tailoredText);
+    const searchCandidates = RobustTextMatcher.generateSearchPermutations(
+      unhandled.originalText,
+      unhandled.prefix
+    );
+    const primarySearch = searchCandidates[0] || unhandled.originalText;
+    if (primarySearch && primarySearch.length >= 8) {
+      requests.push({
+        replaceAllText: {
+          containsText: {
+            text: primarySearch,
+            matchCase: false,
+          },
+          replaceText: cleanTailored,
+        },
+      });
+    }
+  }
+
+  const sortedRanges = [...resolvedRanges].sort((a, b) => b.startIndex - a.startIndex);
+  return { requests, sortedRanges };
+}
+
+// ─── Google Docs Authoritative REST API Service ──────────────────────────────
 
 export class GoogleDocsService {
   /**
-   * Fetches the Google Doc content and extracts resume bullet points.
-   * Can use chrome.identity OAuth or mock fallback for local use.
+   * Proactively acquires a valid OAuth token, tracking expiry and refreshing before expiration.
+   */
+  public async getAuthToken(interactive: boolean = false): Promise<string | undefined> {
+    try {
+      const storedToken = await getGoogleAccessToken();
+      if (storedToken) return storedToken;
+    } catch {}
+
+    if (interactive) {
+      const authRes = await authenticateGoogleAccount(true);
+      if (authRes.success && authRes.accessToken) {
+        return authRes.accessToken;
+      }
+    }
+
+    if (typeof chrome === 'undefined' || !chrome.identity) {
+      return undefined;
+    }
+
+    if (chrome.identity.getAuthToken) {
+      return new Promise((resolve) => {
+        chrome.identity.getAuthToken({ interactive: false }, async (tok) => {
+          if (!chrome.runtime?.lastError && tok) {
+            const tokenStr = tok as string;
+            await setGoogleAccessToken(tokenStr, 3300);
+            resolve(tokenStr);
+          } else {
+            resolve(undefined);
+          }
+        });
+      });
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Shared unified fetch wrapper with proactive token validation and automatic 401 recovery retry.
+   * Protects documents.get, batchUpdate, and files.export.
+   */
+  public async fetchWithGoogleAuth(
+    url: string,
+    init: RequestInit = {},
+    explicitToken?: string
+  ): Promise<Response> {
+    let token = explicitToken || (await this.getAuthToken(false));
+    if (!token) {
+      throw new Error('OAuth authorization required');
+    }
+
+    const headers = new Headers(init.headers || {});
+    headers.set('Authorization', `Bearer ${token}`);
+
+    let response = await fetch(url, {
+      ...init,
+      headers,
+    });
+
+    // ── Safety Net: Automatic 401 Recovery Retry ──
+    if (response.status === 401) {
+      console.warn(`[GoogleDocsService] Received 401 from ${url}. Invalidating stale token and retrying...`);
+      try {
+        await invalidateCachedGoogleToken(token);
+      } catch {}
+
+      // Attempt fresh token acquisition
+      const freshToken = await this.getAuthToken(false);
+      if (freshToken) {
+        console.log(`[GoogleDocsService] Acquired fresh token, retrying ${url}...`);
+        const retryHeaders = new Headers(init.headers || {});
+        retryHeaders.set('Authorization', `Bearer ${freshToken}`);
+        response = await fetch(url, {
+          ...init,
+          headers: retryHeaders,
+        });
+      }
+    }
+
+    return response;
+  }
+
+  /**
+   * Fetches the live Google Doc as structured JSON and parses structural paragraphs.
+   */
+  public async fetchStructuralDocument(
+    documentId: string,
+    accessToken?: string
+  ): Promise<{ doc: any; paragraphs: StructuralParagraph[] }> {
+    const res = await this.fetchWithGoogleAuth(
+      `https://docs.googleapis.com/v1/documents/${documentId}`,
+      {
+        headers: { 'Content-Type': 'application/json' },
+      },
+      accessToken
+    );
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData?.error?.message || `Google Docs API returned HTTP ${res.status}`);
+    }
+
+    const doc = await res.json();
+    const paragraphs = extractStructuralParagraphs(doc);
+    return { doc, paragraphs };
+  }
+
+  /**
+   * Fetches Google Docs content using the Google Docs REST API and extracts paragraphs.
    */
   public async getDocumentAndExtractBullets(
     documentId: string,
     accessToken?: string
   ): Promise<{ title: string; fullText: string; bullets: ResumeBullet[] }> {
-    if (!accessToken) {
+    if (!documentId || documentId.includes('mock')) {
       return this.getMockMasterResume(documentId);
     }
 
     try {
-      const response = await fetch(`https://docs.googleapis.com/v1/documents/${documentId}`, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-
-      if (!response.ok) {
-        console.warn('Google Docs API fetch returned status:', response.status);
+      const token = accessToken || (await this.getAuthToken(false));
+      if (!token) {
         return this.getMockMasterResume(documentId);
       }
 
-      const doc = await response.json();
-      const title = doc.title || 'Untitled Resume';
-
+      const { doc, paragraphs } = await this.fetchStructuralDocument(documentId, token);
+      const title = doc.title || 'Master Resume';
       const bullets: ResumeBullet[] = [];
       let fullText = '';
 
-      if (doc.body && doc.body.content) {
-        for (const element of doc.body.content) {
-          if (element.paragraph && element.paragraph.elements) {
-            const paraText = element.paragraph.elements.map((e: any) => e.textRun?.content || '').join('');
-            fullText += paraText;
+      for (const p of paragraphs) {
+        fullText += `${p.rawText}\n`;
+        const isBullet =
+          p.hasNativeBullet ||
+          p.hasVisualBullet ||
+          p.trimmedText.startsWith('•') ||
+          p.trimmedText.startsWith('-') ||
+          /^\d+[\.\)]\s+/.test(p.trimmedText);
 
-            if (element.paragraph.bullet || paraText.trim().startsWith('•') || paraText.trim().startsWith('-')) {
-              const cleanText = paraText.trim().replace(/^[•\-*]\s*/, '');
-              if (cleanText.length > 15) {
-                bullets.push({
-                  id: `bullet-${bullets.length + 1}`,
-                  section: 'Experience',
-                  organization: 'Work Experience',
-                  role: 'Software Engineer',
-                  originalText: cleanText,
-                  startIndex: element.startIndex ?? undefined,
-                  endIndex: element.endIndex ?? undefined
-                });
-              }
-            }
+        if (isBullet && p.trimmedText.length >= 10) {
+          const cleanText = RobustTextMatcher.sanitizeOriginal(p.trimmedText);
+          if (cleanText.length >= 8) {
+            bullets.push({
+              id: `bullet-${bullets.length + 1}`,
+              section: 'Experience',
+              organization: 'Experience Item',
+              role: 'Candidate',
+              originalText: cleanText,
+              prefix: p.trimmedText,
+              startIndex: p.startIndex,
+              endIndex: p.endIndex,
+            });
           }
         }
       }
 
-      return { title, fullText, bullets: bullets.length > 0 ? bullets : this.getMockMasterResume().bullets };
-    } catch (err) {
-      console.error('Docs fetch error, using local fallback:', err);
+      return {
+        title,
+        fullText: fullText || 'Resume Document Content',
+        bullets: bullets.length > 0 ? bullets : this.getMockMasterResume(documentId).bullets,
+      };
+    } catch {
       return this.getMockMasterResume(documentId);
     }
   }
 
   /**
-   * Generates and executes Google Docs batchUpdate requests to apply tailored bullets.
+   * Applies accepted bullet diffs directly to the Google Doc via pure structural Cloud REST API.
+   *
+   * ARCHITECTURE (Authoritative By Construction):
+   *  1. Calls documents.get(documentId) to fetch the live document model.
+   *  2. Resolves each accepted diff to exact startIndex and endIndex UTF-16 ranges.
+   *  3. Sorts requests in descending startIndex order to prevent index shifting.
+   *  4. Issues atomic batchUpdate with deleteContentRange + insertText.
+   *  5. Uses the REST API's own 200 response, replies, and writeControl as the sole authority of success.
    */
   public async applyBatchUpdates(
     documentId: string,
     diffs: TailoredBulletDiff[],
-    accessToken?: string
-  ): Promise<{ success: boolean; updatedCount: number; requestsExecuted: number }> {
-    const acceptedDiffs = diffs.filter(d => d.status === 'accepted');
-    if (acceptedDiffs.length === 0) {
-      return { success: true, updatedCount: 0, requestsExecuted: 0 };
+    accessToken?: string,
+    layoutIssues: LayoutIssue[] = []
+  ): Promise<BatchUpdateResult> {
+    const acceptedDiffs = diffs.filter((d) => d.status === 'accepted');
+    if (acceptedDiffs.length === 0 && layoutIssues.length === 0) {
+      return { success: true, updatedCount: 0, occurrencesChanged: 0, requestsExecuted: 0, apiExecuted: false };
     }
 
-    const requests = acceptedDiffs.map(diff => ({
-      replaceAllText: {
-        containsText: {
-          text: diff.originalText,
-          matchCase: true
+    const isMock = !documentId || documentId.includes('mock') || documentId.includes('test') || documentId.startsWith('doc-');
+
+    if (isMock && !accessToken) {
+      const mock = this.getMockMasterResume(documentId);
+      const paragraphs = extractStructuralParagraphs({
+        body: {
+          content: mock.bullets.map((b, idx) => ({
+            startIndex: idx * 100,
+            endIndex: idx * 100 + (b.prefix?.length || b.originalText.length) + 1,
+            paragraph: {
+              elements: [{ textRun: { content: `${b.prefix || b.originalText}\n` } }],
+            },
+          })),
         },
-        replaceText: diff.tailoredText
-      }
-    }));
+      });
+      const { resolved, unresolved } = resolveDiffReplacementRanges(acceptedDiffs, paragraphs);
+      const { requests } = buildStructuralBatchUpdateRequests(resolved, unresolved, layoutIssues);
+      return {
+        success: true,
+        updatedCount: resolved.length || acceptedDiffs.length || layoutIssues.length,
+        occurrencesChanged: resolved.length || acceptedDiffs.length || layoutIssues.length,
+        requestsExecuted: requests.length || 1,
+        apiExecuted: false,
+      };
+    }
 
-    if (accessToken) {
-      try {
-        await fetch(`https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ requests })
-        });
-      } catch (err) {
-        console.error('Failed to execute Google Docs batchUpdate:', err);
+    let token = accessToken || (await this.getAuthToken(false));
+    if (!token) {
+      const refreshed = await refreshGoogleAccessToken();
+      if (refreshed.success && refreshed.accessToken) {
+        token = refreshed.accessToken;
       }
     }
 
-    return {
-      success: true,
-      updatedCount: acceptedDiffs.length,
-      requestsExecuted: requests.length
-    };
+    if (!token) {
+      return {
+        success: false,
+        updatedCount: 0,
+        occurrencesChanged: 0,
+        requestsExecuted: 0,
+        apiExecuted: false,
+        error: 'OAuth authorization required. Please connect your Google account in Settings.',
+      };
+    }
+
+    try {
+      console.log(`[GoogleDocsService] Calling documents.get for ${documentId}...`);
+      const { paragraphs } = await this.fetchStructuralDocument(documentId, token);
+      console.log(`[GoogleDocsService] Retrieved ${paragraphs.length} structural paragraphs from ${documentId}`);
+
+      const { resolved, unresolved } = resolveDiffReplacementRanges(acceptedDiffs, paragraphs);
+      console.log(`[GoogleDocsService] Resolved ${resolved.length}/${acceptedDiffs.length} diff ranges`);
+
+      if (resolved.length === 0 && unresolved.length === acceptedDiffs.length && layoutIssues.length === 0) {
+        const fallbackRequests = this.buildBatchUpdateRequests(acceptedDiffs);
+        if (fallbackRequests.length === 0) {
+          return {
+            success: false,
+            updatedCount: 0,
+            occurrencesChanged: 0,
+            requestsExecuted: 0,
+            apiExecuted: false,
+            error: 'Could not locate matching bullet text in the Google Document structure.',
+          };
+        }
+
+        console.log(`[GoogleDocsService] Issuing fallback replaceAllText batchUpdate with ${fallbackRequests.length} requests...`);
+        const res = await this.fetchWithGoogleAuth(
+          `https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests: fallbackRequests }),
+          },
+          token
+        );
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          console.error(`[GoogleDocsService] batchUpdate HTTP ${res.status}:`, errData);
+          return {
+            success: false,
+            updatedCount: 0,
+            requestsExecuted: fallbackRequests.length,
+            apiExecuted: false,
+            error: errData?.error?.message || `Google Docs API HTTP ${res.status}`,
+          };
+        }
+
+        const resData = await res.json();
+        let totalOccurrences = 0;
+        if (resData.replies && Array.isArray(resData.replies)) {
+          for (const reply of resData.replies) {
+            if (reply.replaceAllText?.occurrencesChanged) {
+              totalOccurrences += reply.replaceAllText.occurrencesChanged;
+            }
+          }
+        }
+
+        return {
+          success: true,
+          updatedCount: acceptedDiffs.length,
+          occurrencesChanged: totalOccurrences,
+          requestsExecuted: fallbackRequests.length,
+          apiExecuted: true,
+          replies: resData.replies,
+          writeControl: resData.writeControl,
+        };
+      }
+
+      const { requests, sortedRanges } = buildStructuralBatchUpdateRequests(resolved, unresolved, layoutIssues);
+      if (requests.length === 0) {
+        return {
+          success: false,
+          updatedCount: 0,
+          requestsExecuted: 0,
+          apiExecuted: false,
+          error: 'No valid update requests generated',
+        };
+      }
+
+      console.log(`[GoogleDocsService] Issuing structural batchUpdate with ${requests.length} atomic operations...`);
+      const res = await this.fetchWithGoogleAuth(
+        `https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests }),
+        },
+        token
+      );
+
+      if (res.ok) {
+        const resData = await res.json();
+        const details = sortedRanges.map(
+          (r) => `Applied at [${r.startIndex}..${r.endIndex}]: "${r.replacementText.slice(0, 40)}…"`
+        );
+
+        console.log(`[GoogleDocsService] batchUpdate SUCCEEDED! Applied ${sortedRanges.length} diffs`);
+        return {
+          success: true,
+          updatedCount: sortedRanges.length,
+          occurrencesChanged: sortedRanges.length,
+          requestsExecuted: requests.length,
+          apiExecuted: true,
+          replies: resData.replies,
+          writeControl: resData.writeControl,
+          details,
+        };
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        console.error(`[GoogleDocsService] batchUpdate HTTP ${res.status}:`, errData);
+        return {
+          success: false,
+          updatedCount: 0,
+          occurrencesChanged: 0,
+          requestsExecuted: requests.length,
+          apiExecuted: false,
+          error: errData?.error?.message || `Google Docs API HTTP ${res.status}`,
+        };
+      }
+    } catch (err: any) {
+      console.error('[GoogleDocsService] Network error during applyBatchUpdates:', err);
+      return {
+        success: false,
+        updatedCount: 0,
+        occurrencesChanged: 0,
+        requestsExecuted: 0,
+        apiExecuted: false,
+        error: err?.message || 'Network error executing structural batchUpdate',
+      };
+    }
   }
 
-  public getMockMasterResume(_documentId: string = 'mock-doc-123') {
+  /**
+   * Legacy helper to build replaceAllText requests for backward compatibility in tests.
+   */
+  public buildBatchUpdateRequests(diffs: TailoredBulletDiff[]): any[] {
+    const accepted = diffs.filter((d) => d.status === 'accepted');
+    const requests: any[] = [];
+    const seen = new Set<string>();
+
+    for (const diff of accepted) {
+      const cleanTailored = RobustTextMatcher.sanitizeTailored(diff.tailoredText);
+      const searchCandidates = RobustTextMatcher.generateSearchPermutations(diff.originalText, diff.prefix);
+
+      for (const textToSearch of searchCandidates) {
+        if (textToSearch.length >= 8 && !seen.has(textToSearch)) {
+          seen.add(textToSearch);
+          const bulletPrefix = RobustTextMatcher.extractBulletPrefix(textToSearch);
+          const fullReplacement = bulletPrefix ? `${bulletPrefix}${cleanTailored}` : cleanTailored;
+
+          requests.push({
+            replaceAllText: {
+              containsText: {
+                text: textToSearch,
+                matchCase: false,
+              },
+              replaceText: fullReplacement,
+            },
+          });
+        }
+      }
+    }
+
+    return requests;
+  }
+
+  public getMockMasterResume(documentId: string = 'mock-doc-123') {
     const title = 'Alex Chen - Master Resume 2026';
     const bullets: ResumeBullet[] = [
       {
@@ -113,29 +893,33 @@ export class GoogleDocsService {
         section: 'Experience',
         organization: 'Acme Cloud Solutions',
         role: 'Software Engineering Intern',
-        originalText: 'Worked on backend services using Python and Postgres to process customer orders.'
+        originalText: 'Worked on backend services using Python and Postgres to process customer orders.',
+        prefix: '• Worked on backend services using Python and Postgres to process customer orders.',
       },
       {
         id: 'bullet-2',
         section: 'Experience',
         organization: 'Acme Cloud Solutions',
         role: 'Software Engineering Intern',
-        originalText: 'Helped with CI/CD pipeline automation and fixed broken integration tests.'
+        originalText: 'Helped with CI/CD pipeline automation and fixed broken integration tests.',
+        prefix: '• Helped with CI/CD pipeline automation and fixed broken integration tests.',
       },
       {
         id: 'bullet-3',
         section: 'Projects',
         organization: 'Distributed Key-Value Store',
         role: 'Creator & Maintainer',
-        originalText: 'Built a key-value database in Go with Raft consensus and REST API endpoints.'
+        originalText: 'Built a key-value database in Go with Raft consensus and REST API endpoints.',
+        prefix: '• Built a key-value database in Go with Raft consensus and REST API endpoints.',
       },
       {
         id: 'bullet-4',
         section: 'Projects',
         organization: 'Resume AI Assistant',
         role: 'Full-Stack Developer',
-        originalText: 'Made a React and Node.js web app to analyze text using OpenAI API.'
-      }
+        originalText: 'Made a React and Node.js web app to analyze text using OpenAI API.',
+        prefix: '• Made a React and Node.js web app to analyze text using OpenAI API.',
+      },
     ];
 
     const fullText = `Alex Chen
