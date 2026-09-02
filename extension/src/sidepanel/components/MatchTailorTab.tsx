@@ -753,6 +753,18 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
                               ? '⚠️ Table Risk'
                               : issue.category === 'multicolumn_risk'
                               ? '⚠️ Multi-Column Risk'
+                              : issue.category === 'margin_extremes'
+                              ? '📐 Margin Bounds'
+                              : issue.category === 'typography_hierarchy'
+                              ? '🔠 Typography Scale'
+                              : issue.category === 'widow_line'
+                              ? '✂️ Widow Line'
+                              : issue.category === 'bold_density'
+                              ? '𝐁 Bold Balance'
+                              : issue.category === 'section_volume_bloat'
+                              ? '⚖️ Section Volume'
+                              : issue.category === 'contact_header_bloat'
+                              ? '👤 Contact Layout'
                               : issue.category === 'manual_tab_alignment'
                               ? '↔️ Space Alignment'
                               : issue.category === 'font_inconsistency'
@@ -771,6 +783,15 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
                               ? '✨ Visual Polish'
                               : '• List Inconsistency'}
                           </span>
+                          {issue.fixTier && (
+                            <span className={`px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider font-bold ${
+                              issue.fixTier === 'safe_styling'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            }`}>
+                              {issue.fixTier === 'safe_styling' ? '⚡ Safe Restyle' : '📝 Content Edit'}
+                            </span>
+                          )}
                           {issue.sectionName && (
                             <span className="px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300 text-[9px] font-mono font-bold">
                               {issue.sectionName}
@@ -783,6 +804,13 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
                       <p className="text-[11px] text-slate-300 leading-snug">
                         {issue.description}
                       </p>
+
+                      {issue.proposedReplacementText && (
+                        <div className="p-1.5 bg-black/30 rounded border border-white/10 space-y-0.5 text-[10px]">
+                          <span className="text-amber-300 font-bold block">Proposed Text Preview:</span>
+                          <p className="text-slate-200 italic font-mono">{issue.proposedReplacementText}</p>
+                        </div>
+                      )}
 
                       {issue.visualObservation && (
                         <p className="text-[10px] text-indigo-200/90 italic bg-black/20 p-1.5 rounded">
@@ -802,13 +830,15 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
                             className={`px-2.5 py-1 rounded font-bold text-[11px] transition-all flex items-center gap-1 ${
                               isAccepted
                                 ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-400/40'
+                                : issue.fixTier === 'content_generating'
+                                ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-sm'
                                 : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-sm'
                             }`}
                           >
                             {isAccepted ? (
                               <span>✓ Fixed in Doc</span>
                             ) : (
-                              <span>⚡ {issue.suggestedFix.actionLabel || 'Fix in Doc'}</span>
+                              <span>{issue.suggestedFix.actionLabel || (issue.fixTier === 'content_generating' ? '📝 Apply Text Fix' : '⚡ Restyle in Doc')}</span>
                             )}
                           </button>
                         )}
