@@ -12,7 +12,8 @@
     "scripting",
     "alarms",
     "identity",
-    "debugger"
+    "debugger",
+    "offscreen"
   ],
   "oauth2": {
     "client_id": "412130143258-4b1t8drhkii7hqagt7sdvd8n3qmchl8i.apps.googleusercontent.com",
