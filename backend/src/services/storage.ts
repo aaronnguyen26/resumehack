@@ -122,11 +122,11 @@ export async function setGoogleAccessToken(token: string, expiresInSeconds: numb
 export async function invalidateCachedGoogleToken(token?: string): Promise<void> {
   // 1. Invalidate in Chrome identity cache (for native getAuthToken)
   try {
-    if (typeof chrome !== 'undefined' && chrome.identity?.removeCachedAuthToken) {
+    if (typeof chrome !== 'undefined' && (chrome as any).identity?.removeCachedAuthToken) {
       const targetToken = token || (await getStoredSettings()).googleAccessToken;
       if (targetToken) {
         await new Promise<void>((resolve) => {
-          chrome.identity.removeCachedAuthToken({ token: targetToken }, () => resolve());
+          (chrome as any).identity.removeCachedAuthToken({ token: targetToken }, () => resolve());
         });
       }
     }
@@ -252,11 +252,11 @@ export async function refreshGoogleAccessToken(
     }
 
     const data = await res.json();
-    const newAccessToken = data.access_token;
-    const expiresIn = data.expires_in || 3600;
-    const expiresAt = Date.now() + expiresIn * 1000;
+    if (data?.access_token) {
+      const newAccessToken = data.access_token;
+      const expiresIn = data.expires_in || 3600;
+      const expiresAt = Date.now() + expiresIn * 1000;
 
-    if (newAccessToken) {
       await saveStoredSettings({
         googleAccessToken: newAccessToken,
         googleRefreshToken: refreshToken,
@@ -264,6 +264,7 @@ export async function refreshGoogleAccessToken(
         googleClientSecret: clientSecret,
         googleTokenExpiresAt: expiresAt,
       });
+
       return { success: true, accessToken: newAccessToken };
     }
 
@@ -287,7 +288,7 @@ export async function getStoredSettings(): Promise<StoredSettings> {
           'google_token_expires_at',
           'google_user_email',
         ],
-        (result) => {
+        (result: any) => {
           const stored = result?.resumehack_settings || result?.resumehack_stored_settings || {};
           const googleAccessToken =
             result?.google_access_token && result.google_access_token.trim().length > 0
@@ -325,21 +326,21 @@ export async function getStoredSettings(): Promise<StoredSettings> {
   }
 
   try {
-    const stored = localStorage.getItem('resumehack_settings') || localStorage.getItem('resumehack_stored_settings');
+    const stored = (typeof localStorage !== 'undefined' ? localStorage.getItem('resumehack_settings') || localStorage.getItem('resumehack_stored_settings') : null);
     const parsed = stored ? JSON.parse(stored) : {};
     const googleAccessToken =
-      localStorage.getItem('google_access_token') ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem('google_access_token') : null) ||
       parsed.googleAccessToken ||
       DEFAULT_SETTINGS.googleAccessToken;
     const googleRefreshToken =
-      localStorage.getItem('google_refresh_token') ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem('google_refresh_token') : null) ||
       parsed.googleRefreshToken ||
       DEFAULT_SETTINGS.googleRefreshToken;
     const googleTokenExpiresAt =
-      Number(localStorage.getItem('google_token_expires_at')) ||
+      Number((typeof localStorage !== 'undefined' ? localStorage.getItem('google_token_expires_at') : 0)) ||
       parsed.googleTokenExpiresAt;
     const googleUserEmail =
-      localStorage.getItem('google_user_email') ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem('google_user_email') : null) ||
       parsed.googleUserEmail;
 
     return {
@@ -388,18 +389,20 @@ export async function saveStoredSettings(settings: Partial<StoredSettings>): Pro
   }
 
   try {
-    localStorage.setItem('resumehack_settings', JSON.stringify(updated));
-    if (settings.googleAccessToken !== undefined) {
-      localStorage.setItem('google_access_token', settings.googleAccessToken.trim());
-    }
-    if (settings.googleRefreshToken !== undefined) {
-      localStorage.setItem('google_refresh_token', settings.googleRefreshToken.trim());
-    }
-    if (settings.googleTokenExpiresAt !== undefined) {
-      localStorage.setItem('google_token_expires_at', String(settings.googleTokenExpiresAt));
-    }
-    if (settings.googleUserEmail !== undefined) {
-      localStorage.setItem('google_user_email', settings.googleUserEmail.trim());
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('resumehack_settings', JSON.stringify(updated));
+      if (settings.googleAccessToken !== undefined) {
+        localStorage.setItem('google_access_token', settings.googleAccessToken.trim());
+      }
+      if (settings.googleRefreshToken !== undefined) {
+        localStorage.setItem('google_refresh_token', settings.googleRefreshToken.trim());
+      }
+      if (settings.googleTokenExpiresAt !== undefined) {
+        localStorage.setItem('google_token_expires_at', String(settings.googleTokenExpiresAt));
+      }
+      if (settings.googleUserEmail !== undefined) {
+        localStorage.setItem('google_user_email', settings.googleUserEmail.trim());
+      }
     }
   } catch {}
 }
@@ -407,7 +410,7 @@ export async function saveStoredSettings(settings: Partial<StoredSettings>): Pro
 export async function getStoredApplications(): Promise<ApplicationRecord[]> {
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
     return new Promise((resolve) => {
-      chrome.storage.local.get(['resumehack_applications'], (result) => {
+      chrome.storage.local.get(['resumehack_applications'], (result: any) => {
         if (result.resumehack_applications) {
           resolve(result.resumehack_applications);
         } else {
@@ -419,15 +422,15 @@ export async function getStoredApplications(): Promise<ApplicationRecord[]> {
     });
   }
 
-  const stored = localStorage.getItem('resumehack_applications');
-  if (stored) {
-    try {
+  try {
+    const stored = (typeof localStorage !== 'undefined' ? localStorage.getItem('resumehack_applications') : null);
+    if (stored) {
       return JSON.parse(stored);
-    } catch {
-      return DEFAULT_APPLICATIONS;
     }
-  }
-  localStorage.setItem('resumehack_applications', JSON.stringify(DEFAULT_APPLICATIONS));
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('resumehack_applications', JSON.stringify(DEFAULT_APPLICATIONS));
+    }
+  } catch {}
   return DEFAULT_APPLICATIONS;
 }
 
@@ -437,5 +440,7 @@ export async function saveStoredApplications(apps: ApplicationRecord[]): Promise
       chrome.storage.local.set({ resumehack_applications: apps }, () => resolve());
     });
   }
-  localStorage.setItem('resumehack_applications', JSON.stringify(apps));
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('resumehack_applications', JSON.stringify(apps));
+  }
 }
