@@ -67,6 +67,8 @@ export interface KeywordMatch {
   frequencyInJD: number;
   importance: 'Critical' | 'Recommended' | 'Bonus';
   contextSnippet?: string;
+  matchType?: 'exact' | 'alias' | 'strong_semantic' | 'partial_semantic' | 'missing';
+  semanticScore?: number;
 }
 
 export interface SelfProjectsAudit {
@@ -314,6 +316,20 @@ export interface TailorResumeResponse {
   bulletDiffs: TailoredBulletDiff[];
   layoutIssues?: LayoutIssue[];
   optimizedSummary?: string;
+  archetype?: {
+    archetype: string;
+    label: string;
+    badge: string;
+    description: string;
+    narrativeDirective: string;
+    keyThemes: string[];
+  };
+  documentSummary?: string;
+  tokenCostInfo?: {
+    tokenCount: number;
+    estimatedCostUsd: number;
+    fromCache: boolean;
+  };
   detectedJobIntel?: {
     seniorityLevel?: string;
     topHardSkills?: string[];

@@ -62,7 +62,7 @@ export class AdaptivePollerScheduler {
    * Executes a single polling tick: claims overdue companies via FOR UPDATE SKIP LOCKED
    * and processes them respecting concurrency limits and domain throttling.
    */
-  public async pollTick(): Promise<{ claimed: number; processed: number }> {
+  public async pollTick(): Promise<{ claimed: number; processed: number; done?: Promise<void> }> {
     const availableSlots = this.maxConcurrency - this.activeWorkers;
     if (availableSlots <= 0) {
       return { claimed: 0, processed: 0 };

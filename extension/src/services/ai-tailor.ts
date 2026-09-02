@@ -26,6 +26,7 @@ import {
 } from '../types/index.js';
 import { calculateLineBudget } from './llm-tailor.js';
 import { RobustTextMatcher } from './google-docs.js';
+import { CompanyArchetypeClassifier, ArchetypeProfile } from './archetype-classifier.js';
 
 export type { AiProvider, AiSettings };
 
@@ -33,6 +34,8 @@ export interface AiTailorResult {
   diffs: TailoredBulletDiff[];
   usedAi: boolean;
   model?: string;
+  documentSummary?: string;
+  archetype?: ArchetypeProfile;
   error?: string;
 }
 
@@ -126,6 +129,10 @@ export async function removeAiSettings(): Promise<void> {
 const GEMINI_IMPROVEMENTS_SCHEMA = {
   type: 'object',
   properties: {
+    documentSummary: {
+      type: 'string',
+      description: 'Strategic explanation of how the full resume was tailored for the target company archetype and role',
+    },
     improvements: {
       type: 'array',
       items: {
@@ -134,12 +141,14 @@ const GEMINI_IMPROVEMENTS_SCHEMA = {
           id: { type: 'string', description: 'Original bullet ID' },
           originalText: { type: 'string', description: 'Original bullet text' },
           tailoredText: { type: 'string', description: 'Primary ATS-optimized STAR bullet' },
+          characterCount: { type: 'number', description: 'Total character length of tailoredText' },
+          fitsLineBudget: { type: 'boolean', description: 'True if bullet fits within the specified character line budget' },
           injectedKeywords: {
             type: 'array',
             items: { type: 'string' },
             description: 'Keywords incorporated into this bullet',
           },
-          rationale: { type: 'string', description: 'Why this bullet scores higher' },
+          rationale: { type: 'string', description: 'Concise reason why this bullet elevates score' },
           scoreGain: { type: 'number', description: 'Estimated ATS percentage point gain (e.g. 8)' },
           starAnalysis: {
             type: 'object',
@@ -155,7 +164,7 @@ const GEMINI_IMPROVEMENTS_SCHEMA = {
             type: 'object',
             properties: {
               highImpact: { type: 'string', description: 'Metrics and revenue focused variation' },
-              technicalDepth: { type: 'string', description: 'Architecture, tools, and technical mastery variation' },
+              technicalDepth: { type: 'string', description: 'Architecture and technical mastery variation' },
               leadership: { type: 'string', description: 'Scope, ownership, and cross-functional leadership variation' },
             },
             required: ['highImpact', 'technicalDepth', 'leadership'],
@@ -176,6 +185,10 @@ const GEMINI_IMPROVEMENTS_SCHEMA = {
 const OPENAI_IMPROVEMENTS_SCHEMA = {
   type: 'object',
   properties: {
+    documentSummary: {
+      type: 'string',
+      description: 'Strategic explanation of how the full resume was tailored for the target company archetype and role',
+    },
     improvements: {
       type: 'array',
       items: {
@@ -184,12 +197,14 @@ const OPENAI_IMPROVEMENTS_SCHEMA = {
           id: { type: 'string', description: 'Original bullet ID' },
           originalText: { type: 'string', description: 'Original bullet text' },
           tailoredText: { type: 'string', description: 'Primary ATS-optimized STAR bullet' },
+          characterCount: { type: 'number', description: 'Total character length of tailoredText' },
+          fitsLineBudget: { type: 'boolean', description: 'True if bullet fits within the specified character line budget' },
           injectedKeywords: {
             type: 'array',
             items: { type: 'string' },
             description: 'Keywords incorporated into this bullet',
           },
-          rationale: { type: 'string', description: 'Why this bullet scores higher' },
+          rationale: { type: 'string', description: 'Concise reason why this bullet elevates score' },
           scoreGain: { type: 'number', description: 'Estimated ATS percentage point gain (e.g. 8)' },
           starAnalysis: {
             type: 'object',
@@ -206,7 +221,7 @@ const OPENAI_IMPROVEMENTS_SCHEMA = {
             type: 'object',
             properties: {
               highImpact: { type: 'string', description: 'Metrics and revenue focused variation' },
-              technicalDepth: { type: 'string', description: 'Architecture, tools, and technical mastery variation' },
+              technicalDepth: { type: 'string', description: 'Architecture and technical mastery variation' },
               leadership: { type: 'string', description: 'Scope, ownership, and cross-functional leadership variation' },
             },
             required: ['highImpact', 'technicalDepth', 'leadership'],
@@ -255,7 +270,12 @@ export class AiTailorService {
         jobIntel
       );
 
-      return await this.routeAndExecute(promptData, bullets, settings);
+      const archetype = CompanyArchetypeClassifier.classify(company, jobDescription);
+      const result = await this.routeAndExecute(promptData, bullets, settings);
+      return {
+        ...result,
+        archetype,
+      };
     } catch (err: any) {
       console.error('[AiTailorService] Error:', err);
       return { diffs: [], usedAi: false, error: err?.message || 'AI call failed' };
@@ -390,14 +410,14 @@ export class AiTailorService {
 
         const data = await response.json();
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        const diffs = this.parseAiResponse(text, bullets);
+        const { diffs, documentSummary } = this.parseAiResponse(text, bullets);
 
         if (diffs.length === 0) {
           console.warn(`[AiTailorService] Model ${currentModel} produced 0 diffs, trying fallback...`);
           continue;
         }
 
-        return { diffs, usedAi: true, model: `gemini/${currentModel}` };
+        return { diffs, documentSummary, usedAi: true, model: `gemini/${currentModel}` };
       } catch (err: any) {
         lastError = err?.message || 'Gemini request failed';
         console.warn(`[AiTailorService] Request error for ${currentModel}:`, err?.message);
@@ -452,13 +472,13 @@ export class AiTailorService {
 
     const data = await response.json();
     const text = data?.choices?.[0]?.message?.content || '';
-    const diffs = this.parseAiResponse(text, bullets);
+    const { diffs, documentSummary } = this.parseAiResponse(text, bullets);
 
     if (diffs.length === 0) {
       return { diffs: [], usedAi: false, error: 'OpenAI returned empty structured output' };
     }
 
-    return { diffs, usedAi: true, model: `openai/${model}` };
+    return { diffs, documentSummary, usedAi: true, model: `openai/${model}` };
   }
 
   // ── 3. Anthropic Claude Provider ───────────────────────────────────────────
@@ -494,13 +514,13 @@ export class AiTailorService {
 
     const data = await response.json();
     const text = data?.content?.[0]?.text || '';
-    const diffs = this.parseAiResponse(text, bullets);
+    const { diffs, documentSummary } = this.parseAiResponse(text, bullets);
 
     if (diffs.length === 0) {
       return { diffs: [], usedAi: false, error: 'Claude returned invalid JSON' };
     }
 
-    return { diffs, usedAi: true, model: `claude/${model}` };
+    return { diffs, documentSummary, usedAi: true, model: `claude/${model}` };
   }
 
   // ── 4. DeepSeek Provider ───────────────────────────────────────────────────
@@ -536,13 +556,13 @@ export class AiTailorService {
 
     const data = await response.json();
     const text = data?.choices?.[0]?.message?.content || '';
-    const diffs = this.parseAiResponse(text, bullets);
+    const { diffs, documentSummary } = this.parseAiResponse(text, bullets);
 
     if (diffs.length === 0) {
       return { diffs: [], usedAi: false, error: 'DeepSeek returned invalid JSON' };
     }
 
-    return { diffs, usedAi: true, model: `deepseek/${model}` };
+    return { diffs, documentSummary, usedAi: true, model: `deepseek/${model}` };
   }
 
   // ── 5. Local Ollama Provider (Offline / Private) ───────────────────────────
@@ -578,13 +598,13 @@ export class AiTailorService {
 
     const data = await response.json();
     const text = data?.message?.content || '';
-    const diffs = this.parseAiResponse(text, bullets);
+    const { diffs, documentSummary } = this.parseAiResponse(text, bullets);
 
     if (diffs.length === 0) {
       return { diffs: [], usedAi: false, error: 'Ollama model returned invalid JSON output' };
     }
 
-    return { diffs, usedAi: true, model: `ollama/${model}` };
+    return { diffs, documentSummary, usedAi: true, model: `ollama/${model}` };
   }
 
   // ── 6. Custom OpenAI-Compatible Provider ───────────────────────────────────
@@ -624,9 +644,9 @@ export class AiTailorService {
 
     const data = await response.json();
     const text = data?.choices?.[0]?.message?.content || '';
-    const diffs = this.parseAiResponse(text, bullets);
+    const { diffs, documentSummary } = this.parseAiResponse(text, bullets);
 
-    return { diffs, usedAi: diffs.length > 0, model: `custom/${model}` };
+    return { diffs, documentSummary, usedAi: diffs.length > 0, model: `custom/${model}` };
   }
 
   // ── Prompt Builders ────────────────────────────────────────────────────────
@@ -641,9 +661,21 @@ export class AiTailorService {
     jobIntel?: { seniorityLevel?: string; extractedSkills?: string[] }
   ): { systemPrompt: string; userPrompt: string } {
     const seniority = jobIntel?.seniorityLevel || 'Professional';
+    const archetype = CompanyArchetypeClassifier.classify(company, jobDescription);
+
     const systemPrompt = `You are Hacky, an elite AI career advisor and executive resume architect.
 Your mission is to radically elevate resume bullet points into high-impact, ATS-optimized accomplishments tailored precisely for the target role (${jobTitle} at ${company}, Seniority: ${seniority}).
 You MUST enforce the Google 'XYZ Formula' and Executive STAR Method: "Accomplished [X] as measured by [Y] by doing [Z]".
+
+COMPANY ARCHETYPE CONTEXT:
+- Archetype: ${archetype.label} (${archetype.badge})
+- Framing Directive: ${archetype.narrativeDirective}
+- Key Themes to Emphasize: ${archetype.keyThemes.join(', ')}
+
+CROSS-BULLET DIVERSITY & NARRATIVE COHESION:
+1. Avoid repeating the same Tier-1 action verb across bullets in the same section.
+2. Vary metric dimensions across bullets (e.g. latency speedup, throughput scale, reliability/uptime, engineering team velocity).
+3. Ensure the document narrative reads as a cohesive progression of technical mastery and ownership.
 
 FACTUAL GUARDRAILS (${strictAntiHallucination ? 'STRICT ANTI-HALLUCINATION ACTIVE' : 'STANDARD'}):
 1. ${
@@ -654,25 +686,21 @@ FACTUAL GUARDRAILS (${strictAntiHallucination ? 'STRICT ANTI-HALLUCINATION ACTIV
 2. NEVER invent technologies, certifications, company names, or dates not implied by the original resume.
 3. Every tailored bullet MUST begin with a premier tier-1 past-tense action verb (e.g., Engineered, Architected, Spearheaded, Orchestrated, Benchmarked, Overhauled).
 4. Inject rich technical depth (tools, frameworks, scale, query optimizations, throughput, latency, security) matching the job description without fabricating unverified credentials.
-5. Keep each tailored bullet concise, powerful, and ATS-optimized (120-220 characters).
-6. Provide rich metadata for each improvement:
-   - scoreGain: Estimated ATS percentage point gain
-   - rationale: Clear, concise rationale explaining the exact ATS score boost and why the bullet is superior
-   - starAnalysis: { situationTask, action, resultMetric }
-   - variations:
-     a) highImpact: Business outcome & metrics driven
-     b) technicalDepth: Architecture & tech stack mastery
-     c) leadership: Ownership, mentorship & cross-functional delivery
+5. STRICT LINE-BUDGET CONSTRAINTS: Keep each tailored bullet within its specified character budget so it fits seamlessly on the candidate's Google Doc without vertical line spillover.
+6. Provide rich metadata for each improvement (documentSummary, characterCount, fitsLineBudget, scoreGain, rationale, starAnalysis, variations).
 7. Output valid JSON adhering strictly to the schema.`;
 
     const bulletList = bullets
-      .map(
-        (b, i) =>
-          `[Bullet ${i + 1} | ID: ${b.id}]\nOriginal: "${b.originalText}"\nSection: ${b.section} | Role: ${b.role || 'N/A'}`
-      )
+      .map((b, i) => {
+        const origChars = b.originalText.length;
+        const targetLines = Math.max(1, Math.ceil(origChars / 88));
+        const maxChars = targetLines * 92;
+        return `[Bullet ${i + 1} | ID: ${b.id} | Current: ${origChars} chars | Budget: max ${maxChars} chars (${targetLines} line${targetLines > 1 ? 's' : ''})]\nOriginal: "${b.originalText}"\nSection: ${b.section} | Role: ${b.role || 'N/A'}\nConstraint: Keep within ${maxChars} characters to preserve Google Doc single-page layout.`;
+      })
       .join('\n\n');
 
     const userPrompt = `TARGET ROLE: ${jobTitle} at ${company} (Seniority: ${seniority})
+TARGET COMPANY ARCHETYPE: ${archetype.label}
 
 KEY MISSING ATS COMPETENCIES TO WEAVE IN NATURALLY:
 ${missingKeywords.length > 0 ? missingKeywords.map((k) => `- ${k}`).join('\n') : 'All primary keywords already matched.'}
@@ -689,6 +717,8 @@ Tailored: "Architected 8 RESTful microservice endpoints using Python and FastAPI
 Injected Keywords: ["FastAPI", "PostgreSQL", "RESTful"]
 Rationale: "Boosted ATS score by +12 pts by upgrading weak verb 'worked on' to 'Architected', quantifying technical scope, and injecting missing database optimization keywords (PostgreSQL, FastAPI)."
 Score Gain: 12
+Character Count: 148
+Fits Line Budget: true
 STAR Breakdown:
   Situation/Task: Backend API had latency bottlenecks under peak load
   Action: Built 8 modular endpoints with FastAPI and overhauled PostgreSQL query indexes
@@ -699,7 +729,7 @@ Variations:
   leadership: "Spearheaded backend API modernization, establishing FastAPI and PostgreSQL indexing best practices across the engineering team."
 ---
 
-BULLETS TO TAILOR:
+BULLETS TO TAILOR (Respect per-bullet line budgets):
 ${bulletList}
 
 Respond strictly with valid JSON conforming to the schema.`;
@@ -742,19 +772,23 @@ Respond strictly with valid JSON.`;
 
   // ── Multi-Stage Resilient JSON Response Parser ─────────────────────────────
 
-  private parseAiResponse(text: string, bullets: ResumeBullet[]): TailoredBulletDiff[] {
-    const parsed = safeParseJsonResponse<{ improvements?: any[]; bullets?: any[] }>(text);
+  private parseAiResponse(
+    text: string,
+    bullets: ResumeBullet[]
+  ): { diffs: TailoredBulletDiff[]; documentSummary?: string } {
+    const parsed = safeParseJsonResponse<{ improvements?: any[]; bullets?: any[]; documentSummary?: string }>(text);
     if (!parsed) {
       console.warn('[AiTailorService] Failed to parse AI JSON response:', text.slice(0, 300));
-      return [];
+      return { diffs: [] };
     }
 
+    const documentSummary = parsed.documentSummary || undefined;
     const items: any[] = parsed.improvements || parsed.bullets || (Array.isArray(parsed) ? parsed : []);
     if (!Array.isArray(items) || items.length === 0) {
-      return [];
+      return { diffs: [], documentSummary };
     }
 
-    return items
+    const diffs = items
       .map((item, i) => {
         const originalBullet =
           bullets.find((b) => b.id === item.id) ||
@@ -808,6 +842,8 @@ Respond strictly with valid JSON.`;
           diff.originalText.length >= 8 &&
           RobustTextMatcher.normalize(diff.originalText) !== RobustTextMatcher.normalize(diff.tailoredText)
       );
+
+    return { diffs, documentSummary };
   }
 }
 
