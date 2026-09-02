@@ -435,6 +435,35 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
             projectedScore={tailorData.projectedNewScore} 
           />
 
+          {/* Company Archetype & Global Tailoring Strategy Banner */}
+          {tailorData.archetype && (
+            <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-3.5 rounded-stitch border border-indigo-800/60 text-white space-y-2 shadow-md">
+              <div className="flex items-center justify-between">
+                <span className="font-headline font-bold text-xs flex items-center gap-1.5 text-indigo-200">
+                  <span>{tailorData.archetype.badge}</span>
+                </span>
+                {tailorData.tokenCostInfo && (
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
+                    ⚡ ~{tailorData.tokenCostInfo.tokenCount} tokens (${tailorData.tokenCostInfo.estimatedCostUsd})
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-200 leading-relaxed font-normal">
+                {tailorData.documentSummary || tailorData.archetype.narrativeDirective}
+              </p>
+              {tailorData.archetype.keyThemes && tailorData.archetype.keyThemes.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-white/10">
+                  <span className="text-[9px] text-indigo-300 font-semibold mr-1">Narrative Pillars:</span>
+                  {tailorData.archetype.keyThemes.map((theme, tIdx) => (
+                    <span key={tIdx} className="px-1.5 py-0.5 rounded bg-white/10 text-slate-200 text-[9px] font-medium border border-white/10">
+                      {theme}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Detected Job Intelligence */}
           {tailorData.detectedJobIntel && (
             <div className="bg-slate-50 border border-slate-200 p-3 rounded-stitch space-y-2">
@@ -833,17 +862,28 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
                     key={idx}
                     className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
                       k.foundInResume
-                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        ? k.matchType === 'strong_semantic'
+                          ? 'bg-indigo-50 text-indigo-800 border border-indigo-200'
+                          : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                         : 'bg-amber-50 text-amber-800 border border-amber-200'
                     }`}
                   >
                     {k.foundInResume ? (
-                      <Check className="w-3 h-3 text-emerald-600" />
+                      k.matchType === 'strong_semantic' ? (
+                        <Sparkles className="w-3 h-3 text-indigo-600" />
+                      ) : (
+                        <Check className="w-3 h-3 text-emerald-600" />
+                      )
                     ) : (
                       <span className="text-amber-600 font-bold">+</span>
                     )}
                     <span>{k.keyword}</span>
-                    {k.importance === 'Critical' && (
+                    {k.matchType === 'strong_semantic' && (
+                      <span className="text-[9px] px-1 rounded bg-indigo-100 text-indigo-700 font-bold ml-0.5">
+                        Semantic
+                      </span>
+                    )}
+                    {k.importance === 'Critical' && k.matchType !== 'strong_semantic' && (
                       <span className="text-[9px] px-1 rounded bg-rose-100 text-rose-700 font-bold ml-0.5">
                         High
                       </span>

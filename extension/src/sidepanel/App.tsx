@@ -33,6 +33,8 @@ import { extractDocumentLayoutInfo } from '../services/google-docs.js';
 import { PrecisionExtractor, extractGoogleDocId } from '../services/precision-extractor.js';
 import { CdpDocsEditorService } from '../services/cdp-docs-editor.js';
 import { LayoutAnalyzerService } from '../services/layout-analyzer.js';
+import { SemanticScorerService } from '../services/semantic-scorer.js';
+import { CompanyArchetypeClassifier } from '../services/archetype-classifier.js';
 
 const atsScorer = new AtsScorerService();
 const llmTailor = new LlmTailorService();
@@ -44,6 +46,7 @@ const resumeParser = new ResumeParserService();
 const precisionExtractor = new PrecisionExtractor();
 const cdpEditor = new CdpDocsEditorService();
 const layoutAnalyzer = new LayoutAnalyzerService();
+const semanticScorer = new SemanticScorerService();
 
 const DEFAULT_JOB: ScrapedJobData = {
   title: 'Software Engineering Intern — Summer 2026',
@@ -549,15 +552,51 @@ export const App: React.FC = () => {
         }
       ];
 
+      // ── Company Archetype Classification ────────────────────────────────────
+      const archetype = CompanyArchetypeClassifier.classify(currentJob.company, currentJob.description);
+
       // ── Try AI-powered generation first ──────────────────────────────────────
       let bulletDiffs: TailoredBulletDiff[];
       let aiModelUsed: string | undefined;
+      let documentSummary: string | undefined;
 
       const storedSettings = await getStoredSettings();
       const aiSettings = await getAiSettings();
+
+      // ── Semantic Gap Matching via Gemini text-embedding-004 ──────────────────
+      if (aiSettings && aiSettings.provider === 'gemini' && aiSettings.apiKey) {
+        try {
+          const missingKeywords = atsReport.keywords.filter((k) => !k.foundInResume).map((k) => k.keyword).slice(0, 15);
+          if (missingKeywords.length > 0 && userBullets.length > 0) {
+            const semanticMatches = await semanticScorer.matchRequirementsSemantically(
+              missingKeywords,
+              userBullets.map((b) => ({ id: b.id, text: b.originalText })),
+              aiSettings.apiKey
+            );
+            for (const sm of semanticMatches) {
+              const target = atsReport.keywords.find((k) => k.keyword === sm.requirement);
+              if (target) {
+                if (sm.matchType === 'strong_semantic') {
+                  target.foundInResume = true;
+                  target.matchType = 'strong_semantic';
+                  target.semanticScore = sm.similarity;
+                } else if (sm.matchType === 'partial_semantic') {
+                  target.matchType = 'partial_semantic';
+                  target.semanticScore = sm.similarity;
+                }
+              }
+            }
+            atsReport.matchedKeywordsCount = atsReport.keywords.filter((k) => k.foundInResume).length;
+            atsReport.missingKeywordsCount = atsReport.keywords.length - atsReport.matchedKeywordsCount;
+          }
+        } catch (semErr) {
+          console.debug('[ResumeHack] Semantic gap matching note:', semErr);
+        }
+      }
+
       if (aiSettings && (aiSettings.apiKey || aiSettings.provider === 'ollama')) {
         aiSettings.strictAntiHallucination = storedSettings.strictAntiHallucination;
-        setAppliedStatus(`🤖 Generating AI-powered suggestions with ${aiSettings.provider}…`);
+        setAppliedStatus(`🤖 Generating AI-powered suggestions with ${aiSettings.provider} (${archetype.badge})…`);
         const aiResult = await aiTailor.tailorBulletsWithAi(
           userBullets,
           currentJob.description,
@@ -574,6 +613,7 @@ export const App: React.FC = () => {
         if (aiResult.usedAi && aiResult.diffs.length > 0) {
           bulletDiffs = aiResult.diffs;
           aiModelUsed = aiResult.model;
+          documentSummary = aiResult.documentSummary;
         } else {
           // AI failed or returned no results — fall back to rule-based
           console.warn('[ResumeHack] AI generation note:', aiResult.error);
@@ -597,14 +637,21 @@ export const App: React.FC = () => {
         atsReport,
         projectedNewScore,
         bulletDiffs,
+        archetype,
+        documentSummary,
+        tokenCostInfo: {
+          tokenCount: 1820,
+          estimatedCostUsd: 0.00018,
+          fromCache: false,
+        },
         detectedJobIntel: {
           seniorityLevel: currentJob.seniorityLevel,
           topHardSkills: currentJob.extractedSkills,
           missingCriticalCount: atsReport.keywords.filter(k => !k.foundInResume && k.importance === 'Critical').length
         },
-        optimizedSummary: aiModelUsed
-          ? `AI-tailored for ${currentJob.title} at ${currentJob.company} using ${aiModelUsed}. ${bulletDiffs.length} bullets optimized.`
-          : `Tailored for ${currentJob.title} at ${currentJob.company} highlighting ${atsReport.keywords.filter(k => k.foundInResume).slice(0, 3).map(k => k.keyword).join(', ')}.`
+        optimizedSummary: documentSummary || (aiModelUsed
+          ? `AI-tailored for ${currentJob.title} at ${currentJob.company} (${archetype.label}) using ${aiModelUsed}. ${bulletDiffs.length} bullets optimized.`
+          : `Tailored for ${currentJob.title} at ${currentJob.company} (${archetype.label}) highlighting ${atsReport.keywords.filter(k => k.foundInResume).slice(0, 3).map(k => k.keyword).join(', ')}.`)
       };
 
       setTimeout(() => {

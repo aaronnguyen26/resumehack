@@ -7,7 +7,7 @@ import { GoogleDocsService } from './services/google-docs.js';
 import { GoogleDriveService } from './services/google-drive.js';
 import { VisualLayoutAnalyzerService } from './services/visual-layout-analyzer.js';
 import { CURATED_JOB_LISTINGS } from './data/curated-jobs.js';
-import { ApplicationRecord } from './types/index.js';
+import { ApplicationRecord, ResumeBullet, TailorResumeResponse } from './types/index.js';
 import { db } from './db/index.js';
 import { CompanyRegistryService } from './services/registry-auto-derivation.js';
 import { AdaptivePollerScheduler } from './services/adaptive-poller.js';
@@ -27,6 +27,9 @@ const googleDrive = new GoogleDriveService();
 const visualAnalyzer = new VisualLayoutAnalyzerService();
 const registryService = new CompanyRegistryService();
 let pollerScheduler: AdaptivePollerScheduler | null = null;
+
+// In-memory application store for fallback / testing
+const applicationStore: ApplicationRecord[] = [];
 
 // SSE Client Pool
 const sseClients = new Set<Response>();
@@ -457,8 +460,8 @@ app.listen(PORT, async () => {
       `);
 
       // Start resilient Postgres LISTEN/NOTIFY listener
-      await db.listenToJobEvents((eventPayload, eventId) => {
-        broadcastSseJobEvent(eventPayload, eventId);
+      await db.listenToJobEvents('job_events', (eventPayload: any) => {
+        broadcastSseJobEvent(eventPayload);
       });
 
       // Start adaptive poller background scheduler

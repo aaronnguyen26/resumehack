@@ -19,13 +19,12 @@ async function runLiveEndToEndBenchmark() {
   memDb.public.registerFunction({
     name: 'gen_random_uuid',
     returns: DataType.uuid,
-    deterministic: false,
     implementation: () => crypto.randomUUID(),
   });
 
   memDb.public.registerFunction({
     name: 'pg_notify',
-    args: ['text', 'text'],
+    args: [DataType.text, DataType.text],
     implementation: (_channel: string, payloadStr: string) => {
       const parsed = JSON.parse(payloadStr);
       if (sseEventSender) {
