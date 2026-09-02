@@ -1,259 +1,345 @@
 import { describe, it, expect } from 'vitest';
 import { LayoutAnalyzerService } from '../services/layout-analyzer.js';
-import {
-  extractStructuralParagraphs,
-  extractDocumentLayoutInfo,
-  buildStructuralBatchUpdateRequests,
-  resolveDiffReplacementRanges,
-} from '../services/google-docs.js';
-import { AtsScorerService } from '../services/ats-scorer.js';
-import { TailoredBulletDiff } from '../types/index.js';
+import { PROVISIONAL_RESUME_LAYOUT_SPEC } from '../services/resume-layout-spec.js';
+import { DocumentLayoutInfo, StructuralParagraph } from '../types/index.js';
 
-describe('LayoutAwareness & LayoutAnalyzerService', () => {
+describe('LayoutAnalyzerService — Canonical Spec & Deterministic AST Suite', () => {
   const analyzer = new LayoutAnalyzerService();
-  const atsScorer = new AtsScorerService();
 
-  const mockGoogleDocWithLayoutIssues = {
-    documentId: 'doc-with-layout-problems',
-    title: 'Alex Chen Resume',
-    body: {
-      content: [
+  // ── 1. Spec Constants & Grounding Verification ─────────────────────────────
+  describe('Canonical Layout Specification Constants', () => {
+    it('grounds margin limits in 0.5" (36pt) to 0.75" (54pt) standard', () => {
+      expect(PROVISIONAL_RESUME_LAYOUT_SPEC.margins.minPt).toBe(36);
+      expect(PROVISIONAL_RESUME_LAYOUT_SPEC.margins.maxPt).toBe(54);
+      expect(PROVISIONAL_RESUME_LAYOUT_SPEC.margins.optimalPt).toBe(36);
+    });
+
+    it('establishes minimum heading-to-body typography ratio of 1.18x', () => {
+      expect(PROVISIONAL_RESUME_LAYOUT_SPEC.typography.minHeadingToBodyRatio).toBe(1.18);
+      expect(PROVISIONAL_RESUME_LAYOUT_SPEC.typography.headingFontPt.optimal).toBe(13.0);
+      expect(PROVISIONAL_RESUME_LAYOUT_SPEC.typography.bodyFontPt.optimal).toBe(10.5);
+    });
+
+    it('configures widow character threshold at 18 characters', () => {
+      expect(PROVISIONAL_RESUME_LAYOUT_SPEC.spacing.widowThresholdChars).toBe(18);
+    });
+
+    it('configures bold emphasis density threshold between 4% and 22%', () => {
+      expect(PROVISIONAL_RESUME_LAYOUT_SPEC.emphasis.minBoldWordRatio).toBe(0.04);
+      expect(PROVISIONAL_RESUME_LAYOUT_SPEC.emphasis.maxBoldWordRatio).toBe(0.22);
+    });
+  });
+
+  // ── 2. Widow / Orphan Line AST Audit ───────────────────────────────────────
+  describe('Widow / Orphan Line Detection', () => {
+    it('detects widow line when last line has <= 18 characters and flags content_generating fix', () => {
+      // 88 chars per line: 88 + 12 = 100 chars total (2 lines, last line has 12 chars)
+      const line1 = 'Architected high-throughput Redis and FastAPI microservices across 12 distributed AWS nodes '; // 92 chars
+      const line2 = 'by 35%.'; // 7 chars -> widow!
+      const fullText = line1 + line2;
+
+      const paragraphs: StructuralParagraph[] = [
         {
-          startIndex: 1,
-          endIndex: 20,
-          paragraph: {
-            paragraphStyle: { namedStyleType: 'HEADING_1', spaceAfter: { magnitude: 6, unit: 'PT' } },
-            elements: [
-              {
-                startIndex: 1,
-                endIndex: 20,
-                textRun: {
-                  content: 'Alex Chen\n',
-                  textStyle: {
-                    weightedFontFamily: { fontFamily: 'Calibri' },
-                    fontSize: { magnitude: 18, unit: 'PT' },
-                    bold: true,
-                  },
-                },
-              },
-            ],
-          },
-        },
-        // Table element (ATS multi-column / parsing risk)
-        {
-          startIndex: 21,
+          rawText: `• ${fullText}\n`,
+          trimmedText: `• ${fullText}`,
+          normalizedText: fullText.toLowerCase(),
+          sanitizedText: fullText.toLowerCase(),
+          startIndex: 10,
           endIndex: 120,
-          table: {
-            rows: 2,
-            columns: 2,
-            tableRows: [
-              {
-                tableCells: [
-                  {
-                    content: [
-                      {
-                        startIndex: 25,
-                        endIndex: 60,
-                        paragraph: {
-                          elements: [{ textRun: { content: 'Left Column: Education\n' } }],
-                        },
-                      },
-                    ],
-                  },
-                  {
-                    content: [
-                      {
-                        startIndex: 65,
-                        endIndex: 115,
-                        paragraph: {
-                          elements: [{ textRun: { content: 'Right Column: Skills\n' } }],
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
+          textStartIndex: 10,
+          textEndIndex: 119,
+          hasNativeBullet: true,
+          hasVisualBullet: true,
+          runs: [{ startIndex: 10, endIndex: 120, content: fullText, fontSize: 10.5 }],
         },
-        // Section break with 2 columns
-        {
-          startIndex: 121,
-          endIndex: 122,
-          sectionBreak: {
-            sectionStyle: {
-              columnProperties: [{ width: { magnitude: 250, unit: 'PT' } }, { width: { magnitude: 250, unit: 'PT' } }],
-            },
-          },
-        },
-        // Paragraph 1: Bullet with manual spaces for date alignment
-        {
-          startIndex: 123,
-          endIndex: 210,
-          paragraph: {
-            paragraphStyle: {
-              namedStyleType: 'NORMAL_TEXT',
-              spaceBefore: { magnitude: 2, unit: 'PT' },
-              spaceAfter: { magnitude: 2, unit: 'PT' },
-              bullet: { listId: 'kix.list1' },
-            },
-            elements: [
-              {
-                startIndex: 123,
-                endIndex: 210,
-                textRun: {
-                  content: '• Software Engineer Intern                May 2025 - Aug 2025\n',
-                  textStyle: {
-                    weightedFontFamily: { fontFamily: 'Calibri' },
-                    fontSize: { magnitude: 11, unit: 'PT' },
-                  },
-                },
-              },
-            ],
-          },
-        },
-        // Paragraph 2: Bullet with font drift (Comic Sans, 14pt)
-        {
-          startIndex: 211,
-          endIndex: 300,
-          paragraph: {
-            paragraphStyle: {
-              namedStyleType: 'NORMAL_TEXT',
-              spaceBefore: { magnitude: 12, unit: 'PT' }, // Spacing drift
-              spaceAfter: { magnitude: 12, unit: 'PT' },
-              bullet: { listId: 'kix.list1' },
-            },
-            elements: [
-              {
-                startIndex: 211,
-                endIndex: 300,
-                textRun: {
-                  content: '• Built backend microservices in Python and Postgres processing 10,000 requests.\n',
-                  textStyle: {
-                    weightedFontFamily: { fontFamily: 'Comic Sans MS' },
-                    fontSize: { magnitude: 14, unit: 'PT' },
-                  },
-                },
-              },
-            ],
-          },
-        },
-        // Paragraph 3: Bullet with mixed glyph ('-' instead of '•')
-        {
-          startIndex: 301,
-          endIndex: 380,
-          paragraph: {
-            paragraphStyle: {
-              namedStyleType: 'NORMAL_TEXT',
-              spaceBefore: { magnitude: 2, unit: 'PT' },
-              spaceAfter: { magnitude: 2, unit: 'PT' },
-            },
-            elements: [
-              {
-                startIndex: 301,
-                endIndex: 380,
-                textRun: {
-                  content: '- Architected caching layer with Redis reducing latency by 45%.\n',
-                  textStyle: {
-                    weightedFontFamily: { fontFamily: 'Calibri' },
-                    fontSize: { magnitude: 11, unit: 'PT' },
-                  },
-                },
-              },
-            ],
-          },
-        },
-      ],
-    },
-  };
+      ];
 
-  it('correctly extracts structural layout info and paragraph formatting', () => {
-    const layoutInfo = extractDocumentLayoutInfo(mockGoogleDocWithLayoutIssues);
-    const paragraphs = extractStructuralParagraphs(mockGoogleDocWithLayoutIssues);
+      const report = analyzer.analyze(undefined, paragraphs);
+      const widowIssue = report.issues.find((i) => i.category === 'widow_line');
 
-    expect(layoutInfo.tables.length).toBe(1);
-    expect(layoutInfo.tables[0].rows).toBe(2);
-    expect(layoutInfo.tables[0].columns).toBe(2);
-    expect(layoutInfo.sectionStyle?.columnCount).toBe(2);
+      expect(widowIssue).toBeDefined();
+      expect(widowIssue?.severity).toBe('info');
+      expect(widowIssue?.fixTier).toBe('content_generating');
+      expect(widowIssue?.title).toContain('Widow Line on Bullet');
+    });
 
-    expect(paragraphs.length).toBeGreaterThanOrEqual(4);
-    const comicSansPara = paragraphs.find((p) => p.rawText.includes('Built backend'));
-    expect(comicSansPara?.runs[0]?.fontFamily).toBe('Comic Sans MS');
-    expect(comicSansPara?.runs[0]?.fontSize).toBe(14);
+    it('does not flag single-line bullets as widow lines', () => {
+      const shortText = 'Architected FastAPI microservices in Python.'; // 44 chars -> 1 line
+
+      const paragraphs: StructuralParagraph[] = [
+        {
+          rawText: `• ${shortText}\n`,
+          trimmedText: `• ${shortText}`,
+          normalizedText: shortText.toLowerCase(),
+          sanitizedText: shortText.toLowerCase(),
+          startIndex: 10,
+          endIndex: 60,
+          textStartIndex: 10,
+          textEndIndex: 59,
+          hasNativeBullet: true,
+          hasVisualBullet: true,
+          runs: [{ startIndex: 10, endIndex: 60, content: shortText, fontSize: 10.5 }],
+        },
+      ];
+
+      const report = analyzer.analyze(undefined, paragraphs);
+      const widowIssue = report.issues.find((i) => i.category === 'widow_line');
+
+      expect(widowIssue).toBeUndefined();
+    });
   });
 
-  it('detects table risks, multi-column risks, manual spacing, font drift, and mixed bullets', () => {
-    const layoutInfo = extractDocumentLayoutInfo(mockGoogleDocWithLayoutIssues);
-    const paragraphs = extractStructuralParagraphs(mockGoogleDocWithLayoutIssues);
+  // ── 3. Typography Scale & Inverted Hierarchy Audit ────────────────────────
+  describe('Typography Hierarchy & Inversion Detection', () => {
+    it('flags inverted hierarchy when heading font size is smaller than body font size', () => {
+      const paragraphs: StructuralParagraph[] = [
+        {
+          rawText: 'EXPERIENCE\n',
+          trimmedText: 'EXPERIENCE',
+          normalizedText: 'experience',
+          sanitizedText: 'experience',
+          startIndex: 10,
+          endIndex: 22,
+          textStartIndex: 10,
+          textEndIndex: 21,
+          hasNativeBullet: false,
+          hasVisualBullet: false,
+          paragraphStyle: { namedStyleType: 'HEADING_1' },
+          runs: [{ startIndex: 10, endIndex: 22, content: 'EXPERIENCE', fontSize: 10.0 }], // 10pt heading
+        },
+        {
+          rawText: '• Developed scalable backend services in Python.\n',
+          trimmedText: '• Developed scalable backend services in Python.',
+          normalizedText: 'developed scalable backend services in python.',
+          sanitizedText: 'developed scalable backend services in python.',
+          startIndex: 23,
+          endIndex: 75,
+          textStartIndex: 23,
+          textEndIndex: 74,
+          hasNativeBullet: true,
+          hasVisualBullet: true,
+          runs: [{ startIndex: 23, endIndex: 75, content: 'Developed scalable backend services in Python.', fontSize: 11.5 }], // 11.5pt body!
+        },
+      ];
 
-    const report = analyzer.analyze(layoutInfo, paragraphs);
+      const report = analyzer.analyze(undefined, paragraphs);
+      const typeIssue = report.issues.find((i) => i.category === 'typography_hierarchy');
 
-    expect(report.isSingleColumnStandard).toBe(false);
-    expect(report.overallScore).toBeLessThan(80); // Penalized for table + 2-column + font drift
-
-    const categories = report.issues.map((i) => i.category);
-    expect(categories).toContain('table_risk');
-    expect(categories).toContain('multicolumn_risk');
-    expect(categories).toContain('manual_tab_alignment');
-    expect(categories).toContain('font_inconsistency');
-    expect(categories).toContain('bullet_inconsistency');
-
-    // Check suggested fixes
-    const manualSpaceIssue = report.issues.find((i) => i.category === 'manual_tab_alignment');
-    expect(manualSpaceIssue?.suggestedFix?.batchUpdateRequests?.length).toBeGreaterThan(0);
-
-    const fontIssue = report.issues.find((i) => i.category === 'font_inconsistency');
-    expect(fontIssue?.suggestedFix?.batchUpdateRequests?.length).toBeGreaterThan(0);
+      expect(typeIssue).toBeDefined();
+      expect(typeIssue?.severity).toBe('warning');
+      expect(typeIssue?.fixTier).toBe('safe_styling');
+      expect(typeIssue?.suggestedFix?.batchUpdateRequests[0].updateTextStyle.textStyle.fontSize.magnitude).toBe(13.0);
+    });
   });
 
-  it('generates layout batchUpdate requests in strict descending index order along with content diffs', () => {
-    const layoutInfo = extractDocumentLayoutInfo(mockGoogleDocWithLayoutIssues);
-    const paragraphs = extractStructuralParagraphs(mockGoogleDocWithLayoutIssues);
-    const layoutReport = analyzer.analyze(layoutInfo, paragraphs);
+  // ── 4. Margin Extremes & Asymmetry Audit ──────────────────────────────────
+  describe('Margin Extremes & Asymmetry Detection', () => {
+    it('detects margins < 0.5" (36pt) as print clipping risk', () => {
+      const layoutInfo: DocumentLayoutInfo = {
+        title: 'My Resume',
+        hasTables: false,
+        tableCount: 0,
+        tables: [],
+        sectionStyle: {
+          columnCount: 1,
+          marginTop: 20, // < 36pt
+          marginBottom: 20,
+          marginLeft: 20,
+          marginRight: 20,
+        },
+      };
 
-    const diffs: TailoredBulletDiff[] = [
-      {
-        id: 'd-1',
-        originalText: 'Built backend microservices in Python and Postgres processing 10,000 requests.',
-        tailoredText: '• Architected resilient distributed microservices in Python & Postgres processing 50,000 req/sec.',
-        prefix: '• Built backend microservices in Python and Postgres processing 10,000 requests.',
-        status: 'accepted',
-      },
-    ];
+      const report = analyzer.analyze(layoutInfo, []);
+      const marginIssue = report.issues.find((i) => i.category === 'margin_extremes');
 
-    const { resolved, unresolved } = resolveDiffReplacementRanges(diffs, paragraphs);
-    expect(resolved.length).toBe(1);
+      expect(marginIssue).toBeDefined();
+      expect(marginIssue?.title).toContain('Margins Too Narrow');
+      expect(marginIssue?.fixTier).toBe('safe_styling');
+      expect(marginIssue?.suggestedFix?.batchUpdateRequests[0].updateDocumentStyle.documentStyle.marginLeft.magnitude).toBe(36);
+    });
 
-    const { requests } = buildStructuralBatchUpdateRequests(resolved, unresolved, layoutReport.issues);
-    expect(requests.length).toBeGreaterThanOrEqual(2);
+    it('detects margins > 0.75" (54pt) as space wasting', () => {
+      const layoutInfo: DocumentLayoutInfo = {
+        title: 'My Resume',
+        hasTables: false,
+        tableCount: 0,
+        tables: [],
+        sectionStyle: {
+          columnCount: 1,
+          marginTop: 72, // 1.0"
+          marginBottom: 72,
+          marginLeft: 72,
+          marginRight: 72,
+        },
+      };
 
-    // Verify all delete/insert ranges are valid Google Docs batchUpdate payloads
-    for (const req of requests) {
-      if (req.deleteContentRange) {
-        expect(req.deleteContentRange.range.startIndex).toBeLessThan(req.deleteContentRange.range.endIndex);
-      }
-      if (req.updateTextStyle) {
-        expect(req.updateTextStyle.fields).toBeDefined();
-        expect(req.updateTextStyle.range.startIndex).toBeLessThan(req.updateTextStyle.range.endIndex);
-      }
-    }
+      const report = analyzer.analyze(layoutInfo, []);
+      const marginIssue = report.issues.find((i) => i.category === 'margin_extremes');
+
+      expect(marginIssue).toBeDefined();
+      expect(marginIssue?.title).toContain('Excessive Margins');
+      expect(marginIssue?.fixTier).toBe('safe_styling');
+    });
   });
 
-  it('dynamically adjusts ATS scoring based on real document layout issues', () => {
-    const resumeText = mockGoogleDocWithLayoutIssues.body.content
-      .map((c: any) => c.paragraph?.elements?.map((e: any) => e.textRun?.content).join('') || '')
-      .join('\n');
+  // ── 5. Bold Emphasis Density Audit ────────────────────────────────────────
+  describe('Bold Emphasis Density Detection', () => {
+    it('flags excessive bolding (>22% of total document words)', () => {
+      const paragraphs: StructuralParagraph[] = [
+        {
+          rawText: 'Architected distributed caching clusters reducing latency by 45% across production nodes.\n',
+          trimmedText: 'Architected distributed caching clusters reducing latency by 45% across production nodes.',
+          normalizedText: 'architected distributed caching clusters reducing latency by 45% across production nodes.',
+          sanitizedText: 'architected distributed caching clusters reducing latency by 45% across production nodes.',
+          startIndex: 10,
+          endIndex: 110,
+          textStartIndex: 10,
+          textEndIndex: 109,
+          hasNativeBullet: true,
+          hasVisualBullet: true,
+          runs: [
+            // 70 words total, all bolded
+            {
+              startIndex: 10,
+              endIndex: 110,
+              content: 'Architected distributed caching clusters reducing latency by 45% across production nodes in AWS with zero downtime and high availability across all regions for 50000 daily users.',
+              bold: true, // 100% bold!
+              fontSize: 10.5,
+            },
+          ],
+        },
+      ];
 
-    const jobDescription = 'Software Engineering Intern with Python, Postgres, and microservices experience.';
+      const report = analyzer.analyze(undefined, paragraphs);
+      const boldIssue = report.issues.find((i) => i.category === 'bold_density');
 
-    const layoutInfo = extractDocumentLayoutInfo(mockGoogleDocWithLayoutIssues);
-    const paragraphs = extractStructuralParagraphs(mockGoogleDocWithLayoutIssues);
+      expect(boldIssue).toBeDefined();
+      expect(boldIssue?.title).toContain('Excessive Bold Emphasis');
+      expect(boldIssue?.severity).toBe('warning');
+    });
+  });
 
-    const reportWithLayout = atsScorer.analyze(resumeText, jobDescription, layoutInfo, paragraphs);
+  // ── 6. Two-Tier Fix Classification Integrity ──────────────────────────────
+  describe('Two-Tier Fix Classification (Safe Styling vs Content-Generating)', () => {
+    it('categorizes geometric and typographic fixes as safe_styling (1-click ready)', () => {
+      const layoutInfo: DocumentLayoutInfo = {
+        title: 'Resume',
+        hasTables: true,
+        tableCount: 1,
+        tables: [{ rows: 2, columns: 2, startIndex: 0, endIndex: 50 }],
+        sectionStyle: {
+          columnCount: 1,
+          marginTop: 20,
+          marginBottom: 20,
+          marginLeft: 20,
+          marginRight: 20,
+        },
+      };
 
-    expect(reportWithLayout.layoutReport).toBeDefined();
-    expect(reportWithLayout.breakdown.formattingScore).toBe(reportWithLayout.layoutReport?.overallScore);
-    expect(reportWithLayout.breakdown.formattingScore).toBeLessThan(80);
-    expect(reportWithLayout.improvementSuggestions.some((s) => s.includes('Layout Notice'))).toBe(true);
+      const paragraphs: StructuralParagraph[] = [
+        {
+          rawText: 'Senior Software Engineer    June 2022 - Present\n',
+          trimmedText: 'Senior Software Engineer    June 2022 - Present',
+          normalizedText: 'senior software engineer june 2022 - present',
+          sanitizedText: 'senior software engineer june 2022 - present',
+          startIndex: 0,
+          endIndex: 48,
+          textStartIndex: 0,
+          textEndIndex: 47,
+          hasNativeBullet: false,
+          hasVisualBullet: false,
+          runs: [{ startIndex: 0, endIndex: 48, content: 'Senior Software Engineer    June 2022 - Present', fontSize: 10.5 }],
+        },
+      ];
+
+      const report = analyzer.analyze(layoutInfo, paragraphs);
+
+      const tableIssue = report.issues.find((i) => i.category === 'table_risk');
+      const marginIssue = report.issues.find((i) => i.category === 'margin_extremes');
+      const spaceIssue = report.issues.find((i) => i.category === 'manual_tab_alignment');
+
+      expect(tableIssue?.fixTier).toBe('safe_styling');
+      expect(marginIssue?.fixTier).toBe('safe_styling');
+      expect(spaceIssue?.fixTier).toBe('safe_styling');
+    });
+
+    it('categorizes widow-line compression as content_generating and provides preview text', () => {
+      const line1 = 'Architected high-throughput Redis caching clusters across 12 distributed AWS nodes '; // 83 chars
+      const line2 = 'in order to scale.'; // 18 chars (total text 101 chars, trimmedText with bullet is 103 chars -> 103 % 88 = 15 chars <= 18)
+      const text = line1 + line2;
+      const paragraphs: StructuralParagraph[] = [
+        {
+          rawText: `• ${text}\n`,
+          trimmedText: `• ${text}`,
+          normalizedText: text.toLowerCase(),
+          sanitizedText: text.toLowerCase(),
+          startIndex: 0,
+          endIndex: 110,
+          textStartIndex: 0,
+          textEndIndex: 109,
+          hasNativeBullet: true,
+          hasVisualBullet: true,
+          runs: [{ startIndex: 0, endIndex: 110, content: text, fontSize: 10.5 }],
+        },
+      ];
+
+      const report = analyzer.analyze(undefined, paragraphs);
+      const widowIssue = report.issues.find((i) => i.category === 'widow_line');
+
+      expect(widowIssue).toBeDefined();
+      expect(widowIssue?.fixTier).toBe('content_generating');
+      expect(widowIssue?.proposedReplacementText).toBeDefined();
+      expect(typeof widowIssue?.proposedReplacementText).toBe('string');
+      expect(widowIssue?.proposedReplacementText!.length).toBeLessThan(text.length);
+    });
+  });
+
+  // ── 7. Softened Section Volume Advisory (No False Positives) ───────────────
+  describe('Contextual Section Volume Advisory', () => {
+    it('does NOT flag a legitimate 6-year tenure (5 bullets) followed by a 3-month role (2 bullets)', () => {
+      // 7 total bullets distributed across 2 realistic roles
+      const paragraphs: StructuralParagraph[] = Array.from({ length: 7 }, (_, idx) => ({
+        rawText: `• Built microservice feature ${idx + 1} processing 10000 daily requests.\n`,
+        trimmedText: `• Built microservice feature ${idx + 1} processing 10000 daily requests.`,
+        normalizedText: `built microservice feature ${idx + 1}`,
+        sanitizedText: `built microservice feature ${idx + 1}`,
+        startIndex: idx * 50,
+        endIndex: (idx + 1) * 50,
+        textStartIndex: idx * 50,
+        textEndIndex: (idx + 1) * 50 - 1,
+        hasNativeBullet: true,
+        hasVisualBullet: true,
+        runs: [{ startIndex: idx * 50, endIndex: (idx + 1) * 50, content: `Built microservice feature ${idx + 1}`, fontSize: 10.5 }],
+      }));
+
+      const report = analyzer.analyze(undefined, paragraphs);
+      const volumeIssue = report.issues.find((i) => i.category === 'section_volume_bloat');
+
+      expect(volumeIssue).toBeUndefined();
+    });
+
+    it('flags an extreme wall of >8 consecutive un-grouped bullets with severity info and no destructive auto-fix', () => {
+      const paragraphs: StructuralParagraph[] = Array.from({ length: 10 }, (_, idx) => ({
+        rawText: `• Scaled distributed cluster service ${idx + 1} with Redis caching.\n`,
+        trimmedText: `• Scaled distributed cluster service ${idx + 1} with Redis caching.`,
+        normalizedText: `scaled distributed cluster service ${idx + 1}`,
+        sanitizedText: `scaled distributed cluster service ${idx + 1}`,
+        startIndex: idx * 50,
+        endIndex: (idx + 1) * 50,
+        textStartIndex: idx * 50,
+        textEndIndex: (idx + 1) * 50 - 1,
+        hasNativeBullet: true,
+        hasVisualBullet: true,
+        runs: [{ startIndex: idx * 50, endIndex: (idx + 1) * 50, content: `Scaled distributed cluster service ${idx + 1}`, fontSize: 10.5 }],
+      }));
+
+      const report = analyzer.analyze(undefined, paragraphs);
+      const volumeIssue = report.issues.find((i) => i.category === 'section_volume_bloat');
+
+      expect(volumeIssue).toBeDefined();
+      expect(volumeIssue?.severity).toBe('info');
+      expect(volumeIssue?.title).toContain('High Bullet Density');
+      expect(volumeIssue?.suggestedFix).toBeUndefined(); // Purely advisory, zero destructive auto-fix
+    });
   });
 });

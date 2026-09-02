@@ -276,7 +276,24 @@ export interface VisualLayoutReport {
 
 export interface LayoutIssue {
   id: string;
-  category: 'table_risk' | 'multicolumn_risk' | 'font_inconsistency' | 'spacing_drift' | 'bullet_inconsistency' | 'manual_tab_alignment' | 'visual_crowding' | 'page_overflow' | 'whitespace_rhythm' | 'section_imbalance' | 'visual_polish';
+  category:
+    | 'table_risk'
+    | 'multicolumn_risk'
+    | 'font_inconsistency'
+    | 'spacing_drift'
+    | 'bullet_inconsistency'
+    | 'manual_tab_alignment'
+    | 'visual_crowding'
+    | 'page_overflow'
+    | 'whitespace_rhythm'
+    | 'section_imbalance'
+    | 'visual_polish'
+    | 'widow_line'
+    | 'typography_hierarchy'
+    | 'margin_extremes'
+    | 'contact_header_bloat'
+    | 'bold_density'
+    | 'section_volume_bloat';
   severity: 'critical' | 'warning' | 'info';
   title: string;
   description: string;
@@ -286,6 +303,8 @@ export interface LayoutIssue {
   affectedStartIndex?: number;
   affectedEndIndex?: number;
   affectedText?: string;
+  fixTier?: 'safe_styling' | 'content_generating';
+  proposedReplacementText?: string;
   suggestedFix?: {
     actionLabel: string;
     batchUpdateRequests: any[];
