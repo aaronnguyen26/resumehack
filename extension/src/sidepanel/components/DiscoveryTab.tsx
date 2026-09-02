@@ -106,6 +106,7 @@ export const DiscoveryTab: React.FC<DiscoveryTabProps> = ({
 
   const categories = [
     'All',
+    '⚡ Fresh (< 2m)',
     'New (24h)',
     'Business & Strategy',
     'Finance & Accounting',
@@ -243,7 +244,11 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
 
         const matchesCategory =
           selectedCategory === 'All' ||
-          (selectedCategory === 'New (24h)' ? (job.daysAgo ?? 999) === 0 : job.category === selectedCategory);
+          (selectedCategory === '⚡ Fresh (< 2m)'
+            ? Boolean((job as any).isUltraFresh || (job as any).isFreshAts || (job.daysAgo ?? 999) === 0)
+            : selectedCategory === 'New (24h)'
+            ? (job.daysAgo ?? 999) === 0
+            : job.category === selectedCategory);
 
         const matchesType = selectedType === 'All' || job.type === selectedType;
 
@@ -280,6 +285,9 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
   // Category counts
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { All: enrichedJobsList.length };
+    counts['⚡ Fresh (< 2m)'] = enrichedJobsList.filter(
+      j => (j as any).isUltraFresh || (j as any).isFreshAts || (j.daysAgo ?? 999) === 0
+    ).length;
     counts['New (24h)'] = enrichedJobsList.filter(j => (j.daysAgo ?? 999) === 0).length;
     for (const j of enrichedJobsList) {
       if (j.category) {
@@ -371,15 +379,20 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
         <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
           {categories.map(cat => {
             const count = categoryCounts[cat] || 0;
+            const isFreshPill = cat === '⚡ Fresh (< 2m)';
             return (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
                 className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all flex items-center gap-1 ${
                   selectedCategory === cat
-                    ? cat === 'New (24h)'
-                      ? 'bg-emerald-600 text-white shadow-sm'
+                    ? isFreshPill
+                      ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400/50'
+                      : cat === 'New (24h)'
+                      ? 'bg-teal-600 text-white shadow-sm'
                       : 'bg-brand-600 text-white shadow-sm'
+                    : isFreshPill
+                    ? 'bg-emerald-50 border border-emerald-300 text-emerald-700 hover:bg-emerald-100 font-bold'
                     : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
                 }`}
               >
@@ -530,7 +543,12 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
                           {job.workModel === 'Remote' ? '🏠 Remote' : job.workModel === 'Hybrid' ? '🏢 Hybrid' : '📍 On-site'}
                         </span>
                       )}
-                      {(job.daysAgo ?? 999) === 0 && (
+                      {((job as any).isUltraFresh || (job as any).isFreshAts) && (
+                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-500 text-white flex items-center gap-0.5 shadow-xs animate-pulse">
+                          <Zap className="w-2.5 h-2.5" /> &lt; 2m ATS
+                        </span>
+                      )}
+                      {(job.daysAgo ?? 999) === 0 && !((job as any).isUltraFresh || (job as any).isFreshAts) && (
                         <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-800">
                           NEW
                         </span>

@@ -11,6 +11,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         sidepanel: resolve(__dirname, 'index.html'),
+        offscreen: resolve(__dirname, 'offscreen.html'),
         background: resolve(__dirname, 'src/background/service-worker.ts'),
         content_scraper: resolve(__dirname, 'src/content-scripts/job-scraper.ts'),
         content_docs: resolve(__dirname, 'src/content-scripts/docs-helper.ts'),

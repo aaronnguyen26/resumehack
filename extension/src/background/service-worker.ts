@@ -19,6 +19,37 @@ const cdpEditor = new CdpDocsEditorService();
 const googleDocsService = new GoogleDocsService();
 
 const ALARM_NAME = 'resumehack-daily-sync';
+const ALARM_FRESHNESS_HEARTBEAT = 'resumehack-freshness-heartbeat';
+const ALARM_FRESHNESS_POLL = 'resumehack-freshness-poll';
+
+// ── Offscreen Document Guardian ──────────────────────────────────────────────
+let creatingOffscreenPromise: Promise<void> | null = null;
+
+export async function ensureOffscreenDocument(): Promise<void> {
+  if (!chrome.offscreen) return;
+  try {
+    const hasDoc = await chrome.offscreen.hasDocument();
+    if (hasDoc) return;
+
+    if (creatingOffscreenPromise) {
+      await creatingOffscreenPromise;
+      return;
+    }
+
+    creatingOffscreenPromise = chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['WORKERS' as any],
+      justification: 'Maintain real-time SSE push connection for sub-5-second job freshness notifications',
+    });
+
+    await creatingOffscreenPromise;
+    console.log('[ResumeHack] Offscreen SSE document bridge created.');
+  } catch (err: any) {
+    console.warn('[ResumeHack] Note creating offscreen document:', err?.message);
+  } finally {
+    creatingOffscreenPromise = null;
+  }
+}
 
 // ── Setup: run on install and every cold start ──────────────────────────────
 chrome.runtime.onInstalled.addListener(async () => {
@@ -35,6 +66,8 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
 
   await ensureDailyAlarm();
+  await ensureFreshnessAlarms();
+  await ensureOffscreenDocument();
 
   // Inject Hacky mascot content script into all tabs across all existing browser windows
   try {
@@ -48,9 +81,12 @@ chrome.runtime.onInstalled.addListener(async () => {
   runDailySync();
 });
 
-// Also ensure alarm and mascot injection survive service worker restarts / browser startup
+// Also ensure alarm, offscreen, and mascot injection survive service worker restarts / browser startup
 chrome.runtime.onStartup.addListener(async () => {
   await ensureDailyAlarm();
+  await ensureFreshnessAlarms();
+  await ensureOffscreenDocument();
+
   if (chrome.sidePanel?.setOptions) {
     chrome.sidePanel.setOptions({ path: 'index.html', enabled: true }).catch(() => {});
   }
@@ -63,6 +99,9 @@ chrome.runtime.onStartup.addListener(async () => {
     console.debug('[ResumeHack] Multi-window injection on startup error:', err);
   }
 });
+
+// Top-level service worker execution check for offscreen bridge
+ensureOffscreenDocument().catch(() => {});
 
 // ── Multi-Window & Tab Lifecycle Event Listeners ─────────────────────────────
 // 1. Newly created window -> inject mascot into its tabs
@@ -126,12 +165,49 @@ async function ensureDailyAlarm(): Promise<void> {
   }
 }
 
+async function ensureFreshnessAlarms(): Promise<void> {
+  const heartbeat = await chrome.alarms.get(ALARM_FRESHNESS_HEARTBEAT);
+  if (!heartbeat) {
+    chrome.alarms.create(ALARM_FRESHNESS_HEARTBEAT, {
+      delayInMinutes: 1,
+      periodInMinutes: 5,
+    });
+  }
+
+  const poll = await chrome.alarms.get(ALARM_FRESHNESS_POLL);
+  if (!poll) {
+    chrome.alarms.create(ALARM_FRESHNESS_POLL, {
+      delayInMinutes: 5,
+      periodInMinutes: 5,
+    });
+  }
+}
+
 // ── Alarm handler ────────────────────────────────────────────────────────────
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === ALARM_NAME) {
     await runDailySync();
+  } else if (alarm.name === ALARM_FRESHNESS_HEARTBEAT) {
+    await ensureOffscreenDocument();
+  } else if (alarm.name === ALARM_FRESHNESS_POLL) {
+    await pollFreshJobsFallback();
   }
 });
+
+async function pollFreshJobsFallback(): Promise<void> {
+  try {
+    const res = await fetch('http://localhost:3001/api/jobs?fresh=true');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (Array.isArray(data?.jobs) && data.jobs.length > 0) {
+      console.log(`[ResumeHack] Polled ${data.jobs.length} fresh jobs via fallback.`);
+      chrome.action.setBadgeText({ text: '⚡' });
+      chrome.action.setBadgeBackgroundColor({ color: '#3B82F6' });
+    }
+  } catch (err) {
+    console.debug('[ResumeHack] Fallback fresh job poll note:', err);
+  }
+}
 
 async function runDailySync(): Promise<void> {
   console.log('[ResumeHack] Running daily job sync...');
@@ -187,6 +263,55 @@ if (chrome.action?.onClicked) {
 // ── Message listener ─────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   try {
+    if (message.type === 'OFFSCREEN_SSE_EVENT') {
+      const payload = message.payload;
+      console.log('[ResumeHack SW] Processing real-time SSE job event:', payload);
+
+      if (payload?.title && payload?.companyName) {
+        // Update badge
+        chrome.action.setBadgeText({ text: '⚡' });
+        chrome.action.setBadgeBackgroundColor({ color: '#10B981' });
+
+        // Save fresh job to local storage cache for discovery feed
+        chrome.storage.local.get(['ats_fresh_jobs'], (res) => {
+          const freshList = Array.isArray(res.ats_fresh_jobs) ? res.ats_fresh_jobs : [];
+          const updated = [
+            {
+              id: payload.jobId,
+              atsJobId: payload.atsJobId,
+              company: payload.companyName,
+              title: payload.title,
+              location: payload.location || 'Remote / Hybrid',
+              jobUrl: payload.jobUrl,
+              category: payload.category || 'Software Engineering',
+              type: payload.jobType || 'Internship',
+              postedDate: 'Just now (< 2m ago)',
+              isFreshAts: true,
+              receivedAt: Date.now(),
+            },
+            ...freshList.filter((j: any) => j.atsJobId !== payload.atsJobId),
+          ].slice(0, 50);
+
+          chrome.storage.local.set({ ats_fresh_jobs: updated });
+        });
+
+        // Broadcast real-time Hacky alert to all browser tabs
+        broadcastToAllTabs({
+          type: 'NOTIFY_NEW_JOBS',
+          count: 1,
+          totalCount: 1,
+          companies: [payload.companyName],
+          headline: `⚡ Fresh Job Alert: ${payload.companyName} just posted "${payload.title}"!`,
+          jobUrl: payload.jobUrl,
+          isFreshAts: true,
+          timestamp: Date.now(),
+        }).catch(() => {});
+      }
+
+      sendResponse({ status: 'ok' });
+      return true;
+    }
+
     if (message.type === 'JOB_SCRAPED') {
       chrome.storage.local.set({ latestScrapedJob: message.data }, () => sendResponse({ status: 'ok' }));
       return true;
