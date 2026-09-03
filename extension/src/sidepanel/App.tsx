@@ -4,9 +4,10 @@ import { MatchTailorTab } from './components/MatchTailorTab.js';
 import { DiscoveryTab } from './components/DiscoveryTab.js';
 import { TrackerTab } from './components/TrackerTab.js';
 import { SettingsTab } from './components/SettingsTab.js';
+import { PreFlightApplyModal } from './components/PreFlightApplyModal.js';
 import { AtsScorerService } from '../services/ats-scorer.js';
 import { LlmTailorService } from '../services/llm-tailor.js';
-import { AiTailorService, getAiSettings } from '../services/ai-tailor.js';
+import { AiTailorService, getAiSettings, generateCustomQuestionAnswer } from '../services/ai-tailor.js';
 import { GoogleDocsService } from '../services/google-docs.js';
 import { GoogleDriveService } from '../services/google-drive.js';
 import { GitHubTrackerService, SEED_INTERNSHIP_DATABASE, enrichJobDetails } from '../services/github-tracker.js';
@@ -16,7 +17,9 @@ import {
   saveStoredApplications, 
   getStoredSettings, 
   getGoogleAccessToken, 
-  refreshGoogleAccessToken 
+  refreshGoogleAccessToken,
+  getStoredApplicantProfile,
+  DEFAULT_APPLICANT_PROFILE
 } from '../services/storage.js';
 import { 
   JobPosting, 
@@ -26,7 +29,8 @@ import {
   ApplicationRecord,
   LayoutIssue,
   DocumentLayoutInfo,
-  StructuralParagraph
+  StructuralParagraph,
+  ApplicantProfile
 } from '../types/index.js';
 import { extractDocumentLayoutInfo } from '../services/google-docs.js';
 
@@ -35,6 +39,7 @@ import { CdpDocsEditorService } from '../services/cdp-docs-editor.js';
 import { LayoutAnalyzerService } from '../services/layout-analyzer.js';
 import { SemanticScorerService } from '../services/semantic-scorer.js';
 import { CompanyArchetypeClassifier } from '../services/archetype-classifier.js';
+import { AutoSubmitEngine, AutoSubmitReport } from '../services/auto-submit-engine.js';
 
 const atsScorer = new AtsScorerService();
 const llmTailor = new LlmTailorService();
@@ -76,6 +81,20 @@ export const App: React.FC = () => {
   const [appliedStatus, setAppliedStatus] = useState<string | null>(null);
   const [forkedDocUrl, setForkedDocUrl] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+
+  // Auto-Apply Pre-Flight Review State
+  const [isPreFlightOpen, setIsPreFlightOpen] = useState(false);
+  const [preFlightReport, setPreFlightReport] = useState<AutoSubmitReport | null>(null);
+  const [applicantProfile, setApplicantProfile] = useState<ApplicantProfile>(DEFAULT_APPLICANT_PROFILE);
+  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
+  const [isSubmittingApp, setIsSubmittingApp] = useState(false);
+  const [submitAppError, setSubmitAppError] = useState<string | null>(null);
+  const [submitAppSuccess, setSubmitAppSuccess] = useState(false);
+  const [pdfAttachmentState, setPdfAttachmentState] = useState<{ attached: boolean; verified: boolean; fileName: string }>({
+    attached: false,
+    verified: false,
+    fileName: 'Resume_Tailored.pdf',
+  });
 
   useEffect(() => {
     getStoredApplications().then(apps => setApplications(apps));
@@ -1364,46 +1383,250 @@ export const App: React.FC = () => {
     setActiveTab('match');
   };
 
-  // Safe Autofill via direct scripting
+  // ── Auto-Apply & Pre-Flight Application Review Flow ──
   const handleTriggerAutofill = async () => {
-    if (typeof chrome !== 'undefined' && chrome.tabs) {
-      try {
-        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!activeTab || !activeTab.id) {
-          setAppliedStatus('⚠️ Please focus your job application tab first.');
-          return;
-        }
+    if (typeof chrome === 'undefined' || !chrome.tabs) {
+      setAppliedStatus('⚡ Auto-Apply is active in Chrome extension mode.');
+      return;
+    }
 
-        if (chrome.scripting && chrome.scripting.executeScript) {
-          const results = await chrome.scripting.executeScript({
-            target: { tabId: activeTab.id },
-            func: () => {
-              const inputs = document.querySelectorAll('input, textarea, select');
-              let count = 0;
-              inputs.forEach((el) => {
-                const input = el as HTMLInputElement;
-                const fieldId = `${input.name || ''} ${input.id || ''} ${input.placeholder || ''}`.toLowerCase();
-                if (input.value && input.value.trim() !== '') return;
-                
-                if (fieldId.includes('name') && !fieldId.includes('company')) {
-                  input.value = 'Candidate';
-                  input.dispatchEvent(new Event('input', { bubbles: true }));
-                  count++;
-                }
-              });
-              return count;
+    try {
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!activeTab || !activeTab.id) {
+        setAppliedStatus('⚠️ Please focus your job application tab first.');
+        setTimeout(() => setAppliedStatus(null), 3000);
+        return;
+      }
+
+      setAppliedStatus('🔍 Scanning application form & preparing pre-flight review…');
+
+      // 1. Load candidate profile
+      const prof = await getStoredApplicantProfile();
+      setApplicantProfile(prof);
+
+      // 2. Scan active page via content script
+      let scanData: any = null;
+      try {
+        scanData = await new Promise((resolve) => {
+          chrome.tabs.sendMessage(activeTab.id!, { type: 'SCAN_FORM' }, (res) => {
+            if (chrome.runtime.lastError || !res?.data) {
+              resolve(null);
+            } else {
+              resolve(res.data);
             }
           });
+        });
+      } catch {}
 
-          const filled = results[0]?.result || 0;
-          setAppliedStatus(`⚡ Autofilled ${filled} fields on this application!`);
-          setTimeout(() => setAppliedStatus(null), 3000);
-        }
-      } catch (err: any) {
-        console.error('Autofill error:', err);
-        setAppliedStatus('⚡ Form scanned.');
-        setTimeout(() => setAppliedStatus(null), 3000);
+      // Fallback: If content script was not injected or errored, synthesize report
+      if (!scanData) {
+        const autoEngine = new AutoSubmitEngine();
+        const portal = autoEngine.detectPortal(activeTab.url || '');
+        const synthReport = autoEngine.planAutoFill(portal, [
+          { name: 'first_name', label: 'First Name', type: 'text', required: true },
+          { name: 'last_name', label: 'Last Name', type: 'text', required: true },
+          { name: 'email', label: 'Email', type: 'email', required: true },
+          { name: 'phone', label: 'Phone', type: 'tel', required: true },
+          { name: 'resume', label: 'Resume / CV', type: 'file', required: true },
+          { name: 'urls[linkedin]', label: 'LinkedIn Profile', type: 'url', required: false },
+          { name: 'urls[github]', label: 'GitHub Profile', type: 'url', required: false },
+        ], prof);
+        scanData = { portal, report: synthReport };
       }
+
+      setPreFlightReport(scanData.report);
+
+      // 3. Check for custom questions and generate grounded AI answers
+      const customQs = scanData.report.fieldResults.filter((r: any) => r.classification === 'custom_question');
+      const answersMap: Record<string, string> = {};
+      const resumeBullets = parsedResume?.bullets?.map(b => b.originalText) || [];
+      const jobDesc = currentJob.description || '';
+
+      for (const q of customQs) {
+        const key = q.fieldKey || q.selector || 'custom_q';
+        try {
+          const generatedAnswer = await generateCustomQuestionAnswer(
+            q.fieldLabel,
+            { title: currentJob.title, company: currentJob.company, description: jobDesc },
+            { name: prof.fullName, profile: prof, resumeBullets }
+          );
+          answersMap[key] = generatedAnswer;
+          q.aiAnswer = generatedAnswer;
+        } catch {
+          answersMap[key] = `At ${prof.school}, I developed strong foundational experience in ${prof.major}. I am eager to contribute my technical background to ${currentJob.company}.`;
+        }
+      }
+      setCustomAnswers(answersMap);
+
+      // 4. Set PDF state
+      const pdfFileName = `${prof.firstName}_${prof.lastName}_Resume_${currentJob.company.replace(/\s+/g, '_')}.pdf`;
+      setPdfAttachmentState({
+        attached: false,
+        verified: false,
+        fileName: pdfFileName,
+      });
+
+      setSubmitAppError(null);
+      setSubmitAppSuccess(false);
+      setIsPreFlightOpen(true);
+      setAppliedStatus(null);
+    } catch (err: any) {
+      console.error('[App] Auto-apply preparation error:', err);
+      setAppliedStatus(`⚠️ Auto-apply scan error: ${err.message}`);
+      setTimeout(() => setAppliedStatus(null), 4000);
+    }
+  };
+
+  const handleConfirmSubmit = async () => {
+    if (!preFlightReport) return;
+    setIsSubmittingApp(true);
+    setSubmitAppError(null);
+
+    try {
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!activeTab || !activeTab.id) {
+        throw new Error('Active tab not found');
+      }
+
+      // 1. Fetch PDF binary from Drive API if available
+      let pdfBase64: string | undefined = undefined;
+      const targetDocId = forkedDocUrl ? extractGoogleDocId(forkedDocUrl) : undefined;
+      if (targetDocId) {
+        try {
+          const token = await getGoogleAccessToken();
+          if (token) {
+            const driveRes = await googleDocs.fetchWithGoogleAuth(
+              `https://www.googleapis.com/drive/v3/files/${targetDocId}/export?mimeType=application/pdf`,
+              {},
+              token
+            );
+            if (driveRes.ok) {
+              const arrayBuf = await driveRes.arrayBuffer();
+              const bytes = new Uint8Array(arrayBuf);
+              let binary = '';
+              for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+              }
+              pdfBase64 = btoa(binary);
+            }
+          }
+        } catch (pdfErr) {
+          console.debug('[App] PDF export error:', pdfErr);
+        }
+      }
+
+      // 2. Execute Autofill & Attachment
+      await new Promise((resolve) => {
+        chrome.tabs.sendMessage(
+          activeTab.id!,
+          {
+            type: 'EXECUTE_AUTOFILL',
+            payload: {
+              profile: applicantProfile,
+              customAnswers,
+              pdfBase64,
+              pdfFileName: pdfAttachmentState.fileName,
+            },
+          },
+          (res) => {
+            if (chrome.runtime.lastError || !res) {
+              resolve({ filledCount: 0 });
+            } else {
+              resolve(res.data || res);
+            }
+          }
+        );
+      });
+
+      // 3. Execute Verified Submission
+      const submitRes: any = await new Promise((resolve) => {
+        chrome.tabs.sendMessage(
+          activeTab.id!,
+          {
+            type: 'EXECUTE_SUBMIT',
+            payload: { portal: preFlightReport.portal },
+          },
+          (res) => {
+            if (chrome.runtime.lastError || !res) {
+              resolve({ success: false, error: 'Could not connect to job application tab.' });
+            } else {
+              resolve(res);
+            }
+          }
+        );
+      });
+
+      if (submitRes.success) {
+        // POSITIVE CONFIRMATION: Update CRM Tracker
+        const existingAppIndex = applications.findIndex(
+          a => a.company.toLowerCase() === currentJob.company.toLowerCase() && a.title.toLowerCase() === currentJob.title.toLowerCase()
+        );
+
+        const appliedApp: ApplicationRecord = {
+          id: existingAppIndex >= 0 ? applications[existingAppIndex].id : `app-${Date.now()}`,
+          jobId: currentJob.title.toLowerCase().replace(/\s+/g, '-'),
+          company: currentJob.company,
+          title: currentJob.title,
+          location: currentJob.location || 'Remote',
+          status: 'Applied',
+          appliedDate: new Date().toISOString().split('T')[0],
+          jobUrl: currentJob.url,
+          tailoredDocId: (forkedDocUrl ? extractGoogleDocId(forkedDocUrl) : undefined) || undefined,
+          tailoredDocUrl: forkedDocUrl || undefined,
+          atsScoreAtApplication: tailorData?.projectedNewScore || tailorData?.atsReport?.overallScore || 90,
+          salary: currentJob.salary,
+          updatedAt: new Date().toISOString(),
+        };
+
+        const updatedApps = existingAppIndex >= 0
+          ? applications.map((a, i) => i === existingAppIndex ? appliedApp : a)
+          : [appliedApp, ...applications];
+
+        setApplications(updatedApps);
+        await saveStoredApplications(updatedApps);
+
+        setSubmitAppSuccess(true);
+        setTimeout(() => {
+          setIsPreFlightOpen(false);
+          setAppliedStatus(`🎉 Application to ${currentJob.company} submitted & verified! Moved to "Applied" in Tracker.`);
+          setTimeout(() => setAppliedStatus(null), 5000);
+        }, 2200);
+      } else {
+        setSubmitAppError(submitRes.error || 'Submission could not be verified on the page.');
+      }
+    } catch (err: any) {
+      console.error('[App] Submit execution error:', err);
+      setSubmitAppError(err.message || 'Submission error');
+    } finally {
+      setIsSubmittingApp(false);
+    }
+  };
+
+  const handleTriggerAssistOnly = async () => {
+    setIsSubmittingApp(true);
+    try {
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (activeTab?.id) {
+        chrome.tabs.sendMessage(
+          activeTab.id,
+          {
+            type: 'EXECUTE_AUTOFILL',
+            payload: {
+              profile: applicantProfile,
+              customAnswers,
+            },
+          },
+          () => {
+            setIsSubmittingApp(false);
+            setIsPreFlightOpen(false);
+            setAppliedStatus(`⚡ Form fields autofilled on ${currentJob.company} application! Complete remaining steps on the tab.`);
+            setTimeout(() => setAppliedStatus(null), 4000);
+          }
+        );
+      }
+    } catch {
+      setIsSubmittingApp(false);
+      setIsPreFlightOpen(false);
     }
   };
 
@@ -1578,6 +1801,25 @@ export const App: React.FC = () => {
 
         {activeTab === 'settings' && <SettingsTab />}
       </main>
+
+      <PreFlightApplyModal
+        isOpen={isPreFlightOpen}
+        onClose={() => setIsPreFlightOpen(false)}
+        report={preFlightReport}
+        profile={applicantProfile}
+        job={currentJob}
+        tailoredDocId={(forkedDocUrl ? extractGoogleDocId(forkedDocUrl) : undefined) || undefined}
+        tailoredDocUrl={forkedDocUrl || undefined}
+        atsScore={tailorData?.projectedNewScore || tailorData?.atsReport?.overallScore || undefined}
+        customAnswers={customAnswers}
+        onUpdateCustomAnswer={(key, text) => setCustomAnswers(prev => ({ ...prev, [key]: text }))}
+        onConfirmSubmit={handleConfirmSubmit}
+        onTriggerAssistOnly={handleTriggerAssistOnly}
+        isSubmitting={isSubmittingApp}
+        submitError={submitAppError}
+        submitSuccess={submitAppSuccess}
+        pdfAttachmentState={pdfAttachmentState}
+      />
     </div>
   );
 };

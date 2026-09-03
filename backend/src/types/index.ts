@@ -413,3 +413,22 @@ export interface MascotState {
   activeTipIndex: number;
   lastNotificationSeenAt?: number;
 }
+
+export interface ApplicantProfile {
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  location: string;
+  linkedinUrl: string;
+  githubUrl: string;
+  portfolioUrl?: string;
+  school: string;
+  degree: string;
+  major: string;
+  gpa?: string;
+  gradMonthYear: string;
+  workAuthorization: 'US_CITIZEN' | 'PERMANENT_RESIDENT' | 'REQUIRES_SPONSORSHIP' | 'F1_OPT' | 'OTHER';
+  requiresVisaSponsorship: boolean;
+}

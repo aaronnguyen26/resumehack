@@ -27,7 +27,10 @@ import {
   getGoogleAccessToken, 
   setGoogleAccessToken, 
   removeGoogleAccessToken,
-  refreshGoogleAccessToken
+  refreshGoogleAccessToken,
+  getStoredApplicantProfile,
+  saveStoredApplicantProfile,
+  DEFAULT_APPLICANT_PROFILE
 } from '../../services/storage.js';
 import {
   authenticateGoogleAccount,
@@ -43,7 +46,7 @@ import {
   AiSettings
 } from '../../services/ai-tailor.js';
 import { openGoogleDocPicker } from '../../services/google-picker.js';
-import { PROVIDER_MODEL_PRESETS } from '../../types/index.js';
+import { PROVIDER_MODEL_PRESETS, ApplicantProfile } from '../../types/index.js';
 
 export const SettingsTab: React.FC = () => {
   const [masterDocId, setMasterDocId] = useState('1A2b3C4d5E6F7g8H9i0J_AlexChen_Master');
@@ -81,6 +84,10 @@ export const SettingsTab: React.FC = () => {
   const [aiMessage, setAiMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [isTestingAiKey, setIsTestingAiKey] = useState(false);
 
+  // Applicant Profile State
+  const [applicantProfile, setApplicantProfile] = useState<ApplicantProfile>(DEFAULT_APPLICANT_PROFILE);
+  const [profileSaved, setProfileSaved] = useState(false);
+
   const fetchUserInfo = async (token: string): Promise<string | null> => {
     try {
       const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -103,6 +110,8 @@ export const SettingsTab: React.FC = () => {
 
   useEffect(() => {
     // Load stored settings, custom token, and AI settings
+    getStoredApplicantProfile().then(setApplicantProfile);
+
     getStoredSettings().then(async (settings) => {
       if (settings.masterDocId) setMasterDocId(settings.masterDocId);
       if (settings.candidateName) setCandidateName(settings.candidateName);
@@ -571,6 +580,12 @@ export const SettingsTab: React.FC = () => {
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleSaveProfile = async () => {
+    await saveStoredApplicantProfile(applicantProfile);
+    setProfileSaved(true);
+    setTimeout(() => setProfileSaved(false), 2000);
   };
 
   return (
@@ -1053,6 +1068,231 @@ export const SettingsTab: React.FC = () => {
             <span>{aiMessage.text}</span>
           </div>
         )}
+      </div>
+
+      {/* Auto-Apply Applicant Profile Card */}
+      <div className="bg-white p-3.5 rounded-stitch border border-slate-200 shadow-sm space-y-3.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <User className="w-4 h-4 text-brand-600" />
+            <h3 className="font-headline font-bold text-xs text-slate-900">
+              Applicant Profile &amp; Work Auth
+            </h3>
+          </div>
+          <span className="px-1.5 py-0.2 rounded text-[9px] bg-brand-50 text-brand-700 border border-brand-200 font-mono font-medium">
+            Auto-Apply Store
+          </span>
+        </div>
+
+        <p className="text-[10px] text-slate-500 leading-tight">
+          Used to assemble job applications and prepare pre-flight previews. Stored securely on your device.
+        </p>
+
+        {/* Contact & Basics */}
+        <div className="space-y-2">
+          <div className="text-[11px] font-bold text-slate-800 border-b border-slate-100 pb-1">
+            Personal &amp; Contact
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] font-semibold text-slate-600">First Name</label>
+              <input
+                type="text"
+                value={applicantProfile.firstName}
+                onChange={(e) => setApplicantProfile({ ...applicantProfile, firstName: e.target.value })}
+                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold text-slate-600">Last Name</label>
+              <input
+                type="text"
+                value={applicantProfile.lastName}
+                onChange={(e) => setApplicantProfile({ ...applicantProfile, lastName: e.target.value })}
+                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] font-semibold text-slate-600">Email Address</label>
+              <input
+                type="email"
+                value={applicantProfile.email}
+                onChange={(e) => setApplicantProfile({ ...applicantProfile, email: e.target.value })}
+                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold text-slate-600">Phone Number</label>
+              <input
+                type="tel"
+                value={applicantProfile.phone}
+                onChange={(e) => setApplicantProfile({ ...applicantProfile, phone: e.target.value })}
+                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-semibold text-slate-600">Current Location (City, State)</label>
+            <input
+              type="text"
+              value={applicantProfile.location}
+              onChange={(e) => setApplicantProfile({ ...applicantProfile, location: e.target.value })}
+              placeholder="e.g. San Francisco, CA"
+              className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+            />
+          </div>
+        </div>
+
+        {/* Links */}
+        <div className="space-y-2 pt-1">
+          <div className="text-[11px] font-bold text-slate-800 border-b border-slate-100 pb-1">
+            Online Profiles &amp; Links
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold text-slate-600">LinkedIn URL</label>
+            <input
+              type="url"
+              value={applicantProfile.linkedinUrl}
+              onChange={(e) => setApplicantProfile({ ...applicantProfile, linkedinUrl: e.target.value })}
+              className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] font-semibold text-slate-600">GitHub URL</label>
+              <input
+                type="url"
+                value={applicantProfile.githubUrl}
+                onChange={(e) => setApplicantProfile({ ...applicantProfile, githubUrl: e.target.value })}
+                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold text-slate-600">Portfolio Website (Optional)</label>
+              <input
+                type="url"
+                value={applicantProfile.portfolioUrl || ''}
+                onChange={(e) => setApplicantProfile({ ...applicantProfile, portfolioUrl: e.target.value })}
+                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Education */}
+        <div className="space-y-2 pt-1">
+          <div className="text-[11px] font-bold text-slate-800 border-b border-slate-100 pb-1">
+            Education
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold text-slate-600">School / University</label>
+            <input
+              type="text"
+              value={applicantProfile.school}
+              onChange={(e) => setApplicantProfile({ ...applicantProfile, school: e.target.value })}
+              className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="text-[10px] font-semibold text-slate-600">Degree</label>
+              <input
+                type="text"
+                value={applicantProfile.degree}
+                onChange={(e) => setApplicantProfile({ ...applicantProfile, degree: e.target.value })}
+                placeholder="BS"
+                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold text-slate-600">Major</label>
+              <input
+                type="text"
+                value={applicantProfile.major}
+                onChange={(e) => setApplicantProfile({ ...applicantProfile, major: e.target.value })}
+                placeholder="Computer Science"
+                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold text-slate-600">GPA</label>
+              <input
+                type="text"
+                value={applicantProfile.gpa || ''}
+                onChange={(e) => setApplicantProfile({ ...applicantProfile, gpa: e.target.value })}
+                placeholder="3.85"
+                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold text-slate-600">Graduation Month / Year</label>
+            <input
+              type="text"
+              value={applicantProfile.gradMonthYear}
+              onChange={(e) => setApplicantProfile({ ...applicantProfile, gradMonthYear: e.target.value })}
+              placeholder="May 2026"
+              className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+            />
+          </div>
+        </div>
+
+        {/* Work Authorization */}
+        <div className="space-y-2 pt-1">
+          <div className="text-[11px] font-bold text-slate-800 border-b border-slate-100 pb-1">
+            Work Authorization (Explicit User Input)
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold text-slate-600">Authorization Status</label>
+            <select
+              value={applicantProfile.workAuthorization}
+              onChange={(e) => setApplicantProfile({ ...applicantProfile, workAuthorization: e.target.value as any })}
+              className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
+            >
+              <option value="US_CITIZEN">US Citizen</option>
+              <option value="PERMANENT_RESIDENT">Permanent Resident (Green Card)</option>
+              <option value="F1_OPT">F-1 OPT / CPT Student Visa</option>
+              <option value="REQUIRES_SPONSORSHIP">Requires Visa Sponsorship (H-1B, O-1, TN)</option>
+              <option value="OTHER">Other Authorization</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-between p-2 bg-slate-50 rounded border border-slate-200">
+            <div className="space-y-0.5 pr-2">
+              <span className="text-xs font-semibold text-slate-800 block">Requires Visa Sponsorship</span>
+              <span className="text-[10px] text-slate-500 block">Will you now or in future require employer visa sponsorship?</span>
+            </div>
+            <input
+              type="checkbox"
+              checked={applicantProfile.requiresVisaSponsorship}
+              onChange={(e) => setApplicantProfile({ ...applicantProfile, requiresVisaSponsorship: e.target.checked })}
+              className="w-4 h-4 accent-brand-600 rounded cursor-pointer"
+            />
+          </div>
+        </div>
+
+        {/* EEO Privacy Guarantee Banner */}
+        <div className="p-2.5 rounded bg-slate-50 border border-slate-200 text-[10px] text-slate-600 space-y-1">
+          <div className="font-semibold text-slate-800 flex items-center gap-1">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Voluntary EEO &amp; Demographic Privacy Guarantee</span>
+          </div>
+          <p className="leading-relaxed">
+            Demographic questions (race, gender, veteran status, disability, sexual orientation) are voluntary and strictly excluded from this profile store. ResumeHack never infers or auto-fills demographic answers.
+          </p>
+        </div>
+
+        <button
+          onClick={handleSaveProfile}
+          className="w-full py-2 px-3 rounded-stitch bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+        >
+          {profileSaved ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : null}
+          <span>{profileSaved ? 'Profile Saved Successfully!' : 'Save Applicant Profile'}</span>
+        </button>
       </div>
 
       {/* Master Profile & Document Selection Form */}

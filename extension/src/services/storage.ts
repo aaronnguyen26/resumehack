@@ -1,4 +1,4 @@
-import { ApplicationRecord } from '../types/index.js';
+import { ApplicationRecord, ApplicantProfile } from '../types/index.js';
 
 const DEFAULT_APPLICATIONS: ApplicationRecord[] = [
   {
@@ -438,4 +438,73 @@ export async function saveStoredApplications(apps: ApplicationRecord[]): Promise
     });
   }
   localStorage.setItem('resumehack_applications', JSON.stringify(apps));
+}
+
+export const DEFAULT_APPLICANT_PROFILE: ApplicantProfile = {
+  firstName: 'Alex',
+  lastName: 'Chen',
+  fullName: 'Alex Chen',
+  email: 'alex.chen@example.com',
+  phone: '415-555-0199',
+  location: 'San Francisco, CA',
+  linkedinUrl: 'https://linkedin.com/in/alexchen',
+  githubUrl: 'https://github.com/alexchen',
+  portfolioUrl: 'https://alexchen.dev',
+  school: 'University of California, Berkeley',
+  degree: 'Bachelor of Science',
+  major: 'Computer Science',
+  gpa: '3.85',
+  gradMonthYear: 'May 2026',
+  workAuthorization: 'US_CITIZEN',
+  requiresVisaSponsorship: false,
+};
+
+export async function getStoredApplicantProfile(): Promise<ApplicantProfile> {
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['resumehack_applicant_profile'], (result) => {
+        if (result.resumehack_applicant_profile) {
+          resolve({
+            ...DEFAULT_APPLICANT_PROFILE,
+            ...result.resumehack_applicant_profile,
+          });
+        } else {
+          chrome.storage.local.set({ resumehack_applicant_profile: DEFAULT_APPLICANT_PROFILE });
+          resolve(DEFAULT_APPLICANT_PROFILE);
+        }
+      });
+    });
+  }
+
+  try {
+    const stored = (typeof localStorage !== 'undefined' ? localStorage.getItem('resumehack_applicant_profile') : null);
+    if (stored) {
+      return {
+        ...DEFAULT_APPLICANT_PROFILE,
+        ...JSON.parse(stored),
+      };
+    }
+  } catch {}
+  return DEFAULT_APPLICANT_PROFILE;
+}
+
+export async function saveStoredApplicantProfile(profile: Partial<ApplicantProfile>): Promise<void> {
+  const current = await getStoredApplicantProfile();
+  const updated: ApplicantProfile = {
+    ...current,
+    ...profile,
+    fullName: `${(profile.firstName ?? current.firstName).trim()} ${(profile.lastName ?? current.lastName).trim()}`.trim(),
+  };
+
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ resumehack_applicant_profile: updated }, () => resolve());
+    });
+  }
+
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('resumehack_applicant_profile', JSON.stringify(updated));
+    }
+  } catch {}
 }

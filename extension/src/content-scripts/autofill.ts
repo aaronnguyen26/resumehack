@@ -1,25 +1,22 @@
-// ATS Application Autofill & Smart Auto-Submit Engine
-// Multi-portal support: Greenhouse, Lever, Workday, Ashby, SmartRecruiters, Handshake, Custom Forms
+// ResumeHack ATS Application Autofill, PDF Attachment & Verified Submission Engine
+// Multi-portal support: Greenhouse, Lever, Ashby, SmartRecruiters (Workday as Manual Assist)
 
-const DEFAULT_PROFILE = {
-  firstName: 'Alex',
-  lastName: 'Chen',
-  fullName: 'Alex Chen',
-  email: 'alex.chen@example.com',
-  phone: '415-555-0199',
-  linkedin: 'https://linkedin.com/in/alexchen',
-  github: 'https://github.com/alexchen',
-  portfolio: 'https://alexchen.dev',
-  location: 'San Francisco, CA',
-  school: 'University of California, Berkeley',
-  degree: 'Bachelor of Science',
-  major: 'Computer Science',
-  gpa: '3.85',
-  gradDate: 'May 2026',
-  workAuth: 'US Citizen / Permanent Resident'
-};
+import {
+  AutoSubmitEngine,
+  FormInputDescriptor,
+  AutoSubmitReport,
+  DECLINE_OPTION_PATTERN,
+  EEO_DEMOGRAPHIC_PATTERNS
+} from '../services/auto-submit-engine.js';
+import { ApplicantProfile } from '../types/index.js';
+import { DEFAULT_APPLICANT_PROFILE } from '../services/storage.js';
 
-function triggerReactInput(element: HTMLInputElement | HTMLTextAreaElement, value: string): void {
+const engine = new AutoSubmitEngine();
+
+/**
+ * Dispatches standard synthetic and native events to ensure React and ATS form state registers the input.
+ */
+function setReactInputValue(element: HTMLInputElement | HTMLTextAreaElement, value: string): void {
   try {
     const proto = element instanceof HTMLTextAreaElement 
       ? window.HTMLTextAreaElement.prototype 
@@ -39,71 +36,303 @@ function triggerReactInput(element: HTMLInputElement | HTMLTextAreaElement, valu
   element.dispatchEvent(new Event('blur', { bubbles: true }));
 }
 
-function autofillFields(): number {
-  const inputs = document.querySelectorAll('input:not([type="hidden"]), textarea, select');
+/**
+ * Scans the active page for form inputs, textareas, dropdowns, and file upload fields.
+ */
+function scanPageForm(): { portal: string; inputs: FormInputDescriptor[]; report: AutoSubmitReport } {
+  const portal = engine.detectPortal(window.location.href, document.body.innerHTML);
+  const elements = document.querySelectorAll('input:not([type="hidden"]), textarea, select');
+  const descriptors: FormInputDescriptor[] = [];
+
+  elements.forEach((el) => {
+    const input = el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+    const name = input.name || '';
+    const id = input.id || '';
+    const placeholder = (input as HTMLInputElement).placeholder || '';
+    const ariaLabel = input.getAttribute('aria-label') || '';
+    const label = input.closest('label')?.textContent?.trim() ||
+      (id ? document.querySelector(`label[for="${id}"]`)?.textContent?.trim() : '') ||
+      input.getAttribute('aria-labelledby') ? document.getElementById(input.getAttribute('aria-labelledby') || '')?.textContent?.trim() : '';
+
+    const required = input.hasAttribute('required') ||
+      input.getAttribute('aria-required') === 'true' ||
+      (label && label.includes('*'));
+
+    let options: Array<{ text: string; value: string }> | undefined;
+    if (input instanceof HTMLSelectElement) {
+      options = Array.from(input.options).map((opt) => ({
+        text: opt.textContent?.trim() || opt.text?.trim() || '',
+        value: opt.value || '',
+      }));
+    }
+
+    descriptors.push({
+      id,
+      name,
+      placeholder,
+      label: label || '',
+      ariaLabel,
+      type: input.type || (input instanceof HTMLTextAreaElement ? 'textarea' : 'text'),
+      tagName: input.tagName.toLowerCase(),
+      required: !!required,
+      options,
+    });
+  });
+
+  const report = engine.planAutoFill(portal, descriptors);
+  return { portal, inputs: descriptors, report };
+}
+
+/**
+ * Injects a resume PDF into an input[type="file"] field using native DataTransfer and File API.
+ */
+function attachResumePdf(
+  fileInput: HTMLInputElement,
+  pdfBase64: string,
+  fileName: string = 'Resume.pdf'
+): { attached: boolean; verified: boolean; verificationMessage?: string } {
+  try {
+    const binaryStr = atob(pdfBase64.replace(/^data:application\/pdf;base64,/, ''));
+    const len = binaryStr.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const file = new File([blob], fileName, { type: 'application/pdf', lastModified: Date.now() });
+
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    fileInput.files = dt.files;
+
+    fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Also trigger drop/dragover on parent dropzone if present
+    const dropzone = fileInput.closest('.dropzone, [data-dropzone], .file-upload, .upload-container');
+    if (dropzone) {
+      const dropEvent = new DragEvent('drop', {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: dt,
+      });
+      dropzone.dispatchEvent(dropEvent);
+    }
+
+    // Post-attachment verification
+    const containerText = (fileInput.closest('form, div') || document.body).textContent || '';
+    const hasVisualConfirmation =
+      containerText.includes(fileName) ||
+      document.querySelector('.filename, #resume_filename, .file-name, [data-testid="file-preview"]') !== null;
+
+    return {
+      attached: true,
+      verified: hasVisualConfirmation,
+      verificationMessage: hasVisualConfirmation
+        ? `Verified attachment of "${fileName}"`
+        : `Attached "${fileName}", pending portal preview update`,
+    };
+  } catch (err: any) {
+    console.error('[ResumeHack Autofill] PDF attachment error:', err);
+    return { attached: false, verified: false, verificationMessage: err.message };
+  }
+}
+
+/**
+ * Executes autofill across the page using approved profile data and custom answers.
+ */
+function applyAutofill(
+  profile: ApplicantProfile,
+  customAnswers: Record<string, string> = {},
+  pdfBase64?: string,
+  pdfFileName?: string
+): { filledCount: number; eeoSkippedCount: number; declineSelectedCount: number; fileAttached: boolean; fileVerified: boolean } {
+  const elements = document.querySelectorAll('input:not([type="hidden"]), textarea, select');
   let filledCount = 0;
+  let eeoSkippedCount = 0;
+  let declineSelectedCount = 0;
+  let fileAttached = false;
+  let fileVerified = false;
 
-  inputs.forEach((el) => {
-    const input = el as HTMLInputElement;
-    const name = (input.name || '').toLowerCase();
-    const id = (input.id || '').toLowerCase();
-    const placeholder = (input.placeholder || '').toLowerCase();
-    const ariaLabel = (input.getAttribute('aria-label') || '').toLowerCase();
-    const label = input.closest('label')?.textContent?.toLowerCase() || '';
-    const fieldIdentifier = `${name} ${id} ${placeholder} ${ariaLabel} ${label}`.trim();
+  elements.forEach((el) => {
+    const input = el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+    const name = input.name || '';
+    const id = input.id || '';
+    const placeholder = (input as HTMLInputElement).placeholder || '';
+    const ariaLabel = input.getAttribute('aria-label') || '';
+    const label = input.closest('label')?.textContent?.trim() ||
+      (id ? document.querySelector(`label[for="${id}"]`)?.textContent?.trim() : '') ||
+      '';
+    const required = input.hasAttribute('required') || input.getAttribute('aria-required') === 'true' || (label && label.includes('*'));
 
-    if (input.value && input.value.trim() !== '') return;
+    const combined = `${name} ${id} ${placeholder} ${ariaLabel} ${label}`.trim();
+    const type = (input.type || (input instanceof HTMLTextAreaElement ? 'textarea' : 'text')).toLowerCase();
 
-    if (fieldIdentifier.includes('first name') || fieldIdentifier.includes('given name') || name === 'fname') {
-      triggerReactInput(input, DEFAULT_PROFILE.firstName);
-      filledCount++;
-    } else if (fieldIdentifier.includes('last name') || fieldIdentifier.includes('family name') || fieldIdentifier.includes('surname') || name === 'lname') {
-      triggerReactInput(input, DEFAULT_PROFILE.lastName);
-      filledCount++;
-    } else if (fieldIdentifier.includes('full name') || (name === 'name' && !fieldIdentifier.includes('company'))) {
-      triggerReactInput(input, DEFAULT_PROFILE.fullName);
-      filledCount++;
-    } else if (fieldIdentifier.includes('email')) {
-      triggerReactInput(input, DEFAULT_PROFILE.email);
-      filledCount++;
-    } else if (fieldIdentifier.includes('phone') || fieldIdentifier.includes('mobile') || fieldIdentifier.includes('tel')) {
-      triggerReactInput(input, DEFAULT_PROFILE.phone);
-      filledCount++;
-    } else if (fieldIdentifier.includes('linkedin')) {
-      triggerReactInput(input, DEFAULT_PROFILE.linkedin);
-      filledCount++;
-    } else if (fieldIdentifier.includes('github')) {
-      triggerReactInput(input, DEFAULT_PROFILE.github);
-      filledCount++;
-    } else if (fieldIdentifier.includes('website') || fieldIdentifier.includes('portfolio')) {
-      triggerReactInput(input, DEFAULT_PROFILE.portfolio);
-      filledCount++;
-    } else if (fieldIdentifier.includes('city') || fieldIdentifier.includes('location') || fieldIdentifier.includes('address')) {
-      triggerReactInput(input, DEFAULT_PROFILE.location);
-      filledCount++;
-    } else if (fieldIdentifier.includes('school') || fieldIdentifier.includes('university') || fieldIdentifier.includes('college') || fieldIdentifier.includes('institution')) {
-      triggerReactInput(input, DEFAULT_PROFILE.school);
-      filledCount++;
-    } else if (fieldIdentifier.includes('degree') || fieldIdentifier.includes('education level')) {
-      triggerReactInput(input, DEFAULT_PROFILE.degree);
-      filledCount++;
-    } else if (fieldIdentifier.includes('major') || fieldIdentifier.includes('field of study') || fieldIdentifier.includes('discipline')) {
-      triggerReactInput(input, DEFAULT_PROFILE.major);
-      filledCount++;
-    } else if (fieldIdentifier.includes('gpa') || fieldIdentifier.includes('grade point')) {
-      triggerReactInput(input, DEFAULT_PROFILE.gpa);
-      filledCount++;
-    } else if (fieldIdentifier.includes('grad') || fieldIdentifier.includes('graduation')) {
-      triggerReactInput(input, DEFAULT_PROFILE.gradDate);
-      filledCount++;
+    // 1. File Upload (Resume PDF)
+    if (type === 'file' && pdfBase64 && !fileAttached) {
+      const attachRes = attachResumePdf(input as HTMLInputElement, pdfBase64, pdfFileName || `${profile.firstName}_${profile.lastName}_Resume.pdf`);
+      fileAttached = attachRes.attached;
+      fileVerified = attachRes.verified;
+      if (fileAttached) filledCount++;
+      return;
+    }
+
+    // 2. EEO / Demographic Handling
+    if (engine.isEeoField(combined)) {
+      if (required && input instanceof HTMLSelectElement) {
+        // Find explicit decline option
+        for (let i = 0; i < input.options.length; i++) {
+          const opt = input.options[i];
+          if (DECLINE_OPTION_PATTERN.test(opt.text.trim()) || DECLINE_OPTION_PATTERN.test(opt.value.trim())) {
+            input.selectedIndex = i;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            declineSelectedCount++;
+            return;
+          }
+        }
+      }
+      // Non-required or no decline option -> Leave 100% untouched
+      eeoSkippedCount++;
+      return;
+    }
+
+    // 3. Custom Questions
+    if (input instanceof HTMLTextAreaElement || (type === 'text' && combined.length > 50)) {
+      const answer = customAnswers[id] || customAnswers[name] || customAnswers[combined] || Object.values(customAnswers)[0];
+      if (answer && (!input.value || input.value.trim() === '')) {
+        setReactInputValue(input as any, answer);
+        filledCount++;
+        return;
+      }
+    }
+
+    // 4. Standard Profile Fields
+    const match = engine.matchFieldKey(combined, type);
+    if (match && match.fieldKey) {
+      const val = engine.resolveFieldValue(profile, match.fieldKey);
+      if (val) {
+        if (input instanceof HTMLSelectElement) {
+          // Select closest matching option
+          for (let i = 0; i < input.options.length; i++) {
+            const opt = input.options[i];
+            if (opt.text.toLowerCase().includes(val.toLowerCase()) || opt.value.toLowerCase().includes(val.toLowerCase())) {
+              input.selectedIndex = i;
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+              filledCount++;
+              return;
+            }
+          }
+        } else if (input instanceof HTMLInputElement && (type === 'radio' || type === 'checkbox')) {
+          if (match.fieldKey === 'requiresVisaSponsorship') {
+            const isYes = val === 'Yes';
+            const radioLabel = label.toLowerCase();
+            if ((isYes && radioLabel.includes('yes')) || (!isYes && radioLabel.includes('no'))) {
+              input.checked = true;
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+              filledCount++;
+            }
+          }
+        } else {
+          setReactInputValue(input as any, val);
+          filledCount++;
+        }
+      }
     }
   });
 
-  showAutofillToast(filledCount);
-  return filledCount;
+  showAutofillToast(filledCount, eeoSkippedCount);
+  return { filledCount, eeoSkippedCount, declineSelectedCount, fileAttached, fileVerified };
 }
 
-function showAutofillToast(count: number): void {
+/**
+ * Submits the ATS application and verifies positive confirmation signals.
+ */
+async function submitAndVerify(portal: string): Promise<{ success: boolean; signal?: string; error?: string }> {
+  // 1. Locate Submit Button
+  const submitSelectors = [
+    'button[type="submit"]',
+    'input[type="submit"]',
+    '#submit_app',
+    '#create_application',
+    'button:contains("Submit Application")',
+    'button:contains("Submit application")',
+    'button:contains("Submit")',
+    '[data-qa="btn-submit"]',
+    '.postings-btn-wrapper button',
+  ];
+
+  let submitBtn: HTMLElement | null = null;
+  for (const sel of submitSelectors) {
+    try {
+      const found = document.querySelector(sel);
+      if (found && (found as HTMLElement).offsetParent !== null) {
+        submitBtn = found as HTMLElement;
+        break;
+      }
+    } catch {}
+  }
+
+  // Text search fallback for buttons
+  if (!submitBtn) {
+    const allButtons = Array.from(document.querySelectorAll('button, a.button, input[type="button"]'));
+    submitBtn = (allButtons.find((btn) => {
+      const txt = (btn.textContent || (btn as HTMLInputElement).value || '').toLowerCase().trim();
+      return (txt.includes('submit') || txt.includes('apply')) && !txt.includes('cancel') && !txt.includes('back');
+    }) as HTMLElement) || null;
+  }
+
+  if (!submitBtn) {
+    return { success: false, error: 'Could not locate the final Submit Application button on this page.' };
+  }
+
+  // 2. Click the button
+  submitBtn.click();
+
+  // 3. Monitor for Positive Confirmation Signals (poll up to 7 seconds)
+  const startTime = Date.now();
+  while (Date.now() - startTime < 7000) {
+    await new Promise((r) => setTimeout(r, 500));
+
+    const url = window.location.href.toLowerCase();
+    const bodyText = document.body.textContent?.toLowerCase() || '';
+
+    // Error detection
+    const hasVisibleError = document.querySelector('.field-error, [aria-invalid="true"], .error-message, .alert-danger');
+    if (hasVisibleError) {
+      const errText = hasVisibleError.textContent?.trim() || 'Form validation error detected on page';
+      return { success: false, error: errText };
+    }
+
+    // Greenhouse Confirmation
+    if (portal === 'greenhouse' && (url.includes('/confirmation') || url.includes('/thanks') || bodyText.includes('thank you for applying to') || document.querySelector('.confirmation-message, #application_confirmation'))) {
+      return { success: true, signal: 'Greenhouse Confirmation Page Detected' };
+    }
+
+    // Lever Confirmation
+    if (portal === 'lever' && (url.includes('/thanks') || bodyText.includes('your application has been submitted') || document.querySelector('.application-submitted, .thanks-message'))) {
+      return { success: true, signal: 'Lever Submission Confirmation Detected' };
+    }
+
+    // Ashby Confirmation
+    if (portal === 'ashby' && (url.includes('/submitted') || bodyText.includes('application received') || document.querySelector('[data-testid="application-success"]'))) {
+      return { success: true, signal: 'Ashby Submission Confirmation Detected' };
+    }
+
+    // SmartRecruiters Confirmation
+    if (portal === 'smartrecruiters' && (url.includes('/success') || bodyText.includes('application sent') || document.querySelector('.success-header, .confirmation'))) {
+      return { success: true, signal: 'SmartRecruiters Confirmation Detected' };
+    }
+
+    // Generic Positive Confirmation
+    if (bodyText.includes('thank you for applying') || bodyText.includes('application successfully submitted') || bodyText.includes('application has been received')) {
+      return { success: true, signal: 'Application Confirmation Message Verified' };
+    }
+  }
+
+  return { success: false, error: 'Submission initiated, but positive confirmation was not received within 7 seconds. Please verify on the tab.' };
+}
+
+function showAutofillToast(filled: number, eeoSkipped: number): void {
   const existing = document.getElementById('rh-autofill-toast');
   if (existing) existing.remove();
 
@@ -128,22 +357,50 @@ function showAutofillToast(count: number): void {
     gap: 8px;
     animation: rh-pop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   `;
-  toast.innerHTML = `<span>⚡ ResumeHack:</span> <span>Autofilled <strong>${count}</strong> application fields!</span>`;
+  toast.innerHTML = `<span>⚡ ResumeHack:</span> <span>Assembled <strong>${filled}</strong> fields</span> ${eeoSkipped > 0 ? `<span style="color:#94A3B8; font-weight:normal;">(${eeoSkipped} EEO skipped)</span>` : ''}`;
   document.body.appendChild(toast);
 
   setTimeout(() => toast.remove(), 4000);
 }
 
-// Listen for autofill trigger from sidepanel or mascot
+// ────────────────────────────────────────────────────────────────────────────
+// Message Handlers
+// ────────────────────────────────────────────────────────────────────────────
+
 if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
   try {
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-      if (message.type === 'TRIGGER_AUTOFILL') {
-        const filled = autofillFields();
-        sendResponse({ success: true, filledCount: filled });
+      if (message.type === 'SCAN_FORM') {
+        const result = scanPageForm();
+        sendResponse({ success: true, data: result });
         return true;
       }
+
+      if (message.type === 'EXECUTE_AUTOFILL') {
+        const { profile, customAnswers, pdfBase64, pdfFileName } = message.payload || {};
+        const res = applyAutofill(profile || DEFAULT_APPLICANT_PROFILE, customAnswers || {}, pdfBase64, pdfFileName);
+        sendResponse({ success: true, data: res });
+        return true;
+      }
+
+      if (message.type === 'EXECUTE_SUBMIT') {
+        const { portal } = message.payload || { portal: 'generic_form' };
+        submitAndVerify(portal).then((submitRes) => {
+          sendResponse(submitRes);
+        });
+        return true; // Keep message channel open for async response
+      }
+
+      // Legacy fallback
+      if (message.type === 'TRIGGER_AUTOFILL') {
+        const res = applyAutofill(DEFAULT_APPLICANT_PROFILE);
+        sendResponse({ success: true, filledCount: res.filledCount });
+        return true;
+      }
+
       return false;
     });
-  } catch { /* context invalidated */ }
+  } catch {
+    /* context invalidated */
+  }
 }

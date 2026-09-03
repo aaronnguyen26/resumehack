@@ -281,10 +281,11 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
                 </button>
                 <button
                   onClick={onTriggerAutofill}
-                  className="px-2 py-1 text-[10px] font-semibold rounded bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 flex items-center gap-1"
+                  className="px-2.5 py-1 text-[10px] font-bold rounded bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border border-amber-200 hover:from-amber-100 hover:to-orange-100 flex items-center gap-1 shadow-2xs"
+                  title="Prepare, inspect, and review auto-apply application"
                 >
                   <Zap className="w-3 h-3 text-amber-600" />
-                  <span>Autofill</span>
+                  <span>Auto-Apply</span>
                 </button>
               </div>
             </div>

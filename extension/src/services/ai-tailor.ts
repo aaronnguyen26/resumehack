@@ -23,6 +23,7 @@ import {
   AiProvider,
   AiSettings,
   PROVIDER_MODEL_PRESETS,
+  ApplicantProfile,
 } from '../types/index.js';
 import { calculateLineBudget } from './llm-tailor.js';
 import { RobustTextMatcher } from './google-docs.js';
@@ -905,4 +906,63 @@ function repairTruncatedJson(jsonStr: string): string {
   }
 
   return cleaned;
+}
+
+export async function generateCustomQuestionAnswer(
+  question: string,
+  jobContext: { title: string; company: string; description: string },
+  candidateContext: { name: string; profile: ApplicantProfile; resumeBullets: string[] },
+  customAiSettings?: AiSettings
+): Promise<string> {
+  const aiSettings = customAiSettings || (await getAiSettings());
+  const apiKey = aiSettings?.apiKey || EMBEDDED_GEMINI_API_KEY;
+  const provider = aiSettings?.provider || 'gemini';
+
+  const systemPrompt = `You are an elite career coach helping ${candidateContext.name} draft an exceptional, authentic, and grounded response to a specific job application question.
+
+CRITICAL ANTI-HALLUCINATION GUARDRAILS:
+1. STRICT TRUTH ENFORCEMENT: Ground your answer ONLY in the candidate's actual projects, skills, education, and resume accomplishments provided below.
+2. ZERO FABRICATION: NEVER invent company names, metrics, tools, certifications, or past roles not listed in the candidate profile.
+3. CONCISE & COMPELLING: Write 2 to 3 polished sentences (under 120 words total).
+4. DIRECT & NATURAL: Answer the question directly without generic fluff or cliches.`;
+
+  const userPrompt = `TARGET JOB: ${jobContext.title} at ${jobContext.company}
+JOB DESCRIPTION SUMMARY:
+${jobContext.description.slice(0, 1500)}
+
+CANDIDATE BACKGROUND:
+- Name: ${candidateContext.name}
+- School & Degree: ${candidateContext.profile.school}, ${candidateContext.profile.degree} in ${candidateContext.profile.major}
+- Verified Resume Accomplishments:
+${candidateContext.resumeBullets.slice(0, 8).map(b => `• ${b}`).join('\n')}
+
+APPLICATION QUESTION TO ANSWER:
+"${question}"
+
+Draft a direct, factual 2-3 sentence response grounded in the candidate's verified experience:`;
+
+  if (provider === 'gemini' && apiKey) {
+    const model = aiSettings?.model || 'gemini-2.0-flash';
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 250 },
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (text) return text.replace(/^"|"$/g, '');
+      }
+    } catch (err) {
+      console.debug('[generateCustomQuestionAnswer] Gemini error:', err);
+    }
+  }
+
+  // Safe factual fallback template
+  return `At ${candidateContext.profile.school}, I developed strong foundational experience in ${candidateContext.profile.major}. I am particularly excited about ${jobContext.company}'s work in ${jobContext.title} and eager to contribute my technical background to your engineering team.`;
 }

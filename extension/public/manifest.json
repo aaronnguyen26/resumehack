@@ -38,8 +38,11 @@
       "matches": [
         "https://www.linkedin.com/jobs/*",
         "https://*.greenhouse.io/*",
+        "https://job-boards.greenhouse.io/*",
         "https://*.lever.co/*",
         "https://*.myworkdayjobs.com/*",
+        "https://*.ashbyhq.com/*",
+        "https://*.smartrecruiters.com/*",
         "https://*.indeed.com/*",
         "https://*.joinhandshake.com/*"
       ],
@@ -63,8 +66,11 @@
     {
       "matches": [
         "https://*.greenhouse.io/*",
+        "https://job-boards.greenhouse.io/*",
         "https://*.lever.co/*",
-        "https://*.myworkdayjobs.com/*"
+        "https://*.myworkdayjobs.com/*",
+        "https://*.ashbyhq.com/*",
+        "https://*.smartrecruiters.com/*"
       ],
       "js": ["content-scripts/content_autofill.js"],
       "run_at": "document_idle"
