@@ -1,39 +1,7 @@
 import { ApplicationRecord, ApplicantProfile } from '../types/index.js';
 
-const DEFAULT_APPLICATIONS: ApplicationRecord[] = [
-  {
-    id: 'app-1',
-    jobId: 'job-1',
-    company: 'Stripe',
-    title: 'Software Engineering Intern',
-    location: 'San Francisco, CA',
-    status: 'Tailored',
-    jobUrl: 'https://stripe.com/jobs/search?q=intern',
-    masterDocId: 'mock-master-doc',
-    tailoredDocId: 'tailored-stripe-1',
-    tailoredDocUrl: 'https://docs.google.com/document/d/tailored-stripe-1/edit',
-    pdfExportUrl: 'https://docs.google.com/document/d/tailored-stripe-1/export?format=pdf',
-    atsScoreAtApplication: 92,
-    salary: '$58 - $65 / hr',
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: 'app-2',
-    jobId: 'job-2',
-    company: 'OpenAI',
-    title: 'AI / Full-Stack Engineer Intern',
-    location: 'San Francisco, CA',
-    status: 'Applied',
-    appliedDate: '2026-08-20',
-    jobUrl: 'https://openai.com/careers',
-    masterDocId: 'mock-master-doc',
-    tailoredDocId: 'tailored-openai-1',
-    tailoredDocUrl: 'https://docs.google.com/document/d/tailored-openai-1/edit',
-    atsScoreAtApplication: 95,
-    salary: '$65 - $75 / hr',
-    updatedAt: new Date().toISOString()
-  }
-];
+// New users start with an empty application tracker — no fake seed data.
+const DEFAULT_APPLICATIONS: ApplicationRecord[] = [];
 
 export interface StoredSettings {
   masterDocId: string;
@@ -52,12 +20,13 @@ export const EMBEDDED_GOOGLE_ACCESS_TOKEN = '';
 export const EMBEDDED_GOOGLE_REFRESH_TOKEN = '';
 
 const DEFAULT_SETTINGS: StoredSettings = {
-  masterDocId: '1A2b3C4d5E6F7g8H9i0J_AlexChen_Master',
-  candidateName: 'Alex Chen',
+  masterDocId: '',
+  candidateName: '',
   targetTitle: 'Software Engineer',
   strictAntiHallucination: true,
   googleAccessToken: undefined,
   googleRefreshToken: undefined,
+  // Internal OAuth client ID — managed by the extension, never exposed to users.
   googleClientId: '412130143258-4b1t8drhkii7hqagt7sdvd8n3qmchl8i.apps.googleusercontent.com',
   googleUserEmail: undefined,
 };
@@ -446,20 +415,20 @@ export async function saveStoredApplications(apps: ApplicationRecord[]): Promise
 }
 
 export const DEFAULT_APPLICANT_PROFILE: ApplicantProfile = {
-  firstName: 'Alex',
-  lastName: 'Chen',
-  fullName: 'Alex Chen',
-  email: 'alex.chen@example.com',
-  phone: '415-555-0199',
-  location: 'San Francisco, CA',
-  linkedinUrl: 'https://linkedin.com/in/alexchen',
-  githubUrl: 'https://github.com/alexchen',
-  portfolioUrl: 'https://alexchen.dev',
-  school: 'University of California, Berkeley',
-  degree: 'Bachelor of Science',
-  major: 'Computer Science',
-  gpa: '3.85',
-  gradMonthYear: 'May 2026',
+  firstName: '',
+  lastName: '',
+  fullName: '',
+  email: '',
+  phone: '',
+  location: '',
+  linkedinUrl: '',
+  githubUrl: '',
+  portfolioUrl: '',
+  school: '',
+  degree: '',
+  major: '',
+  gpa: '',
+  gradMonthYear: '',
   workAuthorization: 'US_CITIZEN',
   requiresVisaSponsorship: false,
 };
@@ -474,7 +443,6 @@ export async function getStoredApplicantProfile(): Promise<ApplicantProfile> {
             ...result.resumehack_applicant_profile,
           });
         } else {
-          chrome.storage.local.set({ resumehack_applicant_profile: DEFAULT_APPLICANT_PROFILE });
           resolve(DEFAULT_APPLICANT_PROFILE);
         }
       });
@@ -513,3 +481,51 @@ export async function saveStoredApplicantProfile(profile: Partial<ApplicantProfi
     }
   } catch {}
 }
+
+/**
+ * Returns true if the user has filled in the minimum required fields
+ * (first name, last name, email) so auto-apply can proceed safely.
+ */
+export function isProfileComplete(profile: ApplicantProfile): boolean {
+  return (
+    profile.firstName.trim().length > 0 &&
+    profile.lastName.trim().length > 0 &&
+    profile.email.trim().length > 0
+  );
+}
+
+/**
+ * Returns true if this appears to be a brand-new user who has never
+ * saved their profile. Used to trigger the onboarding flow.
+ */
+export async function isNewUser(): Promise<boolean> {
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['resumehack_applicant_profile', 'resumehack_onboarding_complete'], (result: any) => {
+        if (result.resumehack_onboarding_complete) {
+          resolve(false);
+          return;
+        }
+        if (!result.resumehack_applicant_profile) {
+          resolve(true);
+          return;
+        }
+        const p = result.resumehack_applicant_profile as ApplicantProfile;
+        resolve(!isProfileComplete(p));
+      });
+    });
+  }
+  return false;
+}
+
+/**
+ * Marks onboarding as completed so it never shows again.
+ */
+export async function markOnboardingComplete(): Promise<void> {
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ resumehack_onboarding_complete: true }, () => resolve());
+    });
+  }
+}
+

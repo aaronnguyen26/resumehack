@@ -132,8 +132,12 @@ export const TrackerTab: React.FC<TrackerTabProps> = ({
         ))}
 
         {filtered.length === 0 && (
-          <div className="text-center py-8 text-slate-400 text-xs">
-            No applications in this category yet.
+          <div className="text-center py-10 space-y-2">
+            <div className="text-2xl">📋</div>
+            <p className="text-slate-600 text-xs font-semibold">No applications yet</p>
+            <p className="text-slate-400 text-[10px] leading-relaxed max-w-[200px] mx-auto">
+              Find a job in the Discovery tab, tailor your resume, then submit — it'll appear here automatically.
+            </p>
           </div>
         )}
       </div>

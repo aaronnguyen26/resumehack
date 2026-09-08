@@ -19,8 +19,11 @@ import {
   getGoogleAccessToken, 
   refreshGoogleAccessToken,
   getStoredApplicantProfile,
-  DEFAULT_APPLICANT_PROFILE
+  DEFAULT_APPLICANT_PROFILE,
+  isNewUser,
+  markOnboardingComplete,
 } from '../services/storage.js';
+import { OnboardingModal } from './components/OnboardingModal.js';
 import { 
   JobPosting, 
   ScrapedJobData, 
@@ -96,8 +99,16 @@ export const App: React.FC = () => {
     fileName: 'Resume_Tailored.pdf',
   });
 
+  // Onboarding state — true until the user has completed profile setup
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+
   useEffect(() => {
     getStoredApplications().then(apps => setApplications(apps));
+
+    // Check if this is a new user who needs to complete onboarding
+    isNewUser().then((needsOnboarding) => {
+      if (needsOnboarding) setIsOnboardingOpen(true);
+    });
 
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       chrome.storage.local.get(
@@ -1820,6 +1831,16 @@ export const App: React.FC = () => {
         submitSuccess={submitAppSuccess}
         pdfAttachmentState={pdfAttachmentState}
       />
+
+      {/* Onboarding modal — shown once to new users who haven't set up their profile */}
+      {isOnboardingOpen && (
+        <OnboardingModal
+          onComplete={(savedProfile) => {
+            setApplicantProfile(savedProfile);
+            setIsOnboardingOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 };

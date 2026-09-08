@@ -197,6 +197,26 @@ describe('AutoSubmitEngine ATS Integration, EEO Fail-Safe & Multi-Portal Rules',
   });
 
   it('plans a comprehensive autofill run with standard fields, EEO skips, and custom questions', () => {
+    // Use an explicit complete profile — DEFAULT_APPLICANT_PROFILE is now all-empty strings
+    // (no fake seed data). This test must not depend on the defaults being pre-filled.
+    const completeProfile = {
+      ...DEFAULT_APPLICANT_PROFILE,
+      firstName: 'Alex',
+      lastName: 'Chen',
+      fullName: 'Alex Chen',
+      email: 'alex.chen@example.com',
+      phone: '415-555-0199',
+      location: 'San Francisco, CA',
+      linkedinUrl: 'https://linkedin.com/in/alexchen',
+      githubUrl: 'https://github.com/alexchen',
+      portfolioUrl: 'https://alexchen.dev',
+      school: 'University of California, Berkeley',
+      degree: 'Bachelor of Science',
+      major: 'Computer Science',
+      gpa: '3.85',
+      gradMonthYear: 'May 2026',
+    };
+
     const mockFormInputs: FormInputDescriptor[] = [
       { id: 'first_name', name: 'first_name', label: 'First Name', type: 'text', required: true },
       { id: 'last_name', name: 'last_name', label: 'Last Name', type: 'text', required: true },
@@ -221,7 +241,7 @@ describe('AutoSubmitEngine ATS Integration, EEO Fail-Safe & Multi-Portal Rules',
       },
     ];
 
-    const report = engine.planAutoFill('greenhouse', mockFormInputs, DEFAULT_APPLICANT_PROFILE);
+    const report = engine.planAutoFill('greenhouse', mockFormInputs, completeProfile);
 
     expect(report.portal).toBe('greenhouse');
     expect(report.fieldsFound).toBe(7);

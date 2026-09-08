@@ -19,7 +19,8 @@ import {
   ChevronDown,
   ChevronUp,
   CheckCircle2,
-  Lock
+  Lock,
+  Edit3,
 } from 'lucide-react';
 import { 
   getStoredSettings, 
@@ -30,7 +31,8 @@ import {
   refreshGoogleAccessToken,
   getStoredApplicantProfile,
   saveStoredApplicantProfile,
-  DEFAULT_APPLICANT_PROFILE
+  DEFAULT_APPLICANT_PROFILE,
+  markOnboardingComplete,
 } from '../../services/storage.js';
 import {
   authenticateGoogleAccount,
@@ -49,8 +51,8 @@ import { openGoogleDocPicker } from '../../services/google-picker.js';
 import { PROVIDER_MODEL_PRESETS, ApplicantProfile } from '../../types/index.js';
 
 export const SettingsTab: React.FC = () => {
-  const [masterDocId, setMasterDocId] = useState('1A2b3C4d5E6F7g8H9i0J_AlexChen_Master');
-  const [candidateName, setCandidateName] = useState('Alex Chen');
+  // Master doc is tracked by name only — the actual ID is stored internally, never shown raw
+  const [masterDocName, setMasterDocName] = useState<string | null>(null);
   const [targetTitle, setTargetTitle] = useState('Software Engineer');
   const [strictAntiHallucination, setStrictAntiHallucination] = useState(true);
   
@@ -59,6 +61,7 @@ export const SettingsTab: React.FC = () => {
   const [selectedDocTitle, setSelectedDocTitle] = useState<string | null>(null);
   const [pickerMessage, setPickerMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showManualDocInput, setShowManualDocInput] = useState(false);
+  const [manualDocId, setManualDocId] = useState('');
 
   // OAuth & Custom Token State
   const [connectionMode, setConnectionMode] = useState<'refresh_token' | 'access_token'>('refresh_token');
@@ -113,8 +116,12 @@ export const SettingsTab: React.FC = () => {
     getStoredApplicantProfile().then(setApplicantProfile);
 
     getStoredSettings().then(async (settings) => {
-      if (settings.masterDocId) setMasterDocId(settings.masterDocId);
-      if (settings.candidateName) setCandidateName(settings.candidateName);
+      // Show the selected doc name if available (ID stays internal)
+      if (settings.masterDocId) {
+        // We store the name separately when the user picks via Picker.
+        // For legacy stored IDs we just show a truncated indicator, not the raw ID.
+        setMasterDocName(selectedDocTitle || null);
+      }
       if (settings.targetTitle) setTargetTitle(settings.targetTitle);
       if (settings.strictAntiHallucination !== undefined) {
         setStrictAntiHallucination(settings.strictAntiHallucination);
@@ -150,6 +157,16 @@ export const SettingsTab: React.FC = () => {
         }
       }
     });
+
+    // Load selected doc name from storage (set when picker was used)
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.get(['resumehack_master_doc_name'], (result) => {
+        if (result.resumehack_master_doc_name) {
+          setSelectedDocTitle(result.resumehack_master_doc_name);
+          setMasterDocName(result.resumehack_master_doc_name);
+        }
+      });
+    }
   }, []);
 
   const checkSilentChromeOAuth = () => {
@@ -572,8 +589,6 @@ export const SettingsTab: React.FC = () => {
 
   const handleSavePreferences = async () => {
     await saveStoredSettings({
-      masterDocId,
-      candidateName,
       targetTitle,
       strictAntiHallucination,
       googleAccessToken: customToken.trim() || undefined,
@@ -1301,100 +1316,129 @@ export const SettingsTab: React.FC = () => {
           <div className="flex items-center gap-1.5">
             <FileText className="w-4 h-4 text-brand-600" />
             <h3 className="font-headline font-bold text-xs text-slate-900">
-              Master Resume Configuration
+              Master Resume Document
             </h3>
           </div>
           <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono font-medium">
-            drive.file scope
+            Google Drive
           </span>
         </div>
 
         {/* Primary Document Selection via Google Picker */}
         <div className="bg-gradient-to-r from-blue-50/60 to-indigo-50/60 p-3 rounded border border-blue-200/70 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
-              <span>Master Google Doc</span>
-              <span className="text-[10px] text-brand-600 font-normal">(Primary Connection)</span>
-            </label>
-            {masterDocId && (
-              <span className="text-[9px] font-mono text-slate-500 bg-white/80 px-1.5 py-0.2 rounded border border-slate-200">
-                {masterDocId.slice(0, 16)}…
-              </span>
-            )}
-          </div>
-
-          <p className="text-[10px] text-slate-600 leading-tight">
-            Under Google's secure <code className="font-mono bg-blue-100/70 px-1 py-0.2 rounded text-[9px] text-blue-800">drive.file</code> scope, you must select your resume via Google Drive Picker to authorize document reads, edits, and PDF exports.
+          <p className="text-[10px] text-slate-600 leading-relaxed">
+            Select your master resume from Google Drive. ResumeHack will read and edit this document when applying tailored bullets.
           </p>
 
-          <button
-            type="button"
-            onClick={async () => {
-              setIsOpeningPicker(true);
-              setPickerMessage(null);
-              try {
-                let token = await getGoogleAccessToken();
-                if (!token) {
-                  const authRes = await authenticateGoogleAccount(true);
-                  if (authRes.success && authRes.accessToken) {
-                    token = authRes.accessToken;
-                    setAuthStatus('connected');
-                  } else {
-                    setPickerMessage({
-                      text: 'Please connect your Google Account in the section above to launch Google Drive.',
-                      type: 'error',
-                    });
-                    setIsOpeningPicker(false);
-                    return;
-                  }
-                }
-
-                await openGoogleDocPicker({
-                  accessToken: token,
-                  onPicked: async (doc) => {
-                    setMasterDocId(doc.id);
-                    setSelectedDocTitle(doc.name);
-                    await saveStoredSettings({ masterDocId: doc.id });
-                    setPickerMessage({
-                      text: `✓ Selected and authorized "${doc.name}" from Google Drive!`,
-                      type: 'success',
-                    });
-                    setIsOpeningPicker(false);
-                  },
-                  onCancel: () => {
-                    setIsOpeningPicker(false);
-                  },
-                  onError: (err) => {
-                    setPickerMessage({
-                      text: `Google Picker: ${err.message}. You may use manual entry below if needed.`,
-                      type: 'error',
-                    });
-                    setIsOpeningPicker(false);
-                  },
-                });
-              } catch (err: any) {
-                setPickerMessage({
-                  text: `Picker error: ${err.message}`,
-                  type: 'error',
-                });
-                setIsOpeningPicker(false);
-              }
-            }}
-            disabled={isOpeningPicker}
-            className="w-full py-2 px-3 rounded bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
-          >
-            <Cloud className="w-3.5 h-3.5" />
-            <span>{isOpeningPicker ? 'Opening Google Drive Picker…' : 'Select from Google Drive (Google Picker)'}</span>
-          </button>
-
-          {/* Selected Doc Status Banner */}
-          {selectedDocTitle && (
-            <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 p-2 rounded text-[11px]">
+          {/* Show selected doc name (never show the raw ID) */}
+          {(selectedDocTitle || masterDocName) ? (
+            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 p-2 rounded text-[11px] text-emerald-900">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <div className="truncate">
-                <span className="font-semibold">Authorized Doc:</span> {selectedDocTitle}
+              <div className="flex-1 min-w-0">
+                <span className="font-semibold block">Connected Resume:</span>
+                <span className="truncate block">{selectedDocTitle || masterDocName}</span>
               </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsOpeningPicker(true);
+                  setPickerMessage(null);
+                  try {
+                    let token = await getGoogleAccessToken();
+                    if (!token) {
+                      const authRes = await authenticateGoogleAccount(true);
+                      if (authRes.success && authRes.accessToken) {
+                        token = authRes.accessToken;
+                        setAuthStatus('connected');
+                      } else {
+                        setPickerMessage({ text: 'Connect your Google Account first.', type: 'error' });
+                        setIsOpeningPicker(false);
+                        return;
+                      }
+                    }
+                    await openGoogleDocPicker({
+                      accessToken: token,
+                      onPicked: async (doc) => {
+                        setSelectedDocTitle(doc.name);
+                        setMasterDocName(doc.name);
+                        await saveStoredSettings({ masterDocId: doc.id });
+                        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+                          chrome.storage.local.set({ resumehack_master_doc_name: doc.name });
+                        }
+                        setPickerMessage({ text: `✓ Switched to "${doc.name}"`, type: 'success' });
+                        setIsOpeningPicker(false);
+                      },
+                      onCancel: () => { setIsOpeningPicker(false); },
+                      onError: (err) => {
+                        setPickerMessage({ text: `Picker error: ${err.message}`, type: 'error' });
+                        setIsOpeningPicker(false);
+                      },
+                    });
+                  } catch (err: any) {
+                    setPickerMessage({ text: `Error: ${err.message}`, type: 'error' });
+                    setIsOpeningPicker(false);
+                  }
+                }}
+                disabled={isOpeningPicker}
+                className="shrink-0 text-[10px] text-emerald-700 hover:text-emerald-900 font-semibold underline disabled:opacity-50"
+              >
+                Change
+              </button>
             </div>
+          ) : (
+            <button
+              type="button"
+              onClick={async () => {
+                setIsOpeningPicker(true);
+                setPickerMessage(null);
+                try {
+                  let token = await getGoogleAccessToken();
+                  if (!token) {
+                    const authRes = await authenticateGoogleAccount(true);
+                    if (authRes.success && authRes.accessToken) {
+                      token = authRes.accessToken;
+                      setAuthStatus('connected');
+                    } else {
+                      setPickerMessage({
+                        text: 'Please connect your Google Account in the section above first.',
+                        type: 'error',
+                      });
+                      setIsOpeningPicker(false);
+                      return;
+                    }
+                  }
+                  await openGoogleDocPicker({
+                    accessToken: token,
+                    onPicked: async (doc) => {
+                      setSelectedDocTitle(doc.name);
+                      setMasterDocName(doc.name);
+                      await saveStoredSettings({ masterDocId: doc.id });
+                      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+                        chrome.storage.local.set({ resumehack_master_doc_name: doc.name });
+                      }
+                      setPickerMessage({ text: `✓ Connected "${doc.name}" from Google Drive!`, type: 'success' });
+                      setIsOpeningPicker(false);
+                    },
+                    onCancel: () => { setIsOpeningPicker(false); },
+                    onError: (err) => {
+                      setPickerMessage({
+                        text: `Google Picker: ${err.message}`,
+                        type: 'error',
+                      });
+                      setIsOpeningPicker(false);
+                    },
+                  });
+                } catch (err: any) {
+                  setPickerMessage({ text: `Picker error: ${err.message}`, type: 'error' });
+                  setIsOpeningPicker(false);
+                }
+              }}
+              disabled={isOpeningPicker}
+              className="w-full py-2 px-3 rounded bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
+            >
+              <Cloud className="w-3.5 h-3.5" />
+              <span>{isOpeningPicker ? 'Opening Google Drive…' : 'Select Resume from Google Drive'}</span>
+            </button>
           )}
 
           {pickerMessage && (
@@ -1411,46 +1455,6 @@ export const SettingsTab: React.FC = () => {
               <span>{pickerMessage.text}</span>
             </div>
           )}
-
-          {/* Fallback Manual Doc ID Toggle */}
-          <div className="pt-1">
-            <button
-              type="button"
-              onClick={() => setShowManualDocInput(!showManualDocInput)}
-              className="text-[10px] text-slate-500 hover:text-slate-700 flex items-center gap-1 transition-colors"
-            >
-              {showManualDocInput ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-              <span>{showManualDocInput ? 'Hide manual Doc ID entry' : 'Advanced: Enter Google Doc ID manually'}</span>
-            </button>
-
-            {showManualDocInput && (
-              <div className="mt-2 p-2 bg-amber-50/70 border border-amber-200/80 rounded space-y-1.5 text-slate-700">
-                <label className="text-[10px] font-bold text-amber-900 block">
-                  Manual Google Doc ID (Advanced Fallback)
-                </label>
-                <input
-                  type="text"
-                  value={masterDocId}
-                  onChange={(e) => setMasterDocId(e.target.value)}
-                  placeholder="Paste Google Doc ID (e.g. 1A2b3C4d...)"
-                  className="w-full px-2 py-1 bg-white border border-amber-300 rounded font-mono text-[10px] text-slate-900 focus:outline-none focus:border-brand-500"
-                />
-                <p className="text-[9px] text-amber-800 leading-tight">
-                  ⚠️ <strong>drive.file Notice:</strong> Manually entered doc IDs that were not selected via Google Picker may fail to authorize under the strict <code className="font-mono">drive.file</code> scope. Selection via Google Picker is recommended.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-[11px] font-semibold text-slate-700">Candidate Full Name</label>
-          <input
-            type="text"
-            value={candidateName}
-            onChange={(e) => setCandidateName(e.target.value)}
-            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-          />
         </div>
 
         <div className="space-y-1">
@@ -1459,6 +1463,7 @@ export const SettingsTab: React.FC = () => {
             type="text"
             value={targetTitle}
             onChange={(e) => setTargetTitle(e.target.value)}
+            placeholder="e.g. Software Engineer, Product Manager"
             className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
           />
         </div>
@@ -1483,6 +1488,34 @@ export const SettingsTab: React.FC = () => {
         >
           {saved ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : null}
           <span>{saved ? 'Preferences Saved!' : 'Save Preferences'}</span>
+        </button>
+      </div>
+
+      {/* Re-run Profile Setup */}
+      <div className="bg-white p-3.5 rounded-stitch border border-slate-200 shadow-sm space-y-2">
+        <div className="flex items-center gap-1.5">
+          <Edit3 className="w-4 h-4 text-slate-500" />
+          <h3 className="font-headline font-bold text-xs text-slate-900">Profile Setup</h3>
+        </div>
+        <p className="text-[10px] text-slate-500 leading-relaxed">
+          Need to update your name, email, or school? Re-run the setup wizard to update your applicant profile.
+        </p>
+        <button
+          type="button"
+          onClick={async () => {
+            // Reset the onboarding flag so it shows again on next load
+            if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+              await new Promise<void>((resolve) => {
+                chrome.storage.local.remove(['resumehack_onboarding_complete'], () => resolve());
+              });
+            }
+            // Reload the sidepanel to trigger the onboarding check
+            window.location.reload();
+          }}
+          className="w-full py-1.5 px-3 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+        >
+          <Edit3 className="w-3.5 h-3.5" />
+          <span>Re-run Profile Setup Wizard</span>
         </button>
       </div>
 
