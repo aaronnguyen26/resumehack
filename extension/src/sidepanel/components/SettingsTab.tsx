@@ -21,6 +21,9 @@ import {
   CheckCircle2,
   Lock,
   Edit3,
+  Sun,
+  Moon,
+  Laptop,
 } from 'lucide-react';
 import { 
   getStoredSettings, 
@@ -49,8 +52,34 @@ import {
 } from '../../services/ai-tailor.js';
 import { openGoogleDocPicker } from '../../services/google-picker.js';
 import { PROVIDER_MODEL_PRESETS, ApplicantProfile } from '../../types/index.js';
+import { ThemeMode, getStoredThemeMode, saveStoredThemeMode } from '../../services/theme.js';
 
-export const SettingsTab: React.FC = () => {
+interface SettingsTabProps {
+  currentThemeMode?: ThemeMode;
+  onThemeChange?: (mode: ThemeMode) => void;
+}
+
+export const SettingsTab: React.FC<SettingsTabProps> = ({ currentThemeMode, onThemeChange }) => {
+  // Appearance / Theme State
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(currentThemeMode || 'system');
+
+  useEffect(() => {
+    if (currentThemeMode) {
+      setThemeModeState(currentThemeMode);
+    } else {
+      getStoredThemeMode().then(setThemeModeState);
+    }
+  }, [currentThemeMode]);
+
+  const handleSelectTheme = async (mode: ThemeMode) => {
+    setThemeModeState(mode);
+    if (onThemeChange) {
+      onThemeChange(mode);
+    } else {
+      await saveStoredThemeMode(mode);
+    }
+  };
+
   // Master doc is tracked by name only — the actual ID is stored internally, never shown raw
   const [masterDocName, setMasterDocName] = useState<string | null>(null);
   const [targetTitle, setTargetTitle] = useState('Software Engineer');
@@ -606,16 +635,78 @@ export const SettingsTab: React.FC = () => {
   return (
     <div className="p-4 space-y-4 pb-20">
       <div>
-        <h2 className="font-headline font-bold text-sm text-slate-900">
+        <h2 className="font-headline font-bold text-sm text-slate-900 dark:text-white">
           Settings & Master Resume
         </h2>
-        <p className="text-[11px] text-slate-500">
-          Configure your Google Docs integration and AI tailoring preferences.
+        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+          Configure your Google Docs integration, appearance, and AI tailoring preferences.
         </p>
       </div>
 
+      {/* Appearance & Dark Mode Card */}
+      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-stitch border border-slate-200 dark:border-slate-800 shadow-sm space-y-3 transition-colors duration-200">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+              <Sun className="w-4 h-4 dark:hidden text-amber-500" />
+              <Moon className="w-4 h-4 hidden dark:block text-indigo-400" />
+            </div>
+            <div>
+              <h3 className="font-headline font-bold text-xs text-slate-900 dark:text-white">
+                Appearance &amp; Dark Mode
+              </h3>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                Stitch Deep Space dark theme or system preference
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold border border-slate-200 dark:border-slate-700">
+            {themeMode}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100/80 dark:bg-slate-800/70 rounded-lg border border-slate-200/50 dark:border-slate-700/50">
+          <button
+            type="button"
+            onClick={() => handleSelectTheme('light')}
+            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-xs font-semibold tab-transition ${
+              themeMode === 'light'
+                ? 'bg-white dark:bg-slate-900 text-brand-700 dark:text-brand-400 shadow-xs border border-slate-200/80 dark:border-slate-700'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <Sun className="w-3.5 h-3.5 text-amber-500" />
+            <span>Light</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSelectTheme('dark')}
+            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-xs font-semibold tab-transition ${
+              themeMode === 'dark'
+                ? 'bg-white dark:bg-slate-900 text-brand-700 dark:text-brand-400 shadow-xs border border-slate-200/80 dark:border-slate-700'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <Moon className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Dark</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSelectTheme('system')}
+            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-xs font-semibold tab-transition ${
+              themeMode === 'system'
+                ? 'bg-white dark:bg-slate-900 text-brand-700 dark:text-brand-400 shadow-xs border border-slate-200/80 dark:border-slate-700'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <Laptop className="w-3.5 h-3.5" />
+            <span>System</span>
+          </button>
+        </div>
+      </div>
+
       {/* Google Account Connection Card */}
-      <div className="bg-white p-3.5 rounded-stitch border border-slate-200 shadow-sm space-y-3">
+      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-stitch border border-slate-200 dark:border-slate-800 shadow-sm space-y-3 transition-colors duration-200">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded bg-brand-50 flex items-center justify-center text-brand-600">
@@ -889,39 +980,39 @@ export const SettingsTab: React.FC = () => {
       </div>
 
       {/* ── AI API Key Card ─────────────────────────────────────────── */}
-      <div className="bg-white p-3.5 rounded-stitch border border-slate-200 shadow-sm space-y-3">
+      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-stitch border border-slate-200 dark:border-slate-800 shadow-sm space-y-3 transition-colors duration-200">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded bg-violet-50 flex items-center justify-center text-violet-600">
+            <div className="w-7 h-7 rounded bg-violet-50 dark:bg-violet-950/60 flex items-center justify-center text-violet-600 dark:text-violet-400">
               <Bot className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-headline font-bold text-xs text-slate-900">
+              <h3 className="font-headline font-bold text-xs text-slate-900 dark:text-white">
                 AI Suggestion Engine
               </h3>
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
                 Gemini, OpenAI, Claude, DeepSeek, or Local Ollama
               </p>
             </div>
           </div>
           {aiKeyStatus === 'saved' ? (
-            <span className="px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200 text-[10px] font-mono font-bold">
+            <span className="px-2 py-0.5 rounded-full bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800 text-[10px] font-mono font-bold">
               AI Active
             </span>
           ) : (
-            <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-mono font-bold">
+            <span className="px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-[10px] font-mono font-bold">
               Rule-Based
             </span>
           )}
         </div>
 
-        <p className="text-[11px] text-slate-600 leading-relaxed">
+        <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
           Connect your preferred LLM to generate high-impact, ATS-optimized STAR bullet rewrites with strict anti-hallucination guardrails.
         </p>
 
         {/* Provider selector */}
         <div className="space-y-1">
-          <label className="text-[11px] font-semibold text-slate-700">AI Provider</label>
+          <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">AI Provider</label>
           <select
             value={aiProvider}
             onChange={(e) => {
@@ -1086,26 +1177,26 @@ export const SettingsTab: React.FC = () => {
       </div>
 
       {/* Auto-Apply Applicant Profile Card */}
-      <div className="bg-white p-3.5 rounded-stitch border border-slate-200 shadow-sm space-y-3.5">
+      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-stitch border border-slate-200 dark:border-slate-800 shadow-sm space-y-3.5 transition-colors duration-200">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <User className="w-4 h-4 text-brand-600" />
-            <h3 className="font-headline font-bold text-xs text-slate-900">
+            <User className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+            <h3 className="font-headline font-bold text-xs text-slate-900 dark:text-white">
               Applicant Profile &amp; Work Auth
             </h3>
           </div>
-          <span className="px-1.5 py-0.2 rounded text-[9px] bg-brand-50 text-brand-700 border border-brand-200 font-mono font-medium">
+          <span className="px-1.5 py-0.2 rounded text-[9px] bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800/50 font-mono font-medium">
             Auto-Apply Store
           </span>
         </div>
 
-        <p className="text-[10px] text-slate-500 leading-tight">
+        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
           Used to assemble job applications and prepare pre-flight previews. Stored securely on your device.
         </p>
 
         {/* Contact & Basics */}
         <div className="space-y-2">
-          <div className="text-[11px] font-bold text-slate-800 border-b border-slate-100 pb-1">
+          <div className="text-[11px] font-bold text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 pb-1">
             Personal &amp; Contact
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -1311,22 +1402,22 @@ export const SettingsTab: React.FC = () => {
       </div>
 
       {/* Master Profile & Document Selection Form */}
-      <div className="bg-white p-3.5 rounded-stitch border border-slate-200 shadow-sm space-y-3.5">
+      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-stitch border border-slate-200 dark:border-slate-800 shadow-sm space-y-3.5 transition-colors duration-200">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <FileText className="w-4 h-4 text-brand-600" />
-            <h3 className="font-headline font-bold text-xs text-slate-900">
+            <FileText className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+            <h3 className="font-headline font-bold text-xs text-slate-900 dark:text-white">
               Master Resume Document
             </h3>
           </div>
-          <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono font-medium">
+          <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 font-mono font-medium">
             Google Drive
           </span>
         </div>
 
         {/* Primary Document Selection via Google Picker */}
-        <div className="bg-gradient-to-r from-blue-50/60 to-indigo-50/60 p-3 rounded border border-blue-200/70 space-y-2.5">
-          <p className="text-[10px] text-slate-600 leading-relaxed">
+        <div className="bg-gradient-to-r from-blue-50/60 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/30 p-3 rounded border border-blue-200/70 dark:border-blue-900/50 space-y-2.5">
+          <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-relaxed">
             Select your master resume from Google Drive. ResumeHack will read and edit this document when applying tailored bullets.
           </p>
 
@@ -1492,12 +1583,12 @@ export const SettingsTab: React.FC = () => {
       </div>
 
       {/* Re-run Profile Setup */}
-      <div className="bg-white p-3.5 rounded-stitch border border-slate-200 shadow-sm space-y-2">
+      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-stitch border border-slate-200 dark:border-slate-800 shadow-sm space-y-2 transition-colors duration-200">
         <div className="flex items-center gap-1.5">
-          <Edit3 className="w-4 h-4 text-slate-500" />
-          <h3 className="font-headline font-bold text-xs text-slate-900">Profile Setup</h3>
+          <Edit3 className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+          <h3 className="font-headline font-bold text-xs text-slate-900 dark:text-white">Profile Setup</h3>
         </div>
-        <p className="text-[10px] text-slate-500 leading-relaxed">
+        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
           Need to update your name, email, or school? Re-run the setup wizard to update your applicant profile.
         </p>
         <button
@@ -1512,7 +1603,7 @@ export const SettingsTab: React.FC = () => {
             // Reload the sidepanel to trigger the onboarding check
             window.location.reload();
           }}
-          className="w-full py-1.5 px-3 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+          className="w-full py-1.5 px-3 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-transparent dark:border-slate-700 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
         >
           <Edit3 className="w-3.5 h-3.5" />
           <span>Re-run Profile Setup Wizard</span>
@@ -1520,27 +1611,27 @@ export const SettingsTab: React.FC = () => {
       </div>
 
       {/* Desktop Mascot Companion Card */}
-      <div className="bg-white p-3.5 rounded-stitch border border-slate-200 shadow-sm space-y-3">
+      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-stitch border border-slate-200 dark:border-slate-800 shadow-sm space-y-3 transition-colors duration-200">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-sm">
+            <div className="w-7 h-7 rounded bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-sm">
               🦉
             </div>
             <div>
-              <h3 className="font-headline font-bold text-xs text-slate-900">
+              <h3 className="font-headline font-bold text-xs text-slate-900 dark:text-white">
                 Desktop Mascot Companion ("Hacky")
               </h3>
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
                 Always-on bottom-right screen assistant
               </p>
             </div>
           </div>
-          <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-mono font-bold">
+          <span className="px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[10px] font-mono font-bold">
             Active
           </span>
         </div>
 
-        <p className="text-[11px] text-slate-600">
+        <p className="text-[11px] text-slate-600 dark:text-slate-300">
           Hacky floats on the bottom right of your browser, automatically detects active Google Docs and job openings, and opens ResumeHack with a single click.
         </p>
 

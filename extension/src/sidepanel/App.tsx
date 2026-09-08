@@ -23,6 +23,7 @@ import {
   isNewUser,
   markOnboardingComplete,
 } from '../services/storage.js';
+import { ThemeMode, initTheme, saveStoredThemeMode } from '../services/theme.js';
 import { OnboardingModal } from './components/OnboardingModal.js';
 import { 
   JobPosting, 
@@ -101,6 +102,30 @@ export const App: React.FC = () => {
 
   // Onboarding state — true until the user has completed profile setup
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+
+  // Appearance & Theme State (Light, Dark, System)
+  const [themeMode, setThemeMode] = useState<ThemeMode>('system');
+  const [isDark, setIsDark] = useState<boolean>(false);
+
+  useEffect(() => {
+    const cleanup = initTheme((isDarkMode, mode) => {
+      setIsDark(isDarkMode);
+      setThemeMode(mode);
+    });
+    return cleanup;
+  }, []);
+
+  const handleToggleTheme = async () => {
+    const nextMode: ThemeMode = isDark ? 'light' : 'dark';
+    setThemeMode(nextMode);
+    setIsDark(nextMode === 'dark');
+    await saveStoredThemeMode(nextMode);
+  };
+
+  const handleThemeChange = async (mode: ThemeMode) => {
+    setThemeMode(mode);
+    await saveStoredThemeMode(mode);
+  };
 
   useEffect(() => {
     getStoredApplications().then(apps => setApplications(apps));
@@ -1755,12 +1780,15 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-200">
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         connectedDocTitle={screenResume?.title || (parsedResume?.candidateName ? `${parsedResume.candidateName} Resume` : 'Hacky Resume')}
         newJobsCount={newJobsCount}
+        themeMode={themeMode}
+        isDark={isDark}
+        onToggleTheme={handleToggleTheme}
       />
 
       <main className="flex-1 overflow-y-auto">
@@ -1810,7 +1838,12 @@ export const App: React.FC = () => {
           />
         )}
 
-        {activeTab === 'settings' && <SettingsTab />}
+        {activeTab === 'settings' && (
+          <SettingsTab
+            currentThemeMode={themeMode}
+            onThemeChange={handleThemeChange}
+          />
+        )}
       </main>
 
       <PreFlightApplyModal
