@@ -21,54 +21,12 @@ import {
   DEFAULT_APPLICANT_PROFILE,
   getStoredApplications,
   getStoredApplicantProfile,
+  isProfileComplete,
+  isNewUser,
+  markOnboardingComplete,
 } from '../services/storage.js';
 
 import type { ApplicantProfile } from '../types/index.js';
-
-// ─── Inline re-implementation of the NEW extension-only exports ───────────────
-// These mirror the exact logic in extension/src/services/storage.ts
-
-/** Mirrors extension/src/services/storage.ts :: isProfileComplete */
-function isProfileComplete(profile: ApplicantProfile): boolean {
-  return (
-    profile.firstName.trim().length > 0 &&
-    profile.lastName.trim().length > 0 &&
-    profile.email.trim().length > 0
-  );
-}
-
-/** Mirrors extension/src/services/storage.ts :: isNewUser */
-async function isNewUser(): Promise<boolean> {
-  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(
-        ['resumehack_applicant_profile', 'resumehack_onboarding_complete'],
-        (result: any) => {
-          if (result.resumehack_onboarding_complete) {
-            resolve(false);
-            return;
-          }
-          if (!result.resumehack_applicant_profile) {
-            resolve(true);
-            return;
-          }
-          const p = result.resumehack_applicant_profile as ApplicantProfile;
-          resolve(!isProfileComplete(p));
-        }
-      );
-    });
-  }
-  return false;
-}
-
-/** Mirrors extension/src/services/storage.ts :: markOnboardingComplete */
-async function markOnboardingComplete(): Promise<void> {
-  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ resumehack_onboarding_complete: true }, () => resolve());
-    });
-  }
-}
 
 // ─── Chrome storage mock factory ──────────────────────────────────────────────
 
@@ -226,7 +184,7 @@ describe('isProfileComplete — profile completeness gate', () => {
 
 // ─── isNewUser tests ──────────────────────────────────────────────────────────
 
-describe('isNewUser — onboarding wizard trigger logic', () => {
+describe('isNewUser — onboarding wizard trigger logic (required for all users)', () => {
   let mockStorage: Record<string, any> = {};
 
   beforeEach(() => {
@@ -244,25 +202,46 @@ describe('isNewUser — onboarding wizard trigger logic', () => {
     expect(result).toBe(true);
   });
 
-  it('returns false when onboarding_complete flag is set, regardless of profile state', async () => {
+  it('returns true when onboarding_complete flag is set BUT profile is empty (strictly required for all users)', async () => {
     mockStorage['resumehack_onboarding_complete'] = true;
+    mockStorage['resumehack_applicant_profile'] = { ...emptyProfile };
     const result = await isNewUser();
-    expect(result).toBe(false);
+    expect(result).toBe(true);
   });
 
-  it('returns false when onboarding_complete is set AND a complete profile exists', async () => {
+  it('returns true when onboarding_complete flag is set BUT profile is missing in storage', async () => {
     mockStorage['resumehack_onboarding_complete'] = true;
+    // No resumehack_applicant_profile set
+    const result = await isNewUser();
+    expect(result).toBe(true);
+  });
+
+  it('returns true when onboarding_complete is set BUT profile is incomplete (missing email)', async () => {
+    mockStorage['resumehack_onboarding_complete'] = true;
+    mockStorage['resumehack_applicant_profile'] = {
+      ...emptyProfile,
+      firstName: 'Alex',
+      lastName: 'Chen',
+      email: '', // missing!
+    };
+    const result = await isNewUser();
+    expect(result).toBe(true);
+  });
+
+  it('returns true when profile is complete BUT onboarding_complete flag is NOT set', async () => {
     mockStorage['resumehack_applicant_profile'] = {
       ...emptyProfile,
       firstName: 'Alex',
       lastName: 'Chen',
       email: 'alex@test.com',
     };
+    // resumehack_onboarding_complete is NOT set
     const result = await isNewUser();
-    expect(result).toBe(false);
+    expect(result).toBe(true);
   });
 
-  it('returns false when profile exists with all three required fields filled', async () => {
+  it('returns false ONLY when onboarding_complete is set AND a complete profile exists', async () => {
+    mockStorage['resumehack_onboarding_complete'] = true;
     mockStorage['resumehack_applicant_profile'] = {
       ...emptyProfile,
       firstName: 'Alex',
@@ -312,15 +291,24 @@ describe('markOnboardingComplete — persistent flag management', () => {
     expect(mockStorage['resumehack_onboarding_complete']).toBe(true);
   });
 
-  it('after markOnboardingComplete, isNewUser() returns false even with an empty profile', async () => {
-    // Confirm we start as a new user
-    let result = await isNewUser();
+  it('with an empty profile, isNewUser() returns true even if markOnboardingComplete was called', async () => {
+    // Both flag AND complete profile are required
+    await markOnboardingComplete();
+    mockStorage['resumehack_applicant_profile'] = { ...emptyProfile };
+    const result = await isNewUser();
     expect(result).toBe(true);
+  });
 
+  it('after saving a complete profile AND calling markOnboardingComplete, isNewUser() returns false', async () => {
+    mockStorage['resumehack_applicant_profile'] = {
+      ...emptyProfile,
+      firstName: 'Alex',
+      lastName: 'Chen',
+      email: 'alex@test.com',
+    };
     await markOnboardingComplete();
 
-    // Must be false now — onboarding should never show again
-    result = await isNewUser();
+    const result = await isNewUser();
     expect(result).toBe(false);
   });
 
@@ -328,8 +316,6 @@ describe('markOnboardingComplete — persistent flag management', () => {
     await markOnboardingComplete();
     await markOnboardingComplete();
     expect(mockStorage['resumehack_onboarding_complete']).toBe(true);
-    const result = await isNewUser();
-    expect(result).toBe(false);
   });
 });
 

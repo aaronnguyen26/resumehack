@@ -486,40 +486,54 @@ export async function saveStoredApplicantProfile(profile: Partial<ApplicantProfi
  * Returns true if the user has filled in the minimum required fields
  * (first name, last name, email) so auto-apply can proceed safely.
  */
-export function isProfileComplete(profile: ApplicantProfile): boolean {
+export function isProfileComplete(profile: ApplicantProfile | null | undefined): boolean {
+  if (!profile) return false;
   return (
-    profile.firstName.trim().length > 0 &&
-    profile.lastName.trim().length > 0 &&
-    profile.email.trim().length > 0
+    Boolean(profile.firstName && profile.firstName.trim().length > 0) &&
+    Boolean(profile.lastName && profile.lastName.trim().length > 0) &&
+    Boolean(profile.email && profile.email.trim().length > 0)
   );
 }
 
 /**
- * Returns true if this appears to be a brand-new user who has never
- * saved their profile. Used to trigger the onboarding flow.
+ * Returns true if the user needs to complete the onboarding wizard.
+ * Onboarding is strictly required for all users until they fill in all required
+ * fields (first name, last name, email) and mark onboarding complete.
  */
 export async function isNewUser(): Promise<boolean> {
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
     return new Promise((resolve) => {
       chrome.storage.local.get(['resumehack_applicant_profile', 'resumehack_onboarding_complete'], (result: any) => {
-        if (result.resumehack_onboarding_complete) {
-          resolve(false);
-          return;
-        }
-        if (!result.resumehack_applicant_profile) {
+        const onboardingComplete = Boolean(result.resumehack_onboarding_complete);
+        const p = result.resumehack_applicant_profile as ApplicantProfile | undefined;
+        // Onboarding is required for all users until completed AND required fields are filled
+        if (!onboardingComplete || !p || !isProfileComplete(p)) {
           resolve(true);
           return;
         }
-        const p = result.resumehack_applicant_profile as ApplicantProfile;
-        resolve(!isProfileComplete(p));
+        resolve(false);
       });
     });
   }
-  return false;
+
+  try {
+    const onboardingComplete = typeof localStorage !== 'undefined' && localStorage.getItem('resumehack_onboarding_complete') === 'true';
+    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('resumehack_applicant_profile') : null;
+    if (stored) {
+      const p = JSON.parse(stored) as ApplicantProfile;
+      if (!onboardingComplete || !isProfileComplete(p)) {
+        return true;
+      }
+      return false;
+    }
+    return true;
+  } catch {
+    return true;
+  }
 }
 
 /**
- * Marks onboarding as completed so it never shows again.
+ * Marks onboarding as completed so it does not show again once profile is valid.
  */
 export async function markOnboardingComplete(): Promise<void> {
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
@@ -527,5 +541,10 @@ export async function markOnboardingComplete(): Promise<void> {
       chrome.storage.local.set({ resumehack_onboarding_complete: true }, () => resolve());
     });
   }
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('resumehack_onboarding_complete', 'true');
+    }
+  } catch {}
 }
 

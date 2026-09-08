@@ -130,9 +130,12 @@ export const App: React.FC = () => {
   useEffect(() => {
     getStoredApplications().then(apps => setApplications(apps));
 
-    // Check if this is a new user who needs to complete onboarding
-    isNewUser().then((needsOnboarding) => {
-      if (needsOnboarding) setIsOnboardingOpen(true);
+    // Load applicant profile and strictly require onboarding if not completed or incomplete
+    getStoredApplicantProfile().then((profile) => {
+      setApplicantProfile(profile);
+      isNewUser().then((needsOnboarding) => {
+        if (needsOnboarding) setIsOnboardingOpen(true);
+      });
     });
 
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
@@ -1842,6 +1845,7 @@ export const App: React.FC = () => {
           <SettingsTab
             currentThemeMode={themeMode}
             onThemeChange={handleThemeChange}
+            onReopenOnboarding={() => setIsOnboardingOpen(true)}
           />
         )}
       </main>
@@ -1865,9 +1869,10 @@ export const App: React.FC = () => {
         pdfAttachmentState={pdfAttachmentState}
       />
 
-      {/* Onboarding modal — shown once to new users who haven't set up their profile */}
+      {/* Onboarding modal — strictly required for all users until profile setup is complete */}
       {isOnboardingOpen && (
         <OnboardingModal
+          initialProfile={applicantProfile}
           onComplete={(savedProfile) => {
             setApplicantProfile(savedProfile);
             setIsOnboardingOpen(false);

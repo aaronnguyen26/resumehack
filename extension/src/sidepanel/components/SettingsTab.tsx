@@ -57,9 +57,10 @@ import { ThemeMode, getStoredThemeMode, saveStoredThemeMode } from '../../servic
 interface SettingsTabProps {
   currentThemeMode?: ThemeMode;
   onThemeChange?: (mode: ThemeMode) => void;
+  onReopenOnboarding?: () => void;
 }
 
-export const SettingsTab: React.FC<SettingsTabProps> = ({ currentThemeMode, onThemeChange }) => {
+export const SettingsTab: React.FC<SettingsTabProps> = ({ currentThemeMode, onThemeChange, onReopenOnboarding }) => {
   // Appearance / Theme State
   const [themeMode, setThemeModeState] = useState<ThemeMode>(currentThemeMode || 'system');
 
@@ -1594,14 +1595,22 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ currentThemeMode, onTh
         <button
           type="button"
           onClick={async () => {
-            // Reset the onboarding flag so it shows again on next load
+            // Reset the onboarding flag so it shows again
             if (typeof chrome !== 'undefined' && chrome.storage?.local) {
               await new Promise<void>((resolve) => {
                 chrome.storage.local.remove(['resumehack_onboarding_complete'], () => resolve());
               });
             }
-            // Reload the sidepanel to trigger the onboarding check
-            window.location.reload();
+            try {
+              if (typeof localStorage !== 'undefined') {
+                localStorage.removeItem('resumehack_onboarding_complete');
+              }
+            } catch {}
+            if (onReopenOnboarding) {
+              onReopenOnboarding();
+            } else {
+              window.location.reload();
+            }
           }}
           className="w-full py-1.5 px-3 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-transparent dark:border-slate-700 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
         >
