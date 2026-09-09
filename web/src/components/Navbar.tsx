@@ -1,10 +1,10 @@
 import React from 'react';
-import { Target, Compass, Kanban, Settings, CheckCircle2, Sun, Moon, Sparkles, FileText } from 'lucide-react';
+import { Home, Target, Compass, Kanban, Settings, CheckCircle2, Sun, Moon, Sparkles, FileText } from 'lucide-react';
 import { ThemeMode } from '../services/theme.js';
 
 interface NavbarProps {
-  activeTab: 'match' | 'discovery' | 'tracker' | 'settings';
-  setActiveTab: (tab: 'match' | 'discovery' | 'tracker' | 'settings') => void;
+  activeTab: 'home' | 'match' | 'discovery' | 'tracker' | 'settings';
+  setActiveTab: (tab: 'home' | 'match' | 'discovery' | 'tracker' | 'settings') => void;
   connectedDocTitle?: string;
   newJobsCount?: number;
   themeMode?: ThemeMode;
@@ -27,7 +27,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="sticky top-0 z-50 h-14 bg-white/95 dark:bg-[#09090B]/95 backdrop-blur border-b border-zinc-200 dark:border-[#27272A] px-4 sm:px-6 lg:px-8 flex items-center justify-between w-full transition-colors duration-200 select-none">
       {/* Left: Brand + Breadcrumb Workspace Target */}
       <div className="flex items-center gap-5">
-        <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => setActiveTab('match')}>
+        <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => setActiveTab('home')} title="Return to Home">
           <div className="w-7 h-7 rounded-md bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 flex items-center justify-center font-bold text-xs font-headline tracking-tighter shadow-xs">
             RH
           </div>
@@ -55,6 +55,20 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Center: Desktop Navigation Tabs */}
       <nav className="hidden md:flex items-center gap-1 h-full" role="tablist" aria-label="Main Navigation">
+        <button
+          role="tab"
+          aria-selected={activeTab === 'home'}
+          onClick={() => setActiveTab('home')}
+          className={`h-9 px-3.5 rounded-md text-xs font-medium inline-flex items-center gap-2 transition-all ${
+            activeTab === 'home'
+              ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs'
+              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
+          }`}
+        >
+          <Home className="w-3.5 h-3.5" />
+          <span>Home</span>
+        </button>
+
         <button
           role="tab"
           aria-selected={activeTab === 'match'}

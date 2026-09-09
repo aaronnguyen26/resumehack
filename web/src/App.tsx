@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar.js';
+import { HomePage } from './components/HomePage.js';
 import { MatchTailorTab } from './components/MatchTailorTab.js';
 import { DiscoveryTab } from './components/DiscoveryTab.js';
 import { TrackerTab } from './components/TrackerTab.js';
@@ -59,7 +60,7 @@ const DEFAULT_JOB: ScrapedJobData = {
 };
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'match' | 'discovery' | 'tracker' | 'settings'>('match');
+  const [activeTab, setActiveTab] = useState<'home' | 'match' | 'discovery' | 'tracker' | 'settings'>('home');
   const [currentJob, setCurrentJob] = useState<ScrapedJobData>(DEFAULT_JOB);
   const [tailorData, setTailorData] = useState<TailorResumeResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -123,8 +124,8 @@ export const App: React.FC = () => {
     // Read query parameters to allow direct tab navigation from Hacky or links
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const requestedTab = params.get('tab') as 'match' | 'discovery' | 'tracker' | 'settings' | null;
-      if (requestedTab && ['match', 'discovery', 'tracker', 'settings'].includes(requestedTab)) {
+      const requestedTab = params.get('tab') as 'home' | 'match' | 'discovery' | 'tracker' | 'settings' | null;
+      if (requestedTab && ['home', 'match', 'discovery', 'tracker', 'settings'].includes(requestedTab)) {
         setActiveTab(requestedTab);
       }
     }
@@ -541,6 +542,34 @@ export const App: React.FC = () => {
 
       {/* Main Container */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {activeTab === 'home' && (
+          <HomePage
+            onSelectOption1GoogleDocs={() => {
+              handleSelectOption1GoogleDocs('mock-master-resume-doc-id', 'Alex Chen — Master Resume (Google Doc)');
+              setActiveTab('match');
+            }}
+            onSelectOption2InAppCanvas={() => {
+              const textToLoad = screenResume?.fullText || parsedResume?.rawText || googleDocs.getMockMasterResume().fullText;
+              handleSelectOption2InAppCanvas(textToLoad, screenResume?.title || 'My Master Resume');
+              setActiveTab('match');
+            }}
+            onNavigateToDiscovery={() => setActiveTab('discovery')}
+            onNavigateToTracker={() => setActiveTab('tracker')}
+            onSelectRoleTarget={(job) => {
+              setCurrentJob(job);
+              setActiveTab('match');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onOpenGooglePicker={async () => {
+              await handleOpenGooglePicker();
+              setActiveTab('match');
+            }}
+            connectedDocTitle={screenResume?.title}
+            recentApplicationsCount={applications.length || 4}
+            newJobsCount={newJobsCount}
+          />
+        )}
+
         {activeTab === 'match' && (
           <MatchTailorTab
             currentJob={currentJob}
@@ -644,9 +673,8 @@ export const App: React.FC = () => {
           onComplete={(savedProfile) => {
             setApplicantProfile(savedProfile);
             setIsOnboardingOpen(false);
-            // As requested: after onboarding completes, present the Option 1 vs Option 2 choice on the main page
-            setShowWorkspaceGateway(true);
-            setActiveTab('match');
+            // Land on uncluttered Home page where user can select Option 1 or Option 2
+            setActiveTab('home');
           }}
         />
       )}

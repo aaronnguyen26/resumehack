@@ -3,11 +3,15 @@ import { Sparkles, X, ChevronRight, Lightbulb } from 'lucide-react';
 
 interface HackyWebMascotProps {
   activeTab: string;
-  onNavigateTab: (tab: 'match' | 'discovery' | 'tracker' | 'settings') => void;
+  onNavigateTab: (tab: 'home' | 'match' | 'discovery' | 'tracker' | 'settings') => void;
   atsScore?: number;
 }
 
 const TIPS: Record<string, string[]> = {
+  home: [
+    'Hacky: Welcome! Select Google Docs Sync or the In-App Canvas to start optimizing.',
+    'Pro Tip: Both workspace modes protect your single-page line budget and eliminate hallucinations.',
+  ],
   match: [
     'Tip: Quantify your results with metrics (e.g., "reduced latency by 35%") to boost your ATS score!',
     'Hacky: Check the diff highlights on your bullet points to verify anti-hallucination sourcing.',
