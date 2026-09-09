@@ -634,7 +634,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ currentThemeMode, onTh
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="w-full max-w-[1600px] mx-auto px-1 sm:px-2 md:px-4 py-4 space-y-4">
       <div>
         <h2 className="font-bold text-sm text-zinc-900 dark:text-white">
           Settings &amp; Master Resume

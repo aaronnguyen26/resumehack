@@ -50,7 +50,7 @@ export const TrackerTab: React.FC<TrackerTabProps> = ({
   const offeredCount = applications.filter(a => a.status === 'Offered').length;
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="w-full max-w-[1780px] mx-auto px-1 sm:px-2 md:px-4 py-4 space-y-4">
       
       {/* 1. Header & View Toggle Bar */}
       <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-5 shadow-xs transition-colors">

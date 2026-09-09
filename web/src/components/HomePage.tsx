@@ -75,14 +75,14 @@ export const HomePage: React.FC<HomePageProps> = ({
   };
 
   return (
-    <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 md:py-12 animate-in fade-in duration-300">
+    <div className="w-full max-w-[1720px] mx-auto px-2 sm:px-4 md:px-6 py-6 md:py-8 animate-in fade-in duration-300">
       {/* Hero Header Section */}
-      <section className="text-center max-w-3xl mx-auto pt-2 md:pt-4 mb-10 md:mb-12">
+      <section className="text-center max-w-5xl mx-auto pt-2 md:pt-4 mb-8 md:mb-10">
         <h1 className="text-3xl sm:text-4xl md:text-5xl font-headline font-bold text-zinc-950 dark:text-zinc-50 tracking-tight leading-tight mb-4">
           Algorithmic Precision for Your Career
         </h1>
 
-        <p className="text-base sm:text-lg text-zinc-600 dark:text-zinc-400 leading-relaxed mb-8 max-w-2xl mx-auto">
+        <p className="text-base sm:text-lg text-zinc-600 dark:text-zinc-400 leading-relaxed mb-8 max-w-3xl mx-auto">
           AI-Powered ATS Optimization & Hacky AI Architecture. Upload your resume to edit directly on the canvas and benchmark against tier-1 engineering rubrics.
         </p>
 
@@ -106,7 +106,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       {/* Primary Action Box: Resume Upload & Canvas Studio Launchpad */}
       <section className="mb-12">
         <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 sm:p-10 shadow-xs">
-          <div className="max-w-3xl mx-auto">
+          <div className="max-w-4xl mx-auto">
             {/* Dropzone Container */}
             <div
               onDragOver={(e) => {

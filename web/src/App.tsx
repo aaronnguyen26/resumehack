@@ -1051,8 +1051,8 @@ export const App: React.FC = () => {
         onOpenCloudManager={() => setIsCloudManagerOpen(true)}
       />
 
-      {/* Main Container */}
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* Main Container - Expansive Wide Screen Layout with Reduced Lateral Margins */}
+      <main className="flex-1 w-full max-w-[1780px] mx-auto px-2 sm:px-4 lg:px-6 py-4">
         {activeTab === 'home' && (
           <HomePage
             onOpenCanvas={() => {
@@ -1076,7 +1076,7 @@ export const App: React.FC = () => {
         )}
 
         {activeTab === 'canvas' && (
-          <div className="w-full max-w-7xl mx-auto px-2 sm:px-4 md:px-6 py-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-[1780px] mx-auto px-1 sm:px-2 md:px-4 py-2 animate-in fade-in duration-200">
             <InAppDocumentCanvas
               parsedResume={parsedResume}
               rawText={screenResume?.fullText || parsedResume?.rawText || googleDocs.getMockMasterResume(applicantProfile).fullText}

@@ -209,7 +209,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   }, [vaultBullets, filterCompany, searchQuery]);
 
   return (
-    <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8 animate-in fade-in duration-200 select-none">
+    <div className="w-full max-w-[1780px] mx-auto px-1 sm:px-2 md:px-4 py-4 space-y-6 animate-in fade-in duration-200 select-none">
       {/* Toast Notification */}
       {saveStatus && (
         <div className="fixed top-20 right-6 z-50 px-4 py-2.5 bg-emerald-600 text-white rounded-lg shadow-lg text-xs font-medium flex items-center gap-2 animate-in slide-in-from-top-2">
