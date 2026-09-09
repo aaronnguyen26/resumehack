@@ -1082,19 +1082,20 @@ export const App: React.FC = () => {
               rawText={screenResume?.fullText || parsedResume?.rawText || googleDocs.getMockMasterResume(applicantProfile).fullText}
               diffs={tailorData?.bulletDiffs || []}
               onUpdateResumeText={handleUpdateCustomResumeText}
-              onApplyBulletDiff={(diffIndex) => {
+              onApplyBulletDiff={(diffIndex, variantText) => {
                 if (!tailorData?.bulletDiffs?.[diffIndex]) return;
                 const diff = tailorData.bulletDiffs[diffIndex];
+                const replacement = (variantText || diff.tailoredText).trim();
                 let current = screenResume?.fullText || parsedResume?.rawText || '';
                 if (diff.originalText && current.includes(diff.originalText)) {
-                  current = current.replace(diff.originalText, diff.tailoredText);
+                  current = current.replace(diff.originalText, replacement);
                   handleUpdateCustomResumeText(current);
                 }
                 setTailorData(prev => {
                   if (!prev) return prev;
                   return {
                     ...prev,
-                    bulletDiffs: prev.bulletDiffs.map((d, i) => i === diffIndex ? { ...d, status: 'accepted' as const } : d)
+                    bulletDiffs: prev.bulletDiffs.map((d, i) => i === diffIndex ? { ...d, tailoredText: replacement, status: 'accepted' as const } : d)
                   };
                 });
               }}
@@ -1280,6 +1281,11 @@ export const App: React.FC = () => {
         activeTab={activeTab}
         onNavigateTab={setActiveTab}
         atsScore={currentAtsScore}
+        resumeText={screenResume?.fullText || parsedResume?.rawText || ''}
+        applicantProfile={applicantProfile}
+        applications={applications}
+        jobs={jobs}
+        onSelectJobForTailoring={handleTailorForJob}
       />
     </div>
   );
