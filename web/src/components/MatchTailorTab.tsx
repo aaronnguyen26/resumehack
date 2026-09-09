@@ -59,6 +59,7 @@ interface MatchTailorTabProps {
   applicantProfile?: ApplicantProfile;
   showWorkspaceGateway?: boolean;
   onCloseGateway?: () => void;
+  onUploadResumeFile?: (file: File) => Promise<void>;
 }
 
 export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
@@ -87,7 +88,8 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
   onSelectGoogleDoc,
   applicantProfile,
   showWorkspaceGateway,
-  onCloseGateway
+  onCloseGateway,
+  onUploadResumeFile
 }) => {
   const [mode, setMode] = useState<'job' | 'general'>('job');
   const [selectedDomain, setSelectedDomain] = useState<string>('Software Engineering');
@@ -402,6 +404,7 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
               onApplyAllDiffs={handleApplyAllDiffsInCanvas}
               onReopenGateway={() => setShowGateway(true)}
               applicantProfile={applicantProfile}
+              onUploadFile={onUploadResumeFile}
             />
           ) : (
             <>
@@ -529,6 +532,7 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
                   docUrl={screenResume.url || (screenResume.docId && screenResume.docId !== 'mock-master-resume-doc-id' ? `https://docs.google.com/document/d/${screenResume.docId}/edit` : undefined)}
                   onSyncGoogleDoc={onReadScreenNow}
                   onPushToGoogleDoc={appliedCount > 0 && onApplyToGoogleDoc ? () => onApplyToGoogleDoc(diffs.filter(d => d.status === 'accepted')) : undefined}
+                  onUploadFile={onUploadResumeFile}
                 />
               )}
 

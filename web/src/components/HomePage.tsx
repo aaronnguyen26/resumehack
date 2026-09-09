@@ -13,13 +13,16 @@ import {
   Lock, 
   ChevronRight, 
   ExternalLink,
-  Home
+  Home,
+  UploadCloud,
+  Loader2
 } from 'lucide-react';
 import { ScrapedJobData } from '../types/index.js';
 
 interface HomePageProps {
   onSelectOption1GoogleDocs: () => void;
   onSelectOption2InAppCanvas: () => void;
+  onUploadResumeFile?: (file: File) => Promise<void>;
   onNavigateToDiscovery: () => void;
   onNavigateToTracker: () => void;
   onSelectRoleTarget?: (job: ScrapedJobData) => void;
@@ -32,6 +35,7 @@ interface HomePageProps {
 export const HomePage: React.FC<HomePageProps> = ({
   onSelectOption1GoogleDocs,
   onSelectOption2InAppCanvas,
+  onUploadResumeFile,
   onNavigateToDiscovery,
   onNavigateToTracker,
   onSelectRoleTarget,
@@ -40,6 +44,43 @@ export const HomePage: React.FC<HomePageProps> = ({
   recentApplicationsCount = 4,
   newJobsCount = 0,
 }) => {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = React.useState(false);
+  const [isUploadingPdf, setIsUploadingPdf] = React.useState(false);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (onUploadResumeFile) {
+      setIsUploadingPdf(true);
+      try {
+        await onUploadResumeFile(file);
+      } finally {
+        setIsUploadingPdf(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    } else {
+      onSelectOption2InAppCanvas();
+    }
+  };
+
+  const handleDropFile = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (onUploadResumeFile) {
+      setIsUploadingPdf(true);
+      try {
+        await onUploadResumeFile(file);
+      } finally {
+        setIsUploadingPdf(false);
+      }
+    } else {
+      onSelectOption2InAppCanvas();
+    }
+  };
+
   return (
     <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 md:py-12 animate-in fade-in duration-300">
       {/* Hero Header Section */}
@@ -176,31 +217,90 @@ export const HomePage: React.FC<HomePageProps> = ({
               </p>
 
               {/* Features List */}
-              <div className="space-y-3 pt-4 border-t border-zinc-100 dark:border-[#1E1E22] mb-8">
+              <div className="space-y-3 pt-4 border-t border-zinc-100 dark:border-[#1E1E22] mb-5">
                 <div className="flex items-center text-xs text-zinc-700 dark:text-zinc-300 gap-2.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span>Multi-format parser (PDF, DOCX, TXT, Markdown)</span>
+                  <span>Multi-tier PDF parser (extracts text, sections & bullets)</span>
                 </div>
                 <div className="flex items-center text-xs text-zinc-700 dark:text-zinc-300 gap-2.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span>Live page-height millimeter budget overflow guard</span>
+                  <span>Direct inline editing of bullets, sections, & candidate profile</span>
                 </div>
                 <div className="flex items-center text-xs text-zinc-700 dark:text-zinc-300 gap-2.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span>Pure plain text, ATS UTF-8 format, and LaTeX export</span>
+                  <span>Live page budget meter with instant ATS-compliant PDF export</span>
                 </div>
+              </div>
+
+              {/* PDF Upload Dropzone */}
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDropFile}
+                onClick={() => !isUploadingPdf && fileInputRef.current?.click()}
+                className={`group/drop mb-6 p-4 border-2 border-dashed rounded-xl text-center cursor-pointer transition-all duration-200 ${
+                  isDragging
+                    ? 'border-zinc-900 dark:border-white bg-zinc-100 dark:bg-zinc-800/80 scale-[1.01]'
+                    : 'border-zinc-300 dark:border-[#3F3F46] hover:border-zinc-500 dark:hover:border-zinc-400 bg-zinc-50/70 dark:bg-[#18181B]/50'
+                }`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.docx,.txt"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                {isUploadingPdf ? (
+                  <div className="py-2 flex flex-col items-center justify-center gap-2">
+                    <Loader2 className="w-6 h-6 text-zinc-800 dark:text-zinc-200 animate-spin" />
+                    <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 font-headline">
+                      Extracting resume directly from PDF...
+                    </span>
+                    <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono">
+                      Running multi-tier layout parser & Flate decoder
+                    </span>
+                  </div>
+                ) : (
+                  <div className="py-1">
+                    <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center mx-auto mb-2 text-zinc-700 dark:text-zinc-300 group-hover/drop:text-zinc-950 dark:group-hover/drop:text-white transition-colors">
+                      <UploadCloud className="w-4 h-4" />
+                    </div>
+                    <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100 font-headline">
+                      Upload PDF Resume
+                    </div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                      Drag & drop your PDF here or click to browse
+                    </p>
+                    <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono text-zinc-500 dark:text-zinc-400 bg-zinc-200/50 dark:bg-zinc-800/50">
+                      <span>Extracts text into interactive editable canvas</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Bottom Actions */}
-            <div className="pt-2">
+            <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-zinc-950 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-950 font-headline font-semibold text-sm rounded-lg active:scale-[0.99] transition-all shadow-xs cursor-pointer"
+              >
+                <UploadCloud className="w-4 h-4" />
+                <span>Upload PDF File</span>
+              </button>
               <button
                 type="button"
                 onClick={onSelectOption2InAppCanvas}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-zinc-100 hover:bg-zinc-200 dark:bg-[#18181B] dark:hover:bg-[#27272A] border border-zinc-300 dark:border-[#3F3F46] text-zinc-900 dark:text-zinc-100 font-headline font-semibold text-sm rounded-lg active:scale-[0.99] transition-all shadow-xs"
+                className="px-4 py-3 bg-zinc-100 hover:bg-zinc-200 dark:bg-[#18181B] dark:hover:bg-[#27272A] border border-zinc-300 dark:border-[#3F3F46] text-zinc-900 dark:text-zinc-100 font-headline font-semibold text-xs rounded-lg active:scale-[0.99] transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                title="Open canvas with blank starter template"
               >
-                <span>Launch In-App Canvas</span>
-                <ArrowRight className="w-4 h-4" />
+                <span>Blank Canvas</span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>

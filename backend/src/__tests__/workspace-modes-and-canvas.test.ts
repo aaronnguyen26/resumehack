@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { 
   buildStarterResumeText, 
-  parseUploadedResumeFile 
+  parseUploadedResumeFile,
+  formatExtractedPdfItems,
+  normalizeExtractedResumeText
 } from '../../../web/src/services/file-parser.js';
 import { 
   DEFAULT_APPLICANT_PROFILE, 
@@ -104,6 +106,135 @@ describe('Option 1 & Option 2 Workspace Architectures & Ingestion Engine', () =>
       expect(mutatedResume).toContain(tailoredBullet);
       expect(mutatedResume).not.toContain(originalBullet);
       expect(mutatedResume).toContain('• Built backend services in Python.');
+    });
+
+    it('normalizes Unicode ligatures, special bullet symbols, and dash types from raw PDF text', () => {
+      // Common PDF font artifacts (fi, fl, ffi ligatures, special bullets ▪, em-dashes —)
+      const rawPdfSnippet = 'Con\uFB01gured high-availability in\uFB02ux clusters\n▪ Reduced latency by 40% \u2014 achieved 99.9% uptime';
+      const normalized = normalizeExtractedResumeText(rawPdfSnippet);
+      expect(normalized).toContain('Configured high-availability influx clusters');
+      expect(normalized).toContain('• Reduced latency by 40% - achieved 99.9% uptime');
+    });
+
+    it('formats raw positioned PDF text items into ordered vertical lines and paragraphs', () => {
+      const items = [
+        { str: 'Alex Chen', transform: [1, 0, 0, 1, 50, 750], height: 14 },
+        { str: 'alex@example.com', transform: [1, 0, 0, 1, 50, 730], height: 10 },
+        { str: 'EXPERIENCE', transform: [1, 0, 0, 1, 50, 680], height: 12 },
+        { str: '• Senior Engineer at CloudCorp', transform: [1, 0, 0, 1, 50, 660], height: 10 },
+      ];
+
+      const formatted = formatExtractedPdfItems(items);
+      expect(formatted).toContain('Alex Chen');
+      expect(formatted).toContain('alex@example.com');
+      expect(formatted).toContain('EXPERIENCE');
+      expect(formatted).toContain('• Senior Engineer at CloudCorp');
+    });
+
+    it('supports direct inline editing of bullets in canvas, updating rawText and line budget', () => {
+      let canvasRawText = `JOHN DOE
+john@example.com
+
+EXPERIENCE
+• Developed backend services in Node.js
+• Maintained legacy database schemas`;
+
+      const handleSaveInlineBullet = (pIdx: number, lIdx: number, newContent: string) => {
+        const paragraphs = canvasRawText.split('\n\n');
+        const lines = paragraphs[pIdx].split('\n');
+        const prefix = lines[lIdx].match(/^[•\-*]\s*/)?.[0] || '• ';
+        lines[lIdx] = `${prefix}${newContent.trim()}`;
+        paragraphs[pIdx] = lines.join('\n');
+        canvasRawText = paragraphs.join('\n\n');
+      };
+
+      // Edit second bullet of EXPERIENCE (paragraph 1, line 2)
+      handleSaveInlineBullet(1, 2, 'Architected high-throughput PostgreSQL distributed clusters with 99.99% reliability');
+      expect(canvasRawText).toContain('• Architected high-throughput PostgreSQL distributed clusters with 99.99% reliability');
+      expect(canvasRawText).not.toContain('Maintained legacy database schemas');
+    });
+
+    it('supports deleting bullets in canvas, freeing up lines towards single-page fit', () => {
+      let canvasRawText = `JOHN DOE
+john@example.com
+
+EXPERIENCE
+• Bullet 1
+• Bullet 2
+• Bullet 3`;
+
+      const initialLines = canvasRawText.split('\n').filter(l => l.trim().length > 0).length;
+      expect(initialLines).toBe(6);
+
+      const handleDeleteBullet = (pIdx: number, lIdx: number) => {
+        const paragraphs = canvasRawText.split('\n\n');
+        const lines = paragraphs[pIdx].split('\n');
+        lines.splice(lIdx, 1);
+        paragraphs[pIdx] = lines.join('\n');
+        canvasRawText = paragraphs.join('\n\n');
+      };
+
+      // Delete Bullet 2 (paragraph 1, line 2)
+      handleDeleteBullet(1, 2);
+      expect(canvasRawText).not.toContain('Bullet 2');
+      expect(canvasRawText).toContain('• Bullet 1');
+      expect(canvasRawText).toContain('• Bullet 3');
+
+      const updatedLines = canvasRawText.split('\n').filter(l => l.trim().length > 0).length;
+      expect(updatedLines).toBe(5); // 1 line freed up!
+    });
+
+    it('supports adding new bullets to sections directly in canvas', () => {
+      let canvasRawText = `JOHN DOE
+john@example.com
+
+EXPERIENCE
+• Bullet 1`;
+
+      const handleAddBulletToSection = (pIdx: number, bulletText: string) => {
+        const paragraphs = canvasRawText.split('\n\n');
+        const lines = paragraphs[pIdx].split('\n');
+        lines.push(`• ${bulletText}`);
+        paragraphs[pIdx] = lines.join('\n');
+        canvasRawText = paragraphs.join('\n\n');
+      };
+
+      handleAddBulletToSection(1, 'Engineered real-time telemetry pipelines');
+      expect(canvasRawText).toContain('• Bullet 1\n• Engineered real-time telemetry pipelines');
+    });
+
+    it('supports inline candidate name and section title updates directly in canvas', () => {
+      let canvasRawText = `OLD NAME
+old@example.com
+
+WORK HISTORY
+• Built APIs`;
+
+      // Update name
+      const handleSaveCandidateName = (newName: string) => {
+        const paragraphs = canvasRawText.split('\n\n');
+        const lines = paragraphs[0].split('\n');
+        lines[0] = newName.trim();
+        paragraphs[0] = lines.join('\n');
+        canvasRawText = paragraphs.join('\n\n');
+      };
+
+      // Update section title
+      const handleSaveSectionTitle = (pIdx: number, newTitle: string) => {
+        const paragraphs = canvasRawText.split('\n\n');
+        const lines = paragraphs[pIdx].split('\n');
+        lines[0] = newTitle.toUpperCase().trim();
+        paragraphs[pIdx] = lines.join('\n');
+        canvasRawText = paragraphs.join('\n\n');
+      };
+
+      handleSaveCandidateName('SARAH CONNOR');
+      handleSaveSectionTitle(1, 'EXPERIENCE');
+
+      expect(canvasRawText).toContain('SARAH CONNOR');
+      expect(canvasRawText).not.toContain('OLD NAME');
+      expect(canvasRawText).toContain('EXPERIENCE');
+      expect(canvasRawText).not.toContain('WORK HISTORY');
     });
   });
 

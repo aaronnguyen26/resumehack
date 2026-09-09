@@ -14,6 +14,7 @@ import { LlmTailorService } from './services/llm-tailor.js';
 import { AiTailorService, getAiSettings } from './services/ai-tailor.js';
 import { GitHubTrackerService, SEED_INTERNSHIP_DATABASE, enrichJobDetails } from './services/github-tracker.js';
 import { ResumeParserService, ParsedResume } from './services/resume-parser.js';
+import { parseUploadedResumeFile } from './services/file-parser.js';
 import { GoogleDocsService } from './services/google-docs.js';
 import { GoogleDriveService } from './services/google-drive.js';
 import { CompanyArchetypeClassifier } from './services/archetype-classifier.js';
@@ -278,6 +279,43 @@ export const App: React.FC = () => {
     } catch {}
     setAppliedStatus('✓ Loaded In-App Document Canvas');
     setTimeout(() => setAppliedStatus(null), 3500);
+  };
+
+  const handleUploadResumeFile = async (file: File) => {
+    setIsLoading(true);
+    setAppliedStatus(`Parsing and extracting resume from ${file.name}…`);
+    try {
+      const parsedFile = await parseUploadedResumeFile(file);
+      const parsed = resumeParser.parse(parsedFile.text);
+      setParsedResume(parsed);
+      setWorkspaceMode('in_app_canvas');
+      await saveStoredWorkspaceMode('in_app_canvas');
+      setShowWorkspaceGateway(false);
+
+      const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+      const docTitle = (parsed.candidateName && parsed.candidateName !== 'Your Resume' && parsed.candidateName !== 'Alex Chen')
+        ? `${parsed.candidateName} Resume`
+        : `${fileNameWithoutExt} (PDF Resume)`;
+
+      setScreenResume({
+        title: docTitle,
+        fullText: parsedFile.text,
+        isGoogleDoc: false,
+      });
+
+      try {
+        localStorage.setItem('user_custom_resume', parsedFile.text);
+      } catch {}
+
+      setActiveTab('match');
+      setAppliedStatus(`✓ Extracted and loaded "${file.name}" into In-App Canvas!`);
+    } catch (err: any) {
+      console.error('[App] Failed to parse uploaded resume file:', err);
+      setAppliedStatus(`⚠️ Error reading resume file: ${err.message || 'Could not parse format'}`);
+    } finally {
+      setIsLoading(false);
+      setTimeout(() => setAppliedStatus(null), 4500);
+    }
   };
 
   const handleOpenGooglePicker = async () => {
@@ -771,6 +809,7 @@ export const App: React.FC = () => {
             connectedDocTitle={screenResume?.title}
             recentApplicationsCount={applications.length || 4}
             newJobsCount={newJobsCount}
+            onUploadResumeFile={handleUploadResumeFile}
           />
         )}
 
@@ -804,6 +843,7 @@ export const App: React.FC = () => {
             applicantProfile={applicantProfile}
             showWorkspaceGateway={showWorkspaceGateway}
             onCloseGateway={() => setShowWorkspaceGateway(false)}
+            onUploadResumeFile={handleUploadResumeFile}
           />
         )}
 

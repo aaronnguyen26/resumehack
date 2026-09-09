@@ -172,9 +172,10 @@ export class CompanyRegistryService {
     }
 
     const newId = crypto.randomUUID();
+    const now = new Date();
     const upsertSql = `
       INSERT INTO companies (id, name, ats_type, board_slug, tier, poll_interval_sec, next_poll_at, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW(), NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $7)
       ON CONFLICT (ats_type, board_slug) DO UPDATE
       SET
         name = CASE WHEN companies.name = '' OR companies.name = companies.board_slug THEN EXCLUDED.name ELSE companies.name END,
@@ -182,12 +183,12 @@ export class CompanyRegistryService {
       RETURNING *, (created_at = updated_at) AS is_new_company;
     `;
 
-    const res = await client.query(upsertSql, [newId, name, parsed.atsType, parsed.boardSlug, tier, pollInterval]);
+    const res = await client.query(upsertSql, [newId, name, parsed.atsType, parsed.boardSlug, tier, pollInterval, now]);
     const row = res.rows[0];
 
     return {
       company: row,
-      isNewCompany: Boolean(row.is_new_company ?? true),
+      isNewCompany: row.is_new_company !== undefined ? Boolean(row.is_new_company) : true,
     };
   }
 
