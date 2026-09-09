@@ -108,6 +108,9 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
   }, [showWorkspaceGateway]);
 
   const domains = ['Software Engineering', 'Data & AI', 'Product Management', 'Finance & Quant', 'General'];
+  const candidateResumeTitle = (applicantProfile?.firstName || applicantProfile?.lastName)
+    ? `${applicantProfile.firstName} ${applicantProfile.lastName || ''}`.trim() + ' — Master Resume (Google Doc)'
+    : (applicantProfile?.fullName ? `${applicantProfile.fullName} — Master Resume (Google Doc)` : 'Master Resume (Google Doc)');
 
   React.useEffect(() => {
     if (tailorData?.bulletDiffs) {
@@ -383,6 +386,7 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
               onApplyBulletDiff={handleApplyBulletDiffInCanvas}
               onApplyAllDiffs={handleApplyAllDiffsInCanvas}
               onReopenGateway={() => setShowGateway(true)}
+              applicantProfile={applicantProfile}
             />
           ) : (
             <>
@@ -421,7 +425,7 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
                         if (onOpenGooglePicker) {
                           onOpenGooglePicker();
                         } else if (onSelectGoogleDoc) {
-                          onSelectGoogleDoc('mock-master-resume-doc-id', 'Alex Chen — Master Resume (Google Doc)');
+                          onSelectGoogleDoc('mock-master-resume-doc-id', candidateResumeTitle);
                         }
                       }}
                       className="px-2.5 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-xs font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -490,7 +494,7 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
                       type="button"
                       onClick={() => {
                         if (onOpenGooglePicker) onOpenGooglePicker();
-                        else if (onSelectGoogleDoc) onSelectGoogleDoc('mock-master-resume-doc-id', 'Alex Chen — Master Resume (Google Doc)');
+                        else if (onSelectGoogleDoc) onSelectGoogleDoc('mock-master-resume-doc-id', candidateResumeTitle);
                       }}
                       className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs"
                     >

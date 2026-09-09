@@ -10,7 +10,7 @@ export class GoogleDriveService {
   public async forkDocument(
     sourceDocId: string,
     company: string,
-    candidateName: string = 'Alex Chen',
+    candidateName: string = 'Candidate',
     accessToken?: string
   ): Promise<{ newDocId: string; newDocName: string; webViewLink: string }> {
     const newDocName = `${company} - Resume - ${candidateName}`;

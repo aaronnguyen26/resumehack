@@ -5,6 +5,7 @@ import { MatchTailorTab } from './components/MatchTailorTab.js';
 import { DiscoveryTab } from './components/DiscoveryTab.js';
 import { TrackerTab } from './components/TrackerTab.js';
 import { SettingsTab } from './components/SettingsTab.js';
+import { ProfileTab } from './components/ProfileTab.js';
 import { PreFlightApplyModal } from './components/PreFlightApplyModal.js';
 import { OnboardingModal } from './components/OnboardingModal.js';
 import { HackyWebMascot } from './components/HackyWebMascot.js';
@@ -19,6 +20,7 @@ import {
   getStoredApplications, 
   saveStoredApplications, 
   getStoredApplicantProfile,
+  saveStoredApplicantProfile,
   DEFAULT_APPLICANT_PROFILE,
   isNewUser,
   getStoredSettings,
@@ -60,7 +62,7 @@ const DEFAULT_JOB: ScrapedJobData = {
 };
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'home' | 'match' | 'discovery' | 'tracker' | 'settings'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'match' | 'discovery' | 'tracker' | 'profile' | 'settings'>('home');
   const [currentJob, setCurrentJob] = useState<ScrapedJobData>(DEFAULT_JOB);
   const [tailorData, setTailorData] = useState<TailorResumeResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -168,14 +170,19 @@ export const App: React.FC = () => {
     setWorkspaceMode('google_docs');
     saveStoredWorkspaceMode('google_docs');
     setShowWorkspaceGateway(false);
+    const candidateDisplayName = (applicantProfile.firstName || applicantProfile.lastName)
+      ? `${applicantProfile.firstName} ${applicantProfile.lastName}`.trim()
+      : (applicantProfile.fullName || 'Candidate');
+    const defaultDocTitle = `${candidateDisplayName} — Master Resume (Google Doc)`;
+
     if (docId === 'mock-master-resume-doc-id' || !docId) {
-      const mock = googleDocs.getMockMasterResume();
+      const mock = googleDocs.getMockMasterResume(applicantProfile);
       setScreenResume({ title: docTitle || mock.title, fullText: mock.fullText, isGoogleDoc: true });
       setParsedResume(resumeParser.parse(mock.fullText));
     } else {
       setScreenResume({ 
-        title: docTitle || 'Linked Google Doc', 
-        fullText: screenResume?.fullText || googleDocs.getMockMasterResume().fullText, 
+        title: docTitle || defaultDocTitle, 
+        fullText: screenResume?.fullText || googleDocs.getMockMasterResume(applicantProfile).fullText, 
         isGoogleDoc: true 
       });
     }
@@ -189,8 +196,11 @@ export const App: React.FC = () => {
     setShowWorkspaceGateway(false);
     const parsed = resumeParser.parse(text);
     setParsedResume(parsed);
+    const candidateDisplayName = (applicantProfile.firstName || applicantProfile.lastName)
+      ? `${applicantProfile.firstName} ${applicantProfile.lastName}`.trim()
+      : (applicantProfile.fullName || 'My Master');
     setScreenResume({
-      title: title || (parsed.candidateName !== 'Your Resume' ? `${parsed.candidateName} Resume` : 'My Master Resume'),
+      title: title || (parsed.candidateName !== 'Your Resume' && parsed.candidateName !== 'Alex Chen' ? `${parsed.candidateName} Resume` : `${candidateDisplayName} Resume`),
       fullText: text,
       isGoogleDoc: false,
     });
@@ -202,6 +212,11 @@ export const App: React.FC = () => {
   };
 
   const handleOpenGooglePicker = async () => {
+    const candidateDisplayName = (applicantProfile.firstName || applicantProfile.lastName)
+      ? `${applicantProfile.firstName} ${applicantProfile.lastName}`.trim()
+      : (applicantProfile.fullName || 'Candidate');
+    const fallbackTitle = `${candidateDisplayName} — Master Resume (Google Doc)`;
+
     try {
       let token = await getGoogleAccessToken();
       if (!token) {
@@ -209,7 +224,7 @@ export const App: React.FC = () => {
         if (authRes.success && authRes.accessToken) {
           token = authRes.accessToken;
         } else {
-          handleSelectOption1GoogleDocs('mock-master-resume-doc-id', 'Alex Chen — Master Resume (Google Doc)');
+          handleSelectOption1GoogleDocs('mock-master-resume-doc-id', fallbackTitle);
           return;
         }
       }
@@ -221,12 +236,12 @@ export const App: React.FC = () => {
         onCancel: () => {},
         onError: (err) => {
           console.warn('[App] Google Picker note:', err);
-          handleSelectOption1GoogleDocs('mock-master-resume-doc-id', 'Alex Chen — Master Resume (Google Doc)');
+          handleSelectOption1GoogleDocs('mock-master-resume-doc-id', fallbackTitle);
         }
       });
     } catch (err) {
       console.warn('[App] Google Picker note:', err);
-      handleSelectOption1GoogleDocs('mock-master-resume-doc-id', 'Alex Chen — Master Resume (Google Doc)');
+      handleSelectOption1GoogleDocs('mock-master-resume-doc-id', fallbackTitle);
     }
   };
 
@@ -533,11 +548,13 @@ export const App: React.FC = () => {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        connectedDocTitle={screenResume?.title || (parsedResume?.candidateName ? `${parsedResume.candidateName} Resume` : 'Hacky Web Resume')}
+        applicantProfile={applicantProfile}
+        connectedDocTitle={screenResume?.title || (applicantProfile?.firstName ? `${applicantProfile.firstName}'s Resume` : 'Hacky Web Resume')}
         newJobsCount={newJobsCount}
         themeMode={themeMode}
         isDark={isDark}
         onToggleTheme={handleToggleTheme}
+        targetJobTitle={currentJob ? `${currentJob.title} @ ${currentJob.company}` : undefined}
       />
 
       {/* Main Container */}
@@ -545,12 +562,16 @@ export const App: React.FC = () => {
         {activeTab === 'home' && (
           <HomePage
             onSelectOption1GoogleDocs={() => {
-              handleSelectOption1GoogleDocs('mock-master-resume-doc-id', 'Alex Chen — Master Resume (Google Doc)');
+              const candidateDisplayName = (applicantProfile.firstName || applicantProfile.lastName)
+                ? `${applicantProfile.firstName} ${applicantProfile.lastName}`.trim()
+                : (applicantProfile.fullName || 'Candidate');
+              handleSelectOption1GoogleDocs('mock-master-resume-doc-id', `${candidateDisplayName} — Master Resume (Google Doc)`);
               setActiveTab('match');
             }}
             onSelectOption2InAppCanvas={() => {
-              const textToLoad = screenResume?.fullText || parsedResume?.rawText || googleDocs.getMockMasterResume().fullText;
-              handleSelectOption2InAppCanvas(textToLoad, screenResume?.title || 'My Master Resume');
+              const textToLoad = screenResume?.fullText || parsedResume?.rawText || googleDocs.getMockMasterResume(applicantProfile).fullText;
+              const candidateTitle = applicantProfile?.firstName ? `${applicantProfile.firstName}'s Master Resume` : 'My Master Resume';
+              handleSelectOption2InAppCanvas(textToLoad, screenResume?.title || candidateTitle);
               setActiveTab('match');
             }}
             onNavigateToDiscovery={() => setActiveTab('discovery')}
@@ -622,6 +643,30 @@ export const App: React.FC = () => {
           <TrackerTab
             applications={applications}
             onUpdateStatus={handleUpdateStatus}
+          />
+        )}
+
+        {activeTab === 'profile' && (
+          <ProfileTab
+            profile={applicantProfile}
+            onUpdateProfile={async (updated) => {
+              setApplicantProfile(updated);
+              try {
+                await saveStoredApplicantProfile(updated);
+              } catch (e) {
+                console.error('[App] Failed to save profile update:', e);
+              }
+            }}
+            onReopenOnboarding={() => setIsOnboardingOpen(true)}
+            onNavigateToWorkspace={(mode) => {
+              if (mode) {
+                setWorkspaceMode(mode);
+                saveStoredWorkspaceMode(mode);
+              }
+              setActiveTab('match');
+            }}
+            connectedDocTitle={screenResume?.title}
+            workspaceMode={workspaceMode}
           />
         )}
 

@@ -41,10 +41,12 @@ describe('Option 1 & Option 2 Workspace Architectures & Ingestion Engine', () =>
       expect(resumeText).toContain('EDUCATION');
     });
 
-    it('falls back gracefully to default Alex Chen profile if profile is empty', () => {
+    it('falls back gracefully to clean candidate defaults when profile is empty without hardcoded Alex Chen', () => {
       const resumeText = buildStarterResumeText({});
-      expect(resumeText).toContain('Alex Chen');
-      expect(resumeText).toContain('alex.chen@example.com');
+      expect(resumeText).toContain('Candidate Resume');
+      expect(resumeText).toContain('candidate@example.com');
+      expect(resumeText).not.toContain('Alex Chen');
+      expect(resumeText).not.toContain('alex.chen@example.com');
       expect(resumeText).toContain('EXPERIENCE');
     });
 

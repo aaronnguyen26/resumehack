@@ -300,7 +300,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete, in
                   value={profile.firstName}
                   onChange={(v) => update({ firstName: v })}
                   onBlur={() => markTouched('firstName')}
-                  placeholder="Alex"
+                  placeholder="Jane"
                   required
                   error={firstNameError}
                 />
@@ -311,7 +311,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete, in
                   value={profile.lastName}
                   onChange={(v) => update({ lastName: v })}
                   onBlur={() => markTouched('lastName')}
-                  placeholder="Chen"
+                  placeholder="Doe"
                   required
                   error={lastNameError}
                 />
@@ -325,7 +325,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete, in
                 value={profile.email}
                 onChange={(v) => update({ email: v })}
                 onBlur={() => markTouched('email')}
-                placeholder="alex.chen@example.com"
+                placeholder="jane.doe@university.edu"
                 required
                 error={emailError}
               />

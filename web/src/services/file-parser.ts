@@ -11,13 +11,15 @@ export interface FileParseResult {
  * Builds a clean, ATS-optimized master resume text using candidate profile details.
  */
 export function buildStarterResumeText(profile?: Partial<ApplicantProfile>): string {
+  const firstName = profile?.firstName?.trim() || '';
+  const lastName = profile?.lastName?.trim() || '';
   const name = profile?.fullName?.trim() || 
-    `${profile?.firstName || 'Alex'} ${profile?.lastName || 'Chen'}`.trim();
-  const email = profile?.email || 'alex.chen@example.com';
-  const phone = profile?.phone || '(555) 234-5678';
+    (firstName || lastName ? `${firstName} ${lastName}`.trim() : 'Candidate Resume');
+  const email = profile?.email || 'candidate@example.com';
+  const phone = profile?.phone || '(555) 000-0000';
   const location = profile?.location || 'San Francisco, CA';
-  const linkedin = profile?.linkedinUrl ? profile.linkedinUrl.replace(/^https?:\/\//, '') : 'linkedin.com/in/alexchen';
-  const github = profile?.githubUrl ? profile.githubUrl.replace(/^https?:\/\//, '') : 'github.com/alexchen';
+  const linkedin = profile?.linkedinUrl ? profile.linkedinUrl.replace(/^https?:\/\//, '') : 'linkedin.com/in/candidate';
+  const github = profile?.githubUrl ? profile.githubUrl.replace(/^https?:\/\//, '') : 'github.com/candidate';
 
   return `${name}
 ${email} • ${phone} • ${location} • ${linkedin} • ${github}

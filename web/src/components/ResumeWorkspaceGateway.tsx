@@ -95,7 +95,10 @@ export const ResumeWorkspaceGateway: React.FC<ResumeWorkspaceGatewayProps> = ({
   };
 
   const handleUseGoogleDemo = () => {
-    onSelectOption1GoogleDocs('mock-master-resume-doc-id', 'Alex Chen — Master Resume (Google Doc)');
+    const candidateName = (applicantProfile?.firstName || applicantProfile?.lastName)
+      ? `${applicantProfile.firstName} ${applicantProfile.lastName || ''}`.trim()
+      : (applicantProfile?.fullName || 'Master');
+    onSelectOption1GoogleDocs('mock-master-resume-doc-id', `${candidateName} — Master Resume (Google Doc)`);
   };
 
   return (

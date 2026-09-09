@@ -1,16 +1,18 @@
 import React from 'react';
-import { Home, Target, Compass, Kanban, Settings, CheckCircle2, Sun, Moon, Sparkles, FileText } from 'lucide-react';
+import { Home, Target, Compass, Kanban, Settings, CheckCircle2, Sun, Moon, Sparkles, FileText, User } from 'lucide-react';
 import { ThemeMode } from '../services/theme.js';
+import { ApplicantProfile } from '../types/index.js';
 
 interface NavbarProps {
-  activeTab: 'home' | 'match' | 'discovery' | 'tracker' | 'settings';
-  setActiveTab: (tab: 'home' | 'match' | 'discovery' | 'tracker' | 'settings') => void;
+  activeTab: 'home' | 'match' | 'discovery' | 'tracker' | 'profile' | 'settings';
+  setActiveTab: (tab: 'home' | 'match' | 'discovery' | 'tracker' | 'profile' | 'settings') => void;
   connectedDocTitle?: string;
   newJobsCount?: number;
   themeMode?: ThemeMode;
   isDark?: boolean;
   onToggleTheme?: () => void;
   targetJobTitle?: string;
+  applicantProfile?: ApplicantProfile;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -22,7 +24,19 @@ export const Navbar: React.FC<NavbarProps> = ({
   isDark = false,
   onToggleTheme,
   targetJobTitle = 'SWE Intern @ Stripe',
+  applicantProfile,
 }) => {
+  // Compute user profile initials and display labels dynamically
+  const firstName = applicantProfile?.firstName?.trim() || '';
+  const lastName = applicantProfile?.lastName?.trim() || '';
+  const initials = (firstName || lastName)
+    ? `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase()
+    : (applicantProfile?.email?.[0] || 'U').toUpperCase();
+  const displayName = (firstName || lastName)
+    ? `${firstName} ${lastName}`.trim()
+    : (applicantProfile?.fullName?.trim() || 'My Profile');
+  const displaySubtitle = applicantProfile?.major?.trim() || applicantProfile?.degree?.trim() || 'Candidate Profile';
+
   return (
     <header className="sticky top-0 z-50 h-16 bg-white/95 dark:bg-[#09090B]/95 backdrop-blur-md border-b border-zinc-200 dark:border-[#27272A] px-4 sm:px-8 lg:px-12 flex items-center justify-between w-full transition-colors duration-200 select-none">
       {/* Left: Brand + Breadcrumb Workspace Target */}
@@ -118,6 +132,20 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         <button
           role="tab"
+          aria-selected={activeTab === 'profile'}
+          onClick={() => setActiveTab('profile')}
+          className={`h-9 px-4 rounded-lg text-xs font-medium inline-flex items-center gap-2 transition-all ${
+            activeTab === 'profile'
+              ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs'
+              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
+          }`}
+        >
+          <User className="w-3.5 h-3.5" />
+          <span>Profile</span>
+        </button>
+
+        <button
+          role="tab"
           aria-selected={activeTab === 'settings'}
           onClick={() => setActiveTab('settings')}
           className={`h-9 px-4 rounded-lg text-xs font-medium inline-flex items-center gap-2 transition-all ${
@@ -162,19 +190,31 @@ export const Navbar: React.FC<NavbarProps> = ({
         )}
 
         {/* User Profile Monogram Badge */}
-        <div className="flex items-center gap-2.5 pl-3 border-l border-zinc-200 dark:border-[#27272A]">
-          <div className="w-8 h-8 rounded-lg bg-zinc-200 dark:bg-[#27272A] text-zinc-800 dark:text-zinc-200 font-mono text-xs font-semibold flex items-center justify-center border border-zinc-300 dark:border-[#3F3F46] shadow-xs">
-            AC
+        <button
+          type="button"
+          onClick={() => setActiveTab('profile')}
+          aria-label="Open User Profile"
+          title="Open User Profile"
+          className={`flex items-center gap-2.5 pl-3 border-l border-zinc-200 dark:border-[#27272A] hover:opacity-85 transition-all cursor-pointer group text-left ${
+            activeTab === 'profile' ? 'opacity-100' : ''
+          }`}
+        >
+          <div className={`w-8 h-8 rounded-lg font-mono text-xs font-semibold flex items-center justify-center border shadow-xs transition-colors ${
+            activeTab === 'profile'
+              ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 border-zinc-900 dark:border-white ring-2 ring-zinc-400/30'
+              : 'bg-zinc-200 dark:bg-[#27272A] text-zinc-800 dark:text-zinc-200 border-zinc-300 dark:border-[#3F3F46] group-hover:border-zinc-400 dark:group-hover:border-zinc-500'
+          }`}>
+            {initials}
           </div>
           <div className="hidden xl:flex flex-col text-left">
-            <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 leading-none">
-              Alex Chen
+            <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 leading-none group-hover:text-zinc-950 dark:group-hover:text-white truncate max-w-[130px]">
+              {displayName}
             </span>
-            <span className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 leading-tight mt-0.5">
-              Staff IC
+            <span className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 leading-tight mt-0.5 truncate max-w-[130px]">
+              {displaySubtitle}
             </span>
           </div>
-        </div>
+        </button>
       </div>
     </header>
   );

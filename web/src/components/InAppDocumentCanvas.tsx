@@ -16,7 +16,7 @@ import {
   Plus
 } from 'lucide-react';
 import { ParsedResume } from '../services/resume-parser.js';
-import { TailoredBulletDiff } from '../types/index.js';
+import { TailoredBulletDiff, ApplicantProfile } from '../types/index.js';
 
 export interface InAppDocumentCanvasProps {
   parsedResume: ParsedResume | null;
@@ -26,6 +26,7 @@ export interface InAppDocumentCanvasProps {
   onApplyBulletDiff?: (diffIndex: number) => void;
   onApplyAllDiffs?: () => void;
   onReopenGateway?: () => void;
+  applicantProfile?: ApplicantProfile;
 }
 
 export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
@@ -36,11 +37,31 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   onApplyBulletDiff,
   onApplyAllDiffs,
   onReopenGateway,
+  applicantProfile,
 }) => {
   const [isRawEditing, setIsRawEditing] = useState(false);
   const [editText, setEditText] = useState(rawText);
   const [isCompact, setIsCompact] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Dynamic candidate name & contact details derived from user's onboarded profile
+  const profileName = applicantProfile?.fullName?.trim() || 
+    `${applicantProfile?.firstName || ''} ${applicantProfile?.lastName || ''}`.trim();
+  const displayName = (parsedResume?.candidateName && parsedResume.candidateName !== 'Your Resume' && parsedResume.candidateName !== 'Alex Chen')
+    ? parsedResume.candidateName
+    : (profileName || 'Master Tech Resume');
+
+  const profileContactInfo = [
+    applicantProfile?.email,
+    applicantProfile?.phone,
+    applicantProfile?.location,
+    applicantProfile?.linkedinUrl ? applicantProfile.linkedinUrl.replace(/^https?:\/\//, '') : undefined,
+    applicantProfile?.githubUrl ? applicantProfile.githubUrl.replace(/^https?:\/\//, '') : undefined,
+  ].filter(Boolean) as string[];
+
+  const contactList = parsedResume?.contactInfo && parsedResume.contactInfo.length > 0
+    ? parsedResume.contactInfo
+    : (profileContactInfo.length > 0 ? profileContactInfo : ['candidate@example.com', 'San Francisco, CA']);
 
   // Sync edit text when raw text changes
   React.useEffect(() => {
@@ -241,19 +262,15 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
           {/* Document Header */}
           <div className="text-center pb-4 border-b border-zinc-200 dark:border-zinc-800/80 space-y-2">
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-950 dark:text-white font-headline">
-              {parsedResume?.candidateName || 'Alex Chen'}
+              {displayName}
             </h1>
             <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
-              {parsedResume?.contactInfo && parsedResume.contactInfo.length > 0 ? (
-                parsedResume.contactInfo.map((info, idx) => (
-                  <span key={idx} className="flex items-center gap-2">
-                    {idx > 0 && <span className="text-zinc-300 dark:text-zinc-600">•</span>}
-                    <span>{info}</span>
-                  </span>
-                ))
-              ) : (
-                <span>alex.chen@example.com • (555) 234-5678 • San Francisco, CA • linkedin.com/in/alexchen</span>
-              )}
+              {contactList.map((info, idx) => (
+                <span key={idx} className="flex items-center gap-2">
+                  {idx > 0 && <span className="text-zinc-300 dark:text-zinc-600">•</span>}
+                  <span>{info}</span>
+                </span>
+              ))}
             </div>
           </div>
 

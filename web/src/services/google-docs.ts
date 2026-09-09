@@ -6,6 +6,7 @@ import {
   StructuralRunStyle,
   StructuralParagraph,
   LayoutIssue,
+  ApplicantProfile,
 } from '../types/index.js';
 import {
   refreshGoogleAccessToken,
@@ -893,8 +894,30 @@ export class GoogleDocsService {
     return requests;
   }
 
-  public getMockMasterResume(documentId: string = 'mock-doc-123') {
-    const title = 'Alex Chen - Master Resume 2026';
+  public getMockMasterResume(profileOrDocId?: string | ApplicantProfile, maybeProfile?: ApplicantProfile) {
+    const profile = typeof profileOrDocId === 'object' ? profileOrDocId : maybeProfile;
+    const firstName = profile?.firstName?.trim() || '';
+    const lastName = profile?.lastName?.trim() || '';
+    const candidateName = (firstName || lastName)
+      ? `${firstName} ${lastName}`.trim()
+      : (profile?.fullName?.trim() || 'Candidate Resume');
+
+    const email = profile?.email?.trim() || 'candidate@example.com';
+    const phone = profile?.phone?.trim() || '(555) 000-0000';
+    const location = profile?.location?.trim() || 'San Francisco, CA';
+    const github = profile?.githubUrl?.trim() ? profile.githubUrl.replace(/^https?:\/\//, '') : 'github.com/profile';
+    const linkedin = profile?.linkedinUrl?.trim() ? profile.linkedinUrl.replace(/^https?:\/\//, '') : 'linkedin.com/in/profile';
+
+    const contactParts = [location, email, phone, github, linkedin].filter(Boolean);
+    const contactLine = contactParts.join(' | ');
+
+    const school = profile?.school?.trim() || 'University of California, Berkeley';
+    const degree = profile?.degree?.trim() || 'B.S.';
+    const major = profile?.major?.trim() || 'Computer Science';
+    const gradYear = profile?.gradMonthYear?.trim() || (profile as any)?.graduationYear?.trim() || 'May 2026';
+    const gpa = profile?.gpa?.trim() ? ` | GPA: ${profile.gpa}` : ' | GPA: 3.85';
+
+    const title = `${candidateName} - Master Resume 2026`;
     const bullets: ResumeBullet[] = [
       {
         id: 'bullet-1',
@@ -930,12 +953,12 @@ export class GoogleDocsService {
       },
     ];
 
-    const fullText = `Alex Chen
-San Francisco, CA | alex.chen@example.com | github.com/alexchen | linkedin.com/in/alexchen
+    const fullText = `${candidateName}
+${contactLine}
 
 EDUCATION
-University of California, Berkeley
-B.S. in Computer Science | GPA: 3.85 | Expected Graduation: May 2026
+${school}
+${degree} in ${major}${gpa} | Expected Graduation: ${gradYear}
 
 TECHNICAL SKILLS
 Languages: Python, Go, TypeScript, JavaScript, SQL, C++, HTML/CSS
