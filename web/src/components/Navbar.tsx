@@ -1,9 +1,9 @@
 import React from 'react';
-import { Home, Target, Compass, Kanban, Settings, CheckCircle2, Sun, Moon, Sparkles, FileText, User } from 'lucide-react';
+import { Home, Compass, Kanban, Settings, CheckCircle2, Sun, Moon, Sparkles, FileText, User } from 'lucide-react';
 import { ThemeMode } from '../services/theme.js';
 import { ApplicantProfile } from '../types/index.js';
 
-export type NavTab = 'home' | 'canvas' | 'match' | 'discovery' | 'tracker' | 'profile' | 'settings';
+export type NavTab = 'home' | 'canvas' | 'discovery' | 'tracker' | 'profile' | 'settings';
 
 interface NavbarProps {
   activeTab: NavTab;
@@ -84,20 +84,6 @@ export const Navbar: React.FC<NavbarProps> = ({
         >
           <FileText className="w-3.5 h-3.5" />
           <span>Document Canvas</span>
-        </button>
-
-        <button
-          role="tab"
-          aria-selected={activeTab === 'match'}
-          onClick={() => setActiveTab('match')}
-          className={`h-9 px-4 rounded-lg text-xs font-medium inline-flex items-center gap-2 transition-all ${
-            activeTab === 'match'
-              ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs'
-              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
-          }`}
-        >
-          <Target className="w-3.5 h-3.5" />
-          <span>Match & Tailor</span>
         </button>
 
         <button

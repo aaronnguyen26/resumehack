@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Navbar, NavTab } from './components/Navbar.js';
 import { HomePage } from './components/HomePage.js';
 import { InAppDocumentCanvas } from './components/InAppDocumentCanvas.js';
-import { MatchTailorTab } from './components/MatchTailorTab.js';
 import { DiscoveryTab } from './components/DiscoveryTab.js';
 import { TrackerTab } from './components/TrackerTab.js';
 import { SettingsTab } from './components/SettingsTab.js';
@@ -137,9 +136,11 @@ export const App: React.FC = () => {
     // Read query parameters to allow direct tab navigation from Hacky or links
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const requestedTab = params.get('tab') as NavTab | null;
-      if (requestedTab && ['home', 'canvas', 'match', 'discovery', 'tracker', 'profile', 'settings'].includes(requestedTab)) {
-        setActiveTab(requestedTab);
+      const requestedTab = params.get('tab');
+      if (requestedTab === 'match') {
+        setActiveTab('canvas');
+      } else if (requestedTab && ['home', 'canvas', 'discovery', 'tracker', 'profile', 'settings'].includes(requestedTab)) {
+        setActiveTab(requestedTab as NavTab);
       }
     }
 
@@ -370,7 +371,7 @@ export const App: React.FC = () => {
       url: job.url,
       source: job.source,
     });
-    setActiveTab('match');
+    setActiveTab('canvas');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -782,15 +783,7 @@ export const App: React.FC = () => {
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {activeTab === 'home' && (
           <HomePage
-            onSelectOption1GoogleDocs={() => {
-              const candidateDisplayName = (applicantProfile.firstName || applicantProfile.lastName)
-                ? `${applicantProfile.firstName} ${applicantProfile.lastName}`.trim()
-                : (applicantProfile.fullName || 'Candidate');
-              const existingDocId = screenResume?.isGoogleDoc && screenResume.docId ? screenResume.docId : undefined;
-              handleSelectOption1GoogleDocs(existingDocId || 'mock-master-resume-doc-id', `${candidateDisplayName} — Master Resume (Google Doc)`);
-              setActiveTab('match');
-            }}
-            onSelectOption2InAppCanvas={() => {
+            onOpenCanvas={() => {
               const textToLoad = screenResume?.fullText || parsedResume?.rawText || googleDocs.getMockMasterResume(applicantProfile).fullText;
               const candidateTitle = applicantProfile?.firstName ? `${applicantProfile.firstName}'s Master Resume` : 'My Master Resume';
               handleSelectOption2InAppCanvas(textToLoad, screenResume?.title || candidateTitle);
@@ -800,12 +793,8 @@ export const App: React.FC = () => {
             onNavigateToTracker={() => setActiveTab('tracker')}
             onSelectRoleTarget={(job) => {
               setCurrentJob(job);
-              setActiveTab('match');
+              setActiveTab('canvas');
               window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            onOpenGooglePicker={async () => {
-              await handleOpenGooglePicker();
-              setActiveTab('match');
             }}
             connectedDocTitle={screenResume?.title}
             recentApplicationsCount={applications.length || 4}
@@ -868,45 +857,14 @@ export const App: React.FC = () => {
                 }
               }}
               currentJob={currentJob}
+              onUpdateCurrentJob={setCurrentJob}
+              onTriggerTailor={handleTriggerTailor}
+              tailorData={tailorData}
+              isTailorLoading={isLoading}
               targetRole={currentJob.title || 'Senior Software Engineer'}
               atsScore={currentAtsScore}
             />
           </div>
-        )}
-
-        {activeTab === 'match' && (
-          <MatchTailorTab
-            currentJob={currentJob}
-            tailorData={tailorData}
-            isLoading={isLoading}
-            onTriggerTailor={handleTriggerTailor}
-            onTriggerGeneralAtsOptimize={handleTriggerGeneralAtsOptimize}
-            onApplyToGoogleDoc={handleApplyToGoogleDoc}
-            onApplyLayoutFix={handleApplyLayoutFix}
-            onForkToDrive={handleForkToDrive}
-            onTriggerAutofill={handleTriggerAutofill}
-            onReadScreenNow={handleReadScreenNow}
-            onScrapeJobFromCurrentTab={handleScrapeJobFromCurrentTab}
-            screenResume={screenResume}
-            parsedResume={parsedResume}
-            onUpdateCustomResumeText={handleUpdateCustomResumeText}
-            onNavigateToSettings={() => setActiveTab('settings')}
-            appliedStatus={appliedStatus}
-            forkedDocUrl={forkedDocUrl}
-            pdfUrl={pdfUrl}
-            workspaceMode={workspaceMode}
-            onSetWorkspaceMode={(newMode) => {
-              setWorkspaceMode(newMode);
-              saveStoredWorkspaceMode(newMode);
-            }}
-            onOpenGooglePicker={handleOpenGooglePicker}
-            onSelectGoogleDoc={handleSelectOption1GoogleDocs}
-            applicantProfile={applicantProfile}
-            showWorkspaceGateway={showWorkspaceGateway}
-            onCloseGateway={() => setShowWorkspaceGateway(false)}
-            onUploadResumeFile={handleUploadResumeFile}
-            onOpenCanvasStudio={() => setActiveTab('canvas')}
-          />
         )}
 
         {activeTab === 'discovery' && (
@@ -952,7 +910,7 @@ export const App: React.FC = () => {
                   return;
                 }
               }
-              setActiveTab('match');
+              setActiveTab('canvas');
             }}
             connectedDocTitle={screenResume?.title}
             workspaceMode={workspaceMode}

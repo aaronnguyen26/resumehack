@@ -173,11 +173,12 @@ describe('Home Page Navigation & Dedicated Workspace Separation Contracts', () =
       expect(content).toContain('px-4 sm:px-8 lg:px-12');
       expect(content).toContain('gap-6');
 
-      // Check all 5 tabs are present
+      // Check all tabs are present in Navbar
       expect(content).toContain('<span>Home</span>');
-      expect(content).toContain('<span>Match & Tailor</span>');
+      expect(content).toContain('<span>Document Canvas</span>');
       expect(content).toContain('<span>Discovery</span>');
       expect(content).toContain('<span>Tracker</span>');
+      expect(content).toContain('<span>Profile</span>');
       expect(content).toContain('<span>Settings</span>');
     });
 

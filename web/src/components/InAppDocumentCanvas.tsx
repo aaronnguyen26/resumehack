@@ -43,7 +43,8 @@ import {
   generateSectionHtml, 
   escapeHtml 
 } from '../services/canvas-editor.js';
-import { TailoredBulletDiff, ApplicantProfile, ScrapedJobData } from '../types/index.js';
+import { TailoredBulletDiff, ApplicantProfile, ScrapedJobData, TailorResumeResponse } from '../types/index.js';
+import { HackerRankAtsPanel } from './HackerRankAtsPanel.js';
 
 export interface InAppDocumentCanvasProps {
   parsedResume: ParsedResume | null;
@@ -62,6 +63,10 @@ export interface InAppDocumentCanvasProps {
   documentTitle?: string;
   onUpdateDocumentTitle?: (title: string) => void;
   currentJob?: ScrapedJobData;
+  onUpdateCurrentJob?: (job: ScrapedJobData) => void;
+  onTriggerTailor?: () => Promise<void>;
+  tailorData?: TailorResumeResponse | null;
+  isTailorLoading?: boolean;
   targetRole?: string;
   atsScore?: number;
 }
@@ -89,6 +94,10 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   documentTitle,
   onUpdateDocumentTitle,
   currentJob,
+  onUpdateCurrentJob,
+  onTriggerTailor,
+  tailorData,
+  isTailorLoading = false,
   targetRole = 'Senior Software Engineer',
   atsScore = 92,
 }) => {
@@ -113,7 +122,6 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   const [zoom, setZoom] = useState<ZoomLevel>(100);
   const [showGuides, setShowGuides] = useState<boolean>(true);
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(true);
-  const [inspectorTab, setInspectorTab] = useState<'tailor' | 'budget' | 'keywords'>('tailor');
 
   // ── Auto-Save Telemetry ──────────────────────────────────────────────────
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -596,7 +604,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
             <span>Export ATS PDF</span>
           </button>
 
-          {/* Toggle Right Inspector */}
+          {/* Toggle Right HackerRank ATS Inspector */}
           <button
             type="button"
             onClick={() => setIsInspectorOpen(!isInspectorOpen)}
@@ -605,10 +613,10 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
                 ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 border-zinc-900 dark:border-white shadow-xs'
                 : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-[#27272A] text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
             }`}
-            title="Toggle ATS Copilot & Telemetry Panel"
+            title="Toggle HackerRank ATS Architecture Panel"
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Inspector</span>
+            <span className="hidden md:inline">HackerRank ATS</span>
           </button>
         </div>
       </header>
@@ -1047,233 +1055,45 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
           )}
         </div>
 
-        {/* ── RIGHT TELEMETRY & ATS COPILOT INSPECTOR (Collapsible) ────────── */}
+        {/* ── RIGHT HACKERRANK ATS ARCHITECTURE INSPECTOR (Collapsible) ────────── */}
         {isInspectorOpen && (
-          <aside className="w-full md:w-80 lg:w-96 bg-white dark:bg-[#121215] border-l border-zinc-200 dark:border-[#27272A] flex flex-col shrink-0 shadow-sm transition-all duration-200">
-            {/* Inspector Header */}
-            <div className="p-4 border-b border-zinc-200 dark:border-[#27272A] flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-emerald-500" />
-                <span className="font-bold text-xs font-headline uppercase tracking-wider text-zinc-950 dark:text-zinc-50">
-                  ATS & Budget Telemetry
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsInspectorOpen(false)}
-                className="p-1 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
-                title="Collapse Inspector"
-              >
-                <PanelRightClose className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Inspector Segmented Tabs */}
-            <div className="flex border-b border-zinc-200 dark:border-[#27272A] text-xs font-mono font-medium">
-              <button
-                type="button"
-                onClick={() => setInspectorTab('tailor')}
-                className={`flex-1 py-2 text-center border-b-2 transition-colors cursor-pointer ${
-                  inspectorTab === 'tailor'
-                    ? 'border-zinc-900 dark:border-white text-zinc-900 dark:text-white font-bold'
-                    : 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300'
-                }`}
-              >
-                Tailoring ({pendingDiffs.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setInspectorTab('budget')}
-                className={`flex-1 py-2 text-center border-b-2 transition-colors cursor-pointer ${
-                  inspectorTab === 'budget'
-                    ? 'border-zinc-900 dark:border-white text-zinc-900 dark:text-white font-bold'
-                    : 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300'
-                }`}
-              >
-                Line Budget
-              </button>
-              <button
-                type="button"
-                onClick={() => setInspectorTab('keywords')}
-                className={`flex-1 py-2 text-center border-b-2 transition-colors cursor-pointer ${
-                  inspectorTab === 'keywords'
-                    ? 'border-zinc-900 dark:border-white text-zinc-900 dark:text-white font-bold'
-                    : 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300'
-                }`}
-              >
-                Keywords
-              </button>
-            </div>
-
-            {/* Inspector Tab Content */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {inspectorTab === 'tailor' && (
-                <div className="space-y-4">
-                  {/* ATS Match Score Dial */}
-                  <div className="p-4 rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-center space-y-2">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full border-4 border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono font-bold text-2xl">
-                      {atsScore}%
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold font-headline text-zinc-900 dark:text-zinc-100">
-                        {targetRole}
-                      </div>
-                      <div className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 mt-0.5">
-                        Tier 1 Algorithmic Match Rating
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Pending STAR Method Diffs */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs font-mono text-zinc-500">
-                      <span>STAR Method Diffs ({pendingDiffs.length}):</span>
-                      {pendingDiffs.length > 0 && onApplyAllDiffs && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onApplyAllDiffs();
-                            if (editorRef.current) {
-                              diffs.forEach(d => {
-                                if (d.originalText && editorRef.current) {
-                                  editorRef.current.innerHTML = editorRef.current.innerHTML.replace(
-                                    escapeHtml(d.originalText.trim()),
-                                    escapeHtml(d.tailoredText.trim())
-                                  );
-                                }
-                              });
-                              handleEditorInput();
-                            }
-                          }}
-                          className="text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer"
-                        >
-                          Apply All
-                        </button>
-                      )}
-                    </div>
-
-                    {pendingDiffs.length === 0 ? (
-                      <div className="p-4 text-center rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-dashed border-zinc-300 dark:border-zinc-700 text-xs text-zinc-500">
-                        <CheckCircle2 className="w-5 h-5 mx-auto mb-1 text-emerald-500" />
-                        <span>All bullet points currently match active STAR criteria!</span>
-                      </div>
-                    ) : (
-                      pendingDiffs.map((diff, dIdx) => (
-                        <div key={dIdx} className="p-3 rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] space-y-2 text-xs">
-                          <div className="text-[10px] font-mono font-semibold uppercase text-emerald-600 dark:text-emerald-400">
-                            Quantifiable Impact Suggestion:
-                          </div>
-                          <div className="line-through text-zinc-400 text-[11px]">
-                            {diff.originalText}
-                          </div>
-                          <div className="font-medium text-zinc-900 dark:text-zinc-100">
-                            • {diff.tailoredText}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleApplyBulletDiffFromInspector(dIdx)}
-                            className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs cursor-pointer"
-                          >
-                            Apply to Document
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {inspectorTab === 'budget' && (
-                <div className="space-y-4">
-                  {/* Budget Card */}
-                  <div className="p-4 rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] space-y-3">
-                    <div className="flex items-center justify-between text-xs font-mono">
-                      <span className="font-bold text-zinc-900 dark:text-zinc-100">1-Page Capacity</span>
-                      <span className={pageBudgetPercentage <= 100 ? 'text-emerald-500 font-bold' : 'text-amber-500 font-bold'}>
-                        {pageBudgetPercentage}%
-                      </span>
-                    </div>
-
-                    <div className="w-full bg-zinc-200 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full transition-all duration-300 ${pageBudgetPercentage <= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                        style={{ width: `${Math.min(100, pageBudgetPercentage)}%` }}
-                      />
-                    </div>
-
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                      {pageBudgetPercentage <= 100
-                        ? `Optimal line distribution. Your resume fits cleanly onto 1 standard US Letter page with ${linesRemaining} lines of safety buffer.`
-                        : `Your document currently spills onto Page 2 by ${Math.abs(linesRemaining)} lines. Enable compact margins (0.5") or edit bullet points to fit.`}
-                    </p>
-                  </div>
-
-                  {/* Section Line Distribution Table */}
-                  <div className="space-y-2">
-                    <span className="text-xs font-mono text-zinc-500">Section Line Distribution:</span>
-                    <div className="divide-y divide-zinc-200 dark:divide-zinc-800 rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] overflow-hidden text-xs font-mono">
-                      {sectionBreakdown.map((sec, idx) => (
-                        <div key={idx} className="flex items-center justify-between px-3 py-2">
-                          <span className="text-zinc-800 dark:text-zinc-200 truncate max-w-[180px]">
-                            {sec.title}
-                          </span>
-                          <span className="font-bold text-zinc-600 dark:text-zinc-400">
-                            {sec.count} lines
-                          </span>
-                        </div>
-                      ))}
-                      <div className="flex items-center justify-between px-3 py-2 bg-zinc-100 dark:bg-zinc-800/60 font-bold text-zinc-950 dark:text-zinc-100">
-                        <span>Total Document:</span>
-                        <span>{lineCount} lines</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {inspectorTab === 'keywords' && (
-                <div className="space-y-4">
-                  {/* Matched Keywords */}
-                  <div className="space-y-2">
-                    <span className="text-xs font-mono text-zinc-500">Detected ATS Keywords:</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {['Go', 'Distributed Systems', 'Kubernetes', 'Kafka', 'PostgreSQL', 'Docker', 'gRPC', 'eBPF', 'AWS', 'Microservices'].map((kw, idx) => (
-                        <span key={idx} className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-mono font-semibold flex items-center gap-1">
-                          <Check className="w-2.5 h-2.5" />
-                          <span>{kw}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Missing Keywords with 1-Click Insert */}
-                  <div className="space-y-2">
-                    <span className="text-xs font-mono text-zinc-500">Missing Targeted Role Keywords:</span>
-                    <div className="space-y-1.5">
-                      {[
-                        { word: 'Raft Consensus', section: 'PROJECTS' },
-                        { word: 'Chaos Engineering', section: 'EXPERIENCE' },
-                        { word: 'Terraform', section: 'TECHNICAL SKILLS' },
-                      ].map((item, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-xs">
-                          <span className="font-mono text-zinc-800 dark:text-zinc-200">
-                            {item.word}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleInsertKeywordIntoDoc(item.word)}
-                            className="px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-[10px] font-mono cursor-pointer"
-                          >
-                            + Insert
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </aside>
+          <HackerRankAtsPanel
+            resumeText={rawEditText || rawText}
+            applicantProfile={applicantProfile}
+            currentJob={currentJob}
+            onUpdateCurrentJob={onUpdateCurrentJob}
+            onTriggerTailor={onTriggerTailor}
+            tailorData={tailorData}
+            isTailorLoading={isTailorLoading}
+            targetRole={targetRole}
+            diffs={diffs}
+            onApplyBulletDiff={(dIdx) => {
+              handleApplyBulletDiffFromInspector(dIdx);
+            }}
+            onApplyAllDiffs={() => {
+              if (onApplyAllDiffs) {
+                onApplyAllDiffs();
+                if (editorRef.current) {
+                  diffs.forEach(d => {
+                    if (d.originalText && editorRef.current) {
+                      editorRef.current.innerHTML = editorRef.current.innerHTML.replace(
+                        escapeHtml(d.originalText.trim()),
+                        escapeHtml(d.tailoredText.trim())
+                      );
+                    }
+                  });
+                  handleEditorInput();
+                }
+              }
+            }}
+            onInsertKeyword={handleInsertKeywordIntoDoc}
+            onClose={() => setIsInspectorOpen(false)}
+            lineCount={lineCount}
+            maxRecommendedLines={maxRecommendedLines}
+            pageBudgetPercentage={pageBudgetPercentage}
+            linesRemaining={linesRemaining}
+            sectionBreakdown={sectionBreakdown}
+          />
         )}
       </div>
     </div>

@@ -1,34 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, X, ChevronRight, Lightbulb } from 'lucide-react';
 
+import { NavTab } from './Navbar.js';
+
 interface HackyWebMascotProps {
   activeTab: string;
-  onNavigateTab: (tab: 'home' | 'match' | 'discovery' | 'tracker' | 'settings') => void;
+  onNavigateTab: (tab: NavTab) => void;
   atsScore?: number;
 }
 
 const TIPS: Record<string, string[]> = {
   home: [
-    'Hacky: Welcome! Select Google Docs Sync or the In-App Canvas to start optimizing.',
-    'Pro Tip: Both workspace modes protect your single-page line budget and eliminate hallucinations.',
+    'Hacky: Welcome! Upload your PDF resume or launch Document Canvas to start optimizing.',
+    'Pro Tip: Document Canvas protects your single-page line budget and eliminates hallucinations.',
   ],
-  match: [
-    'Tip: Quantify your results with metrics (e.g., "reduced latency by 35%") to boost your ATS score!',
-    'Hacky: Check the diff highlights on your bullet points to verify anti-hallucination sourcing.',
-    'Pro Tip: Matching 5+ hard skills from the job description puts you in the top 10% of applicants.',
+  canvas: [
+    'Hacky: The HackerRank ATS panel updates live next to your canvas as you type!',
+    'Tip: Quantify your results with metrics (e.g., "reduced P99 latency by 35%") to boost your ATS score!',
+    'Pro Tip: Matching 5+ hard skills from the target role puts you in the top 5% of applicants.',
   ],
   discovery: [
     'Hacky: Over 100+ verified Summer 2026 tech internships are currently accepting applications!',
     'Tip: Apply within 48 hours of posting to triple your recruiter response rate.',
-    'Click "Tailor for this Job" on any posting to automatically optimize your resume for it!',
+    'Click "Tailor for this Job" on any posting to automatically optimize your resume in the canvas!',
   ],
   tracker: [
     'Tip: Follow up on applications after 7 business days to show genuine enthusiasm.',
     'Hacky: Track your conversion rates from Applied → Interviewing to refine your resume!',
   ],
+  profile: [
+    'Hacky: Keep your education and links updated so exports and auto-fills are always accurate.',
+  ],
   settings: [
-    'Hacky: You can connect your Google Account or bring your own API key (Gemini, OpenAI, Claude).',
-    'Tip: Make sure your work authorization is updated so forms fill accurately.',
+    'Hacky: You can bring your own API key (Gemini, OpenAI, Claude) for custom LLM tailoring.',
+    'Tip: Make sure your work authorization is updated so applications fill accurately.',
   ],
 };
 
@@ -40,7 +45,7 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({ activeTab, onNav
     setTipIndex(0);
   }, [activeTab]);
 
-  const currentTips = TIPS[activeTab] || TIPS.match;
+  const currentTips = TIPS[activeTab] || TIPS.canvas;
   const currentTip = currentTips[tipIndex % currentTips.length];
 
   const handleNextTip = (e: React.MouseEvent) => {
@@ -87,12 +92,12 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({ activeTab, onNav
               <Lightbulb className="w-3 h-3 text-amber-500" />
               <span>Next Tip</span>
             </button>
-            {activeTab !== 'match' ? (
+            {activeTab !== 'canvas' ? (
               <button
-                onClick={() => onNavigateTab('match')}
+                onClick={() => onNavigateTab('canvas')}
                 className="text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-0.5 cursor-pointer font-medium"
               >
-                <span>Tailor Resume</span>
+                <span>Open Canvas</span>
                 <ChevronRight className="w-3 h-3" />
               </button>
             ) : (

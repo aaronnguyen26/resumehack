@@ -1,45 +1,37 @@
 import React from 'react';
 import { 
-  Cloud, 
   FileText, 
-  Edit3, 
   Ruler, 
   ShieldCheck, 
-  ArrowLeftRight, 
   ArrowRight, 
   CheckCircle2, 
   Compass, 
   Kanban, 
   Lock, 
   ChevronRight, 
-  ExternalLink,
-  Home,
-  UploadCloud,
-  Loader2
+  UploadCloud, 
+  Loader2,
+  Award
 } from 'lucide-react';
 import { ScrapedJobData } from '../types/index.js';
 
 interface HomePageProps {
-  onSelectOption1GoogleDocs: () => void;
-  onSelectOption2InAppCanvas: () => void;
+  onOpenCanvas: () => void;
   onUploadResumeFile?: (file: File) => Promise<void>;
   onNavigateToDiscovery: () => void;
   onNavigateToTracker: () => void;
   onSelectRoleTarget?: (job: ScrapedJobData) => void;
-  onOpenGooglePicker?: () => void;
   connectedDocTitle?: string;
   recentApplicationsCount?: number;
   newJobsCount?: number;
 }
 
 export const HomePage: React.FC<HomePageProps> = ({
-  onSelectOption1GoogleDocs,
-  onSelectOption2InAppCanvas,
+  onOpenCanvas,
   onUploadResumeFile,
   onNavigateToDiscovery,
   onNavigateToTracker,
   onSelectRoleTarget,
-  onOpenGooglePicker,
   connectedDocTitle,
   recentApplicationsCount = 4,
   newJobsCount = 0,
@@ -60,7 +52,7 @@ export const HomePage: React.FC<HomePageProps> = ({
         if (fileInputRef.current) fileInputRef.current.value = '';
       }
     } else {
-      onSelectOption2InAppCanvas();
+      onOpenCanvas();
     }
   };
 
@@ -77,20 +69,20 @@ export const HomePage: React.FC<HomePageProps> = ({
         setIsUploadingPdf(false);
       }
     } else {
-      onSelectOption2InAppCanvas();
+      onOpenCanvas();
     }
   };
 
   return (
     <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 md:py-12 animate-in fade-in duration-300">
       {/* Hero Header Section */}
-      <section className="text-center max-w-3xl mx-auto pt-2 md:pt-4 mb-12 md:mb-16">
+      <section className="text-center max-w-3xl mx-auto pt-2 md:pt-4 mb-10 md:mb-12">
         <h1 className="text-3xl sm:text-4xl md:text-5xl font-headline font-bold text-zinc-950 dark:text-zinc-50 tracking-tight leading-tight mb-4">
           Algorithmic Precision for Your Career
         </h1>
 
         <p className="text-base sm:text-lg text-zinc-600 dark:text-zinc-400 leading-relaxed mb-8 max-w-2xl mx-auto">
-          AI-Powered ATS Optimization & Resume Intelligence. Select your workspace workflow below to begin tailoring for top engineering roles with deterministic precision.
+          AI-Powered ATS Optimization & HackerRank Evaluation Architecture. Upload your resume to edit directly on the canvas and benchmark against tier-1 engineering rubrics.
         </p>
 
         {/* Minimalist Telemetry Badges */}
@@ -104,204 +96,123 @@ export const HomePage: React.FC<HomePageProps> = ({
             <span>Zero Hallucination Engine</span>
           </div>
           <div className="flex items-center gap-2 px-3.5 py-1.5 bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-md shadow-xs">
-            <ArrowLeftRight className="w-3.5 h-3.5 text-amber-500" />
-            <span>Two-Way Live Sync</span>
+            <Award className="w-3.5 h-3.5 text-emerald-500" />
+            <span>HackerRank ATS Architecture</span>
           </div>
         </div>
       </section>
 
-      {/* Primary Workspace Selection Section (2-Column Spacious Cards) */}
-      <section className="mb-14">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xs font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-            Select Resume Workspace Workflow
-          </h2>
-          <span className="text-xs font-mono text-zinc-400 dark:text-zinc-500">
-            Dedicated Separate Workspaces
-          </span>
-        </div>
+      {/* Primary Action Box: Resume Upload & Canvas Studio Launchpad */}
+      <section className="mb-12">
+        <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 sm:p-10 shadow-xs">
+          <div className="max-w-3xl mx-auto">
+            {/* Dropzone Container */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDropFile}
+              onClick={() => !isUploadingPdf && fileInputRef.current?.click()}
+              className={`group/drop p-8 sm:p-12 border-2 border-dashed rounded-xl text-center cursor-pointer transition-all duration-200 ${
+                isDragging
+                  ? 'border-zinc-900 dark:border-white bg-zinc-100 dark:bg-zinc-800/80 scale-[1.01]'
+                  : 'border-zinc-300 dark:border-[#3F3F46] hover:border-zinc-500 dark:hover:border-zinc-400 bg-zinc-50/70 dark:bg-[#18181B]/50'
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.docx,.txt"
+                onChange={handleFileChange}
+                className="hidden"
+              />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Option 1 Card: Google Docs Cloud Sync */}
-          <div className="group relative flex flex-col justify-between bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] hover:border-zinc-400 dark:hover:border-[#3F3F46] rounded-xl p-6 sm:p-8 transition-all duration-200 shadow-xs hover:shadow-md">
-            <div>
-              {/* Card Header */}
-              <div className="flex items-center justify-between mb-5">
-                <div className="w-11 h-11 rounded-lg bg-zinc-100 dark:bg-[#18181B] flex items-center justify-center border border-zinc-200 dark:border-[#27272A]">
-                  <Cloud className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+              {isUploadingPdf ? (
+                <div className="py-6 flex flex-col items-center justify-center gap-3">
+                  <Loader2 className="w-8 h-8 text-zinc-900 dark:text-zinc-100 animate-spin" />
+                  <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 font-headline">
+                    Parsing resume & extracting structure...
+                  </span>
+                  <span className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">
+                    Running layout analyzer & multi-tier Flate extraction
+                  </span>
                 </div>
-                <span className="text-[11px] font-mono px-2.5 py-1 rounded bg-zinc-100 dark:bg-[#18181B] text-emerald-600 dark:text-emerald-400 border border-zinc-200 dark:border-[#27272A] flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Two-Way Sync Ready
-                </span>
-              </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center">
+                  <div className="w-14 h-14 rounded-2xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center mb-4 text-zinc-800 dark:text-zinc-200 group-hover/drop:text-zinc-950 dark:group-hover/drop:text-white transition-colors shadow-xs">
+                    <UploadCloud className="w-7 h-7" />
+                  </div>
+                  <div className="text-lg font-bold text-zinc-950 dark:text-zinc-50 font-headline mb-1">
+                    Upload Resume File
+                  </div>
+                  <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 max-w-md mb-4">
+                    Drag and drop your resume (<span className="font-mono font-medium text-zinc-700 dark:text-zinc-300">PDF, DOCX, or TXT</span>) here or click to browse. Automatically ingested into the in-app canvas.
+                  </p>
 
-              <div className="mb-2">
-                <span className="text-xs font-mono font-semibold uppercase tracking-wider text-zinc-600 dark:text-zinc-300">
-                  Option 1
-                </span>
-                <h3 className="text-xl font-headline font-bold text-zinc-950 dark:text-zinc-50 mt-0.5">
-                  Google Docs Cloud Sync
-                </h3>
-              </div>
-
-              <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed mb-6">
-                Two-way live synchronization with your existing master Google Doc. Applies atomic STAR bullet diffs directly without breaking typography or layout styling.
-              </p>
-
-              {/* Features List */}
-              <div className="space-y-3 pt-4 border-t border-zinc-100 dark:border-[#1E1E22] mb-8">
-                <div className="flex items-center text-xs text-zinc-700 dark:text-zinc-300 gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span>Google Drive live continuous bidirectional connect</span>
+                  <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
+                    <span className="px-2.5 py-1 rounded bg-zinc-200/60 dark:bg-zinc-800/60 border border-zinc-300/40 dark:border-zinc-700/40">
+                      Standard US Letter
+                    </span>
+                    <span className="px-2.5 py-1 rounded bg-zinc-200/60 dark:bg-zinc-800/60 border border-zinc-300/40 dark:border-zinc-700/40">
+                      Multi-Tier PDF Parser
+                    </span>
+                    <span className="px-2.5 py-1 rounded bg-zinc-200/60 dark:bg-zinc-800/60 border border-zinc-300/40 dark:border-zinc-700/40">
+                      Instant In-App Canvas
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center text-xs text-zinc-700 dark:text-zinc-300 gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span>Preserves bespoke margins, line heights, and fonts</span>
-                </div>
-                <div className="flex items-center text-xs text-zinc-700 dark:text-zinc-300 gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span>Instant ATS keyword delta diffing via Google Docs API</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom Actions */}
-            <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
-              <button
-                type="button"
-                onClick={onSelectOption1GoogleDocs}
-                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-zinc-950 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-950 font-headline font-semibold text-sm rounded-lg active:scale-[0.99] transition-all shadow-xs"
-              >
-                <span>Launch Google Docs Workspace</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              {onOpenGooglePicker && (
-                <button
-                  type="button"
-                  onClick={onOpenGooglePicker}
-                  title="Pick a specific Google Doc from your Drive"
-                  className="px-3.5 py-3 bg-zinc-100 hover:bg-zinc-200 dark:bg-[#18181B] dark:hover:bg-[#27272A] border border-zinc-200 dark:border-[#27272A] text-zinc-800 dark:text-zinc-200 text-xs font-mono rounded-lg transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span className="hidden lg:inline">Pick Doc</span>
-                </button>
               )}
             </div>
-          </div>
 
-          {/* Option 2 Card: In-App Document Canvas */}
-          <div className="group relative flex flex-col justify-between bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] hover:border-zinc-400 dark:hover:border-[#3F3F46] rounded-xl p-6 sm:p-8 transition-all duration-200 shadow-xs hover:shadow-md">
-            <div>
-              {/* Card Header */}
-              <div className="flex items-center justify-between mb-5">
-                <div className="w-11 h-11 rounded-lg bg-zinc-100 dark:bg-[#18181B] flex items-center justify-center border border-zinc-200 dark:border-[#27272A]">
-                  <Edit3 className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
-                </div>
-                <span className="text-[11px] font-mono px-2.5 py-1 rounded bg-zinc-100 dark:bg-[#18181B] text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-[#27272A]">
-                  Native Engine
-                </span>
-              </div>
-
-              <div className="mb-2">
-                <span className="text-xs font-mono font-semibold uppercase tracking-wider text-zinc-600 dark:text-zinc-300">
-                  Option 2
-                </span>
-                <h3 className="text-xl font-headline font-bold text-zinc-950 dark:text-zinc-50 mt-0.5">
-                  In-App Document Canvas
-                </h3>
-              </div>
-
-              <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed mb-6">
-                First-party document editor with multi-format ingestion. Real-time layout budget overflow guard with 1-click ATS-compliant pixel-accurate PDF export.
-              </p>
-
-              {/* Features List */}
-              <div className="space-y-3 pt-4 border-t border-zinc-100 dark:border-[#1E1E22] mb-5">
-                <div className="flex items-center text-xs text-zinc-700 dark:text-zinc-300 gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span>Multi-tier PDF parser (extracts text, sections & bullets)</span>
-                </div>
-                <div className="flex items-center text-xs text-zinc-700 dark:text-zinc-300 gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span>Direct inline editing of bullets, sections, & candidate profile</span>
-                </div>
-                <div className="flex items-center text-xs text-zinc-700 dark:text-zinc-300 gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span>Live page budget meter with instant ATS-compliant PDF export</span>
-                </div>
-              </div>
-
-              {/* PDF Upload Dropzone */}
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={handleDropFile}
-                onClick={() => !isUploadingPdf && fileInputRef.current?.click()}
-                className={`group/drop mb-6 p-4 border-2 border-dashed rounded-xl text-center cursor-pointer transition-all duration-200 ${
-                  isDragging
-                    ? 'border-zinc-900 dark:border-white bg-zinc-100 dark:bg-zinc-800/80 scale-[1.01]'
-                    : 'border-zinc-300 dark:border-[#3F3F46] hover:border-zinc-500 dark:hover:border-zinc-400 bg-zinc-50/70 dark:bg-[#18181B]/50'
-                }`}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.docx,.txt"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-                {isUploadingPdf ? (
-                  <div className="py-2 flex flex-col items-center justify-center gap-2">
-                    <Loader2 className="w-6 h-6 text-zinc-800 dark:text-zinc-200 animate-spin" />
-                    <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 font-headline">
-                      Extracting resume directly from PDF...
-                    </span>
-                    <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono">
-                      Running multi-tier layout parser & Flate decoder
-                    </span>
-                  </div>
-                ) : (
-                  <div className="py-1">
-                    <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center mx-auto mb-2 text-zinc-700 dark:text-zinc-300 group-hover/drop:text-zinc-950 dark:group-hover/drop:text-white transition-colors">
-                      <UploadCloud className="w-4 h-4" />
-                    </div>
-                    <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100 font-headline">
-                      Upload PDF Resume
-                    </div>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                      Drag & drop your PDF here or click to browse
-                    </p>
-                    <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono text-zinc-500 dark:text-zinc-400 bg-zinc-200/50 dark:bg-zinc-800/50">
-                      <span>Extracts text into interactive editable canvas</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Bottom Actions */}
-            <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+            {/* Launch Actions */}
+            <div className="mt-6 flex flex-col sm:flex-row items-center gap-3">
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-zinc-950 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-950 font-headline font-semibold text-sm rounded-lg active:scale-[0.99] transition-all shadow-xs cursor-pointer"
+                className="w-full sm:flex-1 py-3.5 px-6 bg-zinc-950 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-950 font-headline font-semibold text-sm rounded-xl active:scale-[0.99] transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
               >
                 <UploadCloud className="w-4 h-4" />
                 <span>Upload PDF File</span>
               </button>
+
               <button
                 type="button"
-                onClick={onSelectOption2InAppCanvas}
-                className="px-4 py-3 bg-zinc-100 hover:bg-zinc-200 dark:bg-[#18181B] dark:hover:bg-[#27272A] border border-zinc-300 dark:border-[#3F3F46] text-zinc-900 dark:text-zinc-100 font-headline font-semibold text-xs rounded-lg active:scale-[0.99] transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
-                title="Open canvas with blank starter template"
+                onClick={onOpenCanvas}
+                className="w-full sm:w-auto py-3.5 px-6 bg-zinc-100 hover:bg-zinc-200 dark:bg-[#18181B] dark:hover:bg-[#27272A] border border-zinc-200 dark:border-[#27272A] text-zinc-900 dark:text-zinc-100 font-headline font-semibold text-sm rounded-xl active:scale-[0.99] transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
               >
-                <span>Blank Canvas</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <FileText className="w-4 h-4" />
+                <span>Open Document Canvas</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
+            </div>
+
+            {/* Feature Highlights Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8 pt-8 border-t border-zinc-100 dark:border-[#1E1E22] text-xs">
+              <div className="flex items-start gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-semibold text-zinc-900 dark:text-zinc-100">Direct In-App Canvas</div>
+                  <div className="text-zinc-500 dark:text-zinc-400 text-[11px] mt-0.5">Google Docs-style live typing, continuous auto-save, and formatting ribbon.</div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-semibold text-zinc-900 dark:text-zinc-100">HackerRank ATS Rubric</div>
+                  <div className="text-zinc-500 dark:text-zinc-400 text-[11px] mt-0.5">6-dimensional scoring, production signals, and tutorial flag penalty audit.</div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-semibold text-zinc-900 dark:text-zinc-100">1-Page Line Guard</div>
+                  <div className="text-zinc-500 dark:text-zinc-400 text-[11px] mt-0.5">Real-time line capacity meter prevents awkward two-page overflow.</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -520,17 +431,10 @@ export const HomePage: React.FC<HomePageProps> = ({
             </button>
             <button 
               type="button" 
-              onClick={onSelectOption1GoogleDocs}
-              className="hover:text-zinc-950 dark:hover:text-zinc-100 transition-colors"
+              onClick={onOpenCanvas}
+              className="hover:text-zinc-950 dark:hover:text-zinc-100 transition-colors cursor-pointer"
             >
-              Google Docs Workspace
-            </button>
-            <button 
-              type="button" 
-              onClick={onSelectOption2InAppCanvas}
-              className="hover:text-zinc-950 dark:hover:text-zinc-100 transition-colors"
-            >
-              In-App Canvas
+              Document Canvas
             </button>
           </div>
         </div>

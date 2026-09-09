@@ -183,14 +183,14 @@ const WEAK_PASSIVE_VERBS = [
 const PRODUCTION_KEYWORDS = [
   'production', 'deployed', 'deploying', 'shipped', 'shipping', 'on-call', 'on call', 'pagerduty',
   'incident response', 'root cause analysis', 'post-mortem', 'postmortem', 'outage',
-  'sla', 'slo', 'sli', '99.9%', '99.99%', 'uptime', 'zero downtime', 'zero-downtime',
+  'sla', 'slas', 'slo', 'slos', 'sli', '99.9%', '99.99%', 'uptime', 'zero downtime', 'zero-downtime',
   'monitoring', 'datadog', 'prometheus', 'grafana', 'sentry', 'cloudwatch', 'new relic',
   'opentelemetry', 'distributed tracing', 'alerting', 'logging', 'logstash', 'elk stack',
   'kubernetes', 'k8s', 'docker', 'helm', 'terraform', 'ansible', 'ci/cd', 'github actions',
   'gitlab ci', 'jenkins', 'argo cd', 'argocd', 'aws', 'gcp', 'azure', 'cloud infrastructure',
   'ec2', 's3', 'ecs', 'eks', 'gke', 'lambda', 'cloud functions', 'fargate',
   'microservices', 'load balancer', 'horizontal scaling', 'multi-tenant', 'multi-region',
-  'database migration', 'failover', 'disaster recovery', 'rate limiting', 'p95', 'p99',
+  'database migration', 'failover', 'disaster recovery', 'rate limiting', 'p95', 'p99', 'p99 latency',
   'high availability', 'fault tolerant', 'circuit breaker', 'throughput', 'concurrency',
   'code review', 'code reviews', 'rfc', 'design doc', 'design documents', 'agile', 'sprints',
   'cross-functional', 'stakeholders', 'enterprise', 'compliance', 'soc2', 'security audit'
