@@ -329,70 +329,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return true;
     }
 
-    if (message.type === 'OPEN_SIDEPANEL') {
-      const targetTabType = message.tab || 'match'; // e.g. 'discovery', 'match', 'tracker'
-      const autoScan = Boolean(message.autoScan);
+    if (message.type === 'OPEN_WEB_APP_TAB' || message.type === 'OPEN_SIDEPANEL') {
+      const targetTabType = message.tab || 'match';
+      const webUrl = message.url || `https://resumehack.vercel.app?tab=${targetTabType}`;
 
-      if (targetTabType) {
-        chrome.storage.local.set({ resumehack_active_tab: targetTabType }).catch(() => {});
-      }
-      if (autoScan) {
-        chrome.storage.local.set({ resumehack_auto_scan: true }).catch(() => {});
-      }
-
-      const senderTabId = _sender?.tab?.id;
-      const senderWindowId = _sender?.tab?.windowId;
-
-      const handleOpen = async () => {
-        try {
-          // 1. If senderTabId is available and sidePanel API is present, open on the side for that tab
-          if (senderTabId && chrome.sidePanel?.open) {
-            try {
-              await chrome.sidePanel.open({ tabId: senderTabId });
-              sendResponse({ status: 'opened', target: 'senderTab', tabId: senderTabId });
-              return;
-            } catch (tabErr) {
-              console.debug('[ResumeHack] sidePanel.open tab note:', tabErr);
-            }
-          }
-
-          // 2. If senderWindowId is available, open on the side for that window
-          if (senderWindowId && chrome.sidePanel?.open) {
-            try {
-              await chrome.sidePanel.open({ windowId: senderWindowId });
-              sendResponse({ status: 'opened', target: 'senderWindow', windowId: senderWindowId });
-              return;
-            } catch (winErr) {
-              console.debug('[ResumeHack] sidePanel.open window note:', winErr);
-            }
-          }
-
-          // 3. Fallback: query active tab in the current window and open side panel on the side
-          chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-            const activeTab = tabs[0];
-            if (activeTab?.id && chrome.sidePanel?.open) {
-              try {
-                await chrome.sidePanel.open({ tabId: activeTab.id });
-                sendResponse({ status: 'opened', target: 'activeTab', tabId: activeTab.id });
-                return;
-              } catch {}
-            }
-            if (activeTab?.windowId && chrome.sidePanel?.open) {
-              try {
-                await chrome.sidePanel.open({ windowId: activeTab.windowId });
-                sendResponse({ status: 'opened', target: 'activeWindow', windowId: activeTab.windowId });
-                return;
-              } catch {}
-            }
-            sendResponse({ status: 'opened', target: 'sidepanel' });
-          });
-        } catch (err: any) {
-          console.debug('[ResumeHack] OPEN_SIDEPANEL error:', err?.message);
-          sendResponse({ status: 'error', error: err?.message });
-        }
-      };
-
-      handleOpen();
+      chrome.tabs.create({ url: webUrl }, (newTab) => {
+        sendResponse({ status: 'opened', target: 'webTab', tabId: newTab?.id, url: webUrl });
+      });
       return true;
     }
 

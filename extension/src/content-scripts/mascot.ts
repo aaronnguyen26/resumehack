@@ -1485,33 +1485,33 @@ class HackyMascot {
   }
 
   private openExtensionSidePanel(tab: 'match' | 'discovery' | 'tracker' = 'match', autoScan = false): void {
-    if (!this.isExtensionValid()) {
-      return;
-    }
-
     try {
       this.detectPageContext();
 
-      // 1. Set initial tab for side panel
-      if (chrome.storage?.local) {
-        chrome.storage.local.set({
-          resumehack_active_tab: tab,
-          resumehack_auto_scan: autoScan,
-        }).catch(() => {});
-      }
+      // Open a new tab to the ResumeHack web application instead of opening extension sidepanel
+      const defaultUrl = 'https://resumehack.vercel.app';
+      if (this.isExtensionValid() && chrome.storage?.local) {
+        chrome.storage.local.get(['resumehack_web_app_url'], (res: any) => {
+          const baseUrl = res?.resumehack_web_app_url || defaultUrl;
+          const targetUrl = `${baseUrl}?tab=${tab}${autoScan ? '&autoScan=true' : ''}`;
 
-      // 2. Request background service worker to open the side panel
-      this.safeSendMessage({
-        type: 'OPEN_SIDEPANEL',
-        tab,
-        autoScan,
-      }, (res) => {
-        if (res?.status === 'opened') {
-          console.log(`[ResumeHack Mascot] Extension opened via ${res.target}`);
-        }
-      });
+          this.safeSendMessage({
+            type: 'OPEN_WEB_APP_TAB',
+            url: targetUrl,
+            tab,
+            autoScan,
+          }, (response) => {
+            if (response?.status !== 'opened') {
+              window.open(targetUrl, '_blank');
+            }
+          });
+        });
+      } else {
+        window.open(`${defaultUrl}?tab=${tab}`, '_blank');
+      }
     } catch (e: any) {
-      console.debug('[Hacky Mascot] Note on side panel open:', e);
+      console.debug('[Hacky Mascot] Note on web app tab open:', e);
+      window.open(`https://resumehack.vercel.app?tab=${tab}`, '_blank');
     }
   }
 
