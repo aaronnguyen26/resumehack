@@ -370,7 +370,11 @@ export interface TailoredBulletDiff {
     highImpact?: string;
     technicalDepth?: string;
     leadership?: string;
+    systemsDepth?: string;
+    scaleImpact?: string;
+    velocityMvp?: string;
   };
+  selectedVariant?: 'primary' | 'systemsDepth' | 'scaleImpact' | 'velocityMvp';
   lineBudget?: LineBudgetInfo;
   status: 'pending' | 'accepted' | 'rejected';
 }

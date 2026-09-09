@@ -52,7 +52,7 @@ export interface InAppDocumentCanvasProps {
   rawText: string;
   diffs?: TailoredBulletDiff[];
   onUpdateResumeText: (text: string) => void;
-  onApplyBulletDiff?: (diffIndex: number) => void;
+  onApplyBulletDiff?: (diffIndex: number, variantText?: string) => void;
   onApplyAllDiffs?: () => void;
   onReopenGateway?: () => void;
   applicantProfile?: ApplicantProfile;
@@ -331,18 +331,20 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   };
 
   // Accept tailored bullet from inspector
-  const handleApplyBulletDiffFromInspector = (diffIdx: number) => {
+  const handleApplyBulletDiffFromInspector = (diffIdx: number, variantText?: string) => {
     const diff = diffs[diffIdx];
     if (!diff) return;
 
     if (onApplyBulletDiff) {
-      onApplyBulletDiff(diffIdx);
+      onApplyBulletDiff(diffIdx, variantText);
     }
+
+    const replacementText = (variantText || diff.tailoredText).trim();
 
     if (editorRef.current && diff.originalText) {
       const currentHtml = editorRef.current.innerHTML;
       const targetSearch = escapeHtml(diff.originalText.trim());
-      const targetReplacement = escapeHtml(diff.tailoredText.trim());
+      const targetReplacement = escapeHtml(replacementText);
 
       if (currentHtml.includes(targetSearch)) {
         editorRef.current.innerHTML = currentHtml.replace(
@@ -353,7 +355,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
       } else {
         let currentText = extractTextFromDoc(editorRef.current);
         if (currentText.includes(diff.originalText)) {
-          currentText = currentText.replace(diff.originalText, diff.tailoredText);
+          currentText = currentText.replace(diff.originalText, replacementText);
           editorRef.current.innerHTML = rawTextToHtml(currentText, applicantProfile);
           handleEditorInput();
         }
@@ -1166,8 +1168,8 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
             isTailorLoading={isTailorLoading}
             targetRole={targetRole}
             diffs={diffs}
-            onApplyBulletDiff={(dIdx) => {
-              handleApplyBulletDiffFromInspector(dIdx);
+            onApplyBulletDiff={(dIdx, variantText) => {
+              handleApplyBulletDiffFromInspector(dIdx, variantText);
             }}
             onApplyAllDiffs={() => {
               if (onApplyAllDiffs) {

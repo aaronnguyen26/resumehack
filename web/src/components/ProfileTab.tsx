@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   User, 
   Mail, 
@@ -23,9 +23,15 @@ import {
   Cloud,
   Database,
   LogIn,
-  LogOut
+  LogOut,
+  Plus,
+  Star,
+  Trash2,
+  Search,
+  Filter
 } from 'lucide-react';
 import { ApplicantProfile } from '../types/index.js';
+import { BulletVaultService, VaultBullet } from '../services/bullet-vault.js';
 
 interface ProfileTabProps {
   profile: ApplicantProfile;
@@ -104,6 +110,103 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     setFormData({ ...profile });
     setIsEditing(false);
   };
+
+  // ── Master Bullet Vault State ───────────────────────────────────────────
+  const [activeSection, setActiveSection] = useState<'profile' | 'vault'>('profile');
+  const vaultService = useMemo(() => new BulletVaultService(), []);
+
+  const [vaultBullets, setVaultBullets] = useState<VaultBullet[]>(() => {
+    try {
+      const saved = localStorage.getItem('resumehack_bullet_vault');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      // ignore
+    }
+    return vaultService.getDefaultSeedBullets(displayName);
+  });
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterCompany, setFilterCompany] = useState('ALL');
+  const [isAddingBullet, setIsAddingBullet] = useState(false);
+  const [newBulletText, setNewBulletText] = useState('');
+  const [newBulletCompany, setNewBulletCompany] = useState('');
+  const [newBulletSection, setNewBulletSection] = useState<'Experience' | 'Projects'>('Experience');
+  const [newBulletRole, setNewBulletRole] = useState('');
+  const [newBulletTags, setNewBulletTags] = useState('');
+  const [newBulletStarred, setNewBulletStarred] = useState(false);
+
+  const saveVault = (bullets: VaultBullet[]) => {
+    setVaultBullets(bullets);
+    try {
+      localStorage.setItem('resumehack_bullet_vault', JSON.stringify(bullets));
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const handleToggleStar = (id: string) => {
+    const updated = vaultBullets.map(b => b.id === id ? { ...b, isStarred: !b.isStarred } : b);
+    saveVault(updated);
+  };
+
+  const handleDeleteBullet = (id: string) => {
+    const updated = vaultBullets.filter(b => b.id !== id);
+    saveVault(updated);
+  };
+
+  const handleCreateBullet = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newBulletText.trim() || !newBulletCompany.trim()) return;
+
+    const tags = newBulletTags
+      .split(',')
+      .map(t => t.trim())
+      .filter(Boolean);
+
+    const created = vaultService.createBullet({
+      rawText: newBulletText,
+      companyOrProject: newBulletCompany,
+      section: newBulletSection,
+      roleTitle: newBulletRole || undefined,
+      skillTags: tags,
+      isStarred: newBulletStarred,
+    });
+
+    saveVault([created, ...vaultBullets]);
+    setNewBulletText('');
+    setNewBulletCompany('');
+    setNewBulletRole('');
+    setNewBulletTags('');
+    setNewBulletStarred(false);
+    setIsAddingBullet(false);
+  };
+
+  const handleResetSeedVault = () => {
+    const seeds = vaultService.getDefaultSeedBullets(displayName);
+    saveVault(seeds);
+  };
+
+  const companies = useMemo(() => {
+    const set = new Set(vaultBullets.map(b => b.companyOrProject));
+    return ['ALL', ...Array.from(set)];
+  }, [vaultBullets]);
+
+  const filteredBullets = useMemo(() => {
+    return vaultBullets.filter(b => {
+      if (filterCompany !== 'ALL' && b.companyOrProject !== filterCompany) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const inText = b.rawText.toLowerCase().includes(q);
+        const inComp = b.companyOrProject.toLowerCase().includes(q);
+        const inTag = b.skillTags.some(t => t.toLowerCase().includes(q));
+        if (!inText && !inComp && !inTag) return false;
+      }
+      return true;
+    });
+  }, [vaultBullets, filterCompany, searchQuery]);
 
   return (
     <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8 animate-in fade-in duration-200 select-none">
@@ -198,8 +301,42 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         </div>
       </div>
 
-      {/* Supabase Cloud Account & Resume Persistence */}
-      <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+      {/* Sub-Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-zinc-200 dark:border-[#27272A] pb-3">
+        <button
+          type="button"
+          onClick={() => setActiveSection('profile')}
+          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer ${
+            activeSection === 'profile'
+              ? 'bg-zinc-950 text-white dark:bg-zinc-100 dark:text-zinc-950 shadow-xs'
+              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
+          }`}
+        >
+          <User className="w-3.5 h-3.5" />
+          <span>Candidate Information</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSection('vault')}
+          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer ${
+            activeSection === 'vault'
+              ? 'bg-zinc-950 text-white dark:bg-zinc-100 dark:text-zinc-950 shadow-xs'
+              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>Master Bullet Vault</span>
+          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-200 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-bold">
+            {vaultBullets.length}
+          </span>
+        </button>
+      </div>
+
+      {activeSection === 'profile' && (
+        <div className="space-y-8">
+          {/* Supabase Cloud Account & Resume Persistence */}
+          <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
         <div className="flex items-start sm:items-center gap-4">
           <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border ${
             currentUser 
@@ -746,6 +883,330 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                 </span>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+        </div>
+      )}
+
+      {activeSection === 'vault' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Header & Stats Banner */}
+          <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-headline text-lg font-bold text-zinc-950 dark:text-zinc-50">
+                    Master Profile "Bullet Vault"
+                  </h2>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold">
+                    1-Page Dynamic Rebalancer Ready
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 max-w-2xl leading-relaxed">
+                  Store all your career achievements and verified projects in one central vault. When applying for specific job descriptions, Hacky AI solves the 1-page line budget problem (strictly 48-52 lines) by auto-selecting the highest-impact bullets that match the target role.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddingBullet(!isAddingBullet)}
+                  className="px-3.5 py-2 bg-zinc-950 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-950 rounded-lg text-xs font-headline font-semibold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{isAddingBullet ? 'Cancel' : 'Add Bullet'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetSeedVault}
+                  className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-[#18181B] dark:hover:bg-[#27272A] border border-zinc-200 dark:border-[#27272A] text-zinc-700 dark:text-zinc-300 rounded-lg text-xs font-mono transition-colors flex items-center gap-1.5 cursor-pointer"
+                  title="Restore default high-impact seed bullets"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Seed Vault</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Metrics Overview Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+              <div className="p-3.5 bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl space-y-1">
+                <span className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider block">Total Vault Bullets</span>
+                <span className="text-2xl font-bold font-mono text-zinc-950 dark:text-zinc-50 block">{vaultBullets.length}</span>
+                <span className="text-[10px] text-zinc-400">Canonical achievements</span>
+              </div>
+
+              <div className="p-3.5 bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl space-y-1">
+                <span className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider block">Quantified Impact</span>
+                <span className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 block">
+                  {vaultBullets.filter(b => b.quantifiableMetrics.length > 0).length}
+                </span>
+                <span className="text-[10px] text-zinc-400">With verified metrics</span>
+              </div>
+
+              <div className="p-3.5 bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl space-y-1">
+                <span className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider block">Starred Priority</span>
+                <span className="text-2xl font-bold font-mono text-zinc-950 dark:text-zinc-50 block">
+                  {vaultBullets.filter(b => b.isStarred).length}
+                </span>
+                <span className="text-[10px] text-zinc-400">Always favored in knapsack</span>
+              </div>
+
+              <div className="p-3.5 bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl space-y-1">
+                <span className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider block">1-Page Line Target</span>
+                <span className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 block">
+                  48-52
+                </span>
+                <span className="text-[10px] text-zinc-400">Exact 1-page line budget</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Add Bullet Form */}
+          {isAddingBullet && (
+            <form onSubmit={handleCreateBullet} className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 shadow-xs space-y-4 animate-in slide-in-from-top-2">
+              <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-3">
+                <h3 className="font-headline text-sm font-bold text-zinc-950 dark:text-zinc-50">
+                  Add New Bullet to Vault
+                </h3>
+                <span className="text-xs font-mono text-zinc-400">Auto-extracts metrics & skill tags</span>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-mono text-zinc-600 dark:text-zinc-400 block">
+                  Bullet Text (Achievement with quantifiable metric)
+                </label>
+                <textarea
+                  value={newBulletText}
+                  onChange={(e) => setNewBulletText(e.target.value)}
+                  placeholder="Architected distributed event ingestion pipeline in Go and Kafka processing 45k events/sec with sub-50ms p99 latency."
+                  rows={3}
+                  className="w-full px-3 py-2 text-xs font-sans rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-white"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-mono text-zinc-600 dark:text-zinc-400 block">Company / Project Name</label>
+                  <input
+                    type="text"
+                    value={newBulletCompany}
+                    onChange={(e) => setNewBulletCompany(e.target.value)}
+                    placeholder="e.g. CloudScale Inc"
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-white"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-mono text-zinc-600 dark:text-zinc-400 block">Role Title (Optional)</label>
+                  <input
+                    type="text"
+                    value={newBulletRole}
+                    onChange={(e) => setNewBulletRole(e.target.value)}
+                    placeholder="e.g. Senior Software Engineer"
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-white"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-mono text-zinc-600 dark:text-zinc-400 block">Section</label>
+                  <select
+                    value={newBulletSection}
+                    onChange={(e) => setNewBulletSection(e.target.value as any)}
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-zinc-900 dark:text-zinc-100 focus:outline-none"
+                  >
+                    <option value="Experience">Experience</option>
+                    <option value="Projects">Projects</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-mono text-zinc-600 dark:text-zinc-400 block">
+                    Skill Tags (Comma separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={newBulletTags}
+                    onChange={(e) => setNewBulletTags(e.target.value)}
+                    placeholder="Go, Kafka, Distributed Systems, Latency"
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-white"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-6">
+                  <input
+                    type="checkbox"
+                    id="newBulletStarred"
+                    checked={newBulletStarred}
+                    onChange={(e) => setNewBulletStarred(e.target.checked)}
+                    className="w-4 h-4 rounded text-zinc-900 border-zinc-300 focus:ring-0 cursor-pointer"
+                  />
+                  <label htmlFor="newBulletStarred" className="text-xs font-mono text-zinc-700 dark:text-zinc-300 cursor-pointer">
+                    Star this bullet (Always prioritize in 1-page rebalancer)
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddingBullet(false)}
+                  className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-[#18181B] dark:hover:bg-[#27272A] border border-zinc-200 dark:border-[#27272A] text-zinc-700 dark:text-zinc-300 rounded-lg text-xs font-mono transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-headline font-semibold transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Save to Bullet Vault</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Filter & Search Bar */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl shadow-xs">
+            <div className="relative w-full sm:w-80">
+              <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search bullets, skills, companies..."
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-white"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Filter className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+              <select
+                value={filterCompany}
+                onChange={(e) => setFilterCompany(e.target.value)}
+                className="px-2.5 py-1.5 text-xs rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-zinc-900 dark:text-zinc-100 focus:outline-none"
+              >
+                {companies.map(c => (
+                  <option key={c} value={c}>{c === 'ALL' ? 'All Companies & Projects' : c}</option>
+                ))}
+              </select>
+              <span className="text-[11px] font-mono text-zinc-400 shrink-0">
+                {filteredBullets.length} bullet{filteredBullets.length === 1 ? '' : 's'}
+              </span>
+            </div>
+          </div>
+
+          {/* Bullets List */}
+          <div className="space-y-3">
+            {filteredBullets.length === 0 ? (
+              <div className="p-8 text-center rounded-2xl bg-white dark:bg-[#121215] border border-dashed border-zinc-300 dark:border-zinc-700 text-xs text-zinc-500 space-y-2">
+                <FileText className="w-8 h-8 mx-auto text-zinc-400 opacity-50" />
+                <p className="font-semibold">No bullets match your filter.</p>
+                <button
+                  type="button"
+                  onClick={() => { setSearchQuery(''); setFilterCompany('ALL'); }}
+                  className="text-emerald-600 dark:text-emerald-400 underline font-mono text-[11px] cursor-pointer"
+                >
+                  Clear search filters
+                </button>
+              </div>
+            ) : (
+              filteredBullets.map((bullet) => (
+                <div
+                  key={bullet.id}
+                  className="p-4 rounded-2xl bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] space-y-3 shadow-xs hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleStar(bullet.id)}
+                        className={`p-1 rounded-md transition-colors cursor-pointer ${
+                          bullet.isStarred
+                            ? 'text-amber-500 hover:text-amber-600'
+                            : 'text-zinc-300 dark:text-zinc-700 hover:text-zinc-500'
+                        }`}
+                        title={bullet.isStarred ? 'Starred priority' : 'Star this bullet'}
+                      >
+                        <Star className={`w-4 h-4 ${bullet.isStarred ? 'fill-amber-500' : ''}`} />
+                      </button>
+
+                      <span className="text-xs font-bold font-headline text-zinc-950 dark:text-zinc-50">
+                        {bullet.companyOrProject}
+                      </span>
+
+                      {bullet.roleTitle && (
+                        <span className="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono">
+                          • {bullet.roleTitle}
+                        </span>
+                      )}
+
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 font-medium">
+                        {bullet.section}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded border font-medium ${
+                        bullet.lineCost === 1
+                          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'
+                      }`}>
+                        {bullet.lineCost} line{bullet.lineCost > 1 ? 's' : ''}
+                      </span>
+
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400">
+                        Impact: {bullet.impactScore}/100
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteBullet(bullet.id)}
+                        className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+                        title="Delete from vault"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-zinc-800 dark:text-zinc-200 leading-relaxed font-sans pl-6">
+                    • {bullet.rawText}
+                  </p>
+
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-100 dark:border-zinc-800/60 pl-6 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {bullet.quantifiableMetrics.map((m, mIdx) => (
+                        <span
+                          key={mIdx}
+                          className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300"
+                        >
+                          {m}
+                        </span>
+                      ))}
+
+                      {bullet.skillTags.map((tag, tIdx) => (
+                        <span
+                          key={tIdx}
+                          className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+
+                    <span className="text-[10px] font-mono text-zinc-400">
+                      {bullet.rawText.length} chars
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}

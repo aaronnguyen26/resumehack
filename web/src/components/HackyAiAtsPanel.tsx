@@ -26,6 +26,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { AtsScorerService } from '../services/ats-scorer.js';
+import { TriVariantService, FramingVariantId } from '../services/tri-variant.js';
 import { 
   AtsScoreReport, 
   KeywordMatch, 
@@ -45,7 +46,7 @@ export interface HackyAiAtsPanelProps {
   isTailorLoading?: boolean;
   targetRole?: string;
   diffs?: TailoredBulletDiff[];
-  onApplyBulletDiff?: (diffIndex: number) => void;
+  onApplyBulletDiff?: (diffIndex: number, variantText?: string) => void;
   onApplyAllDiffs?: () => void;
   onInsertKeyword: (keyword: string) => void;
   onInsertBullet?: (bulletText: string, sectionHint?: string) => void;
@@ -101,6 +102,23 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
   const [customJobTitle, setCustomJobTitle] = useState(currentJob?.title || targetRole);
   const [customJobCompany, setCustomJobCompany] = useState(currentJob?.company || 'Target Tech Co');
   const [appliedItemIds, setAppliedItemIds] = useState<Record<string, boolean>>({});
+
+  const triVariantService = useMemo(() => new TriVariantService(), []);
+  const [globalVariant, setGlobalVariant] = useState<'primary' | FramingVariantId>('primary');
+  const [diffVariants, setDiffVariants] = useState<Record<string, 'primary' | FramingVariantId>>({});
+
+  const handleSelectGlobalVariant = (variantId: 'primary' | FramingVariantId) => {
+    setGlobalVariant(variantId);
+    const updated: Record<string, 'primary' | FramingVariantId> = {};
+    diffs.forEach((d, idx) => {
+      updated[d.id || String(idx)] = variantId;
+    });
+    setDiffVariants(updated);
+  };
+
+  const handleSelectDiffVariant = (diffKey: string, variantId: 'primary' | FramingVariantId) => {
+    setDiffVariants(prev => ({ ...prev, [diffKey]: variantId }));
+  };
 
   const atsScorer = useMemo(() => new AtsScorerService(), []);
 
@@ -1032,10 +1050,10 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
               </div>
             </div>
 
-            {/* STAR Method Diffs Suggestions */}
-            <div className="space-y-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+            {/* STAR Method & Tri-Variant Role Framing Diffs Suggestions */}
+            <div className="space-y-3 pt-2 border-t border-zinc-200 dark:border-zinc-800">
               <div className="flex items-center justify-between text-xs font-mono text-zinc-500">
-                <span>STAR Method Diffs ({pendingDiffs.length}):</span>
+                <span>Tailored Role Diffs ({pendingDiffs.length}):</span>
                 {pendingDiffs.length > 0 && onApplyAllDiffs && (
                   <button
                     type="button"
@@ -1047,34 +1065,134 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                 )}
               </div>
 
+              {pendingDiffs.length > 0 && (
+                <div className="p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-mono text-zinc-600 dark:text-zinc-400">
+                    <span className="font-semibold uppercase tracking-wider">Role Framing Persona:</span>
+                    <span className="text-[10px] text-zinc-500">All Bullets</span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1">
+                    {[
+                      { id: 'primary', label: 'STAR Base' },
+                      { id: 'systemsDepth', label: 'Systems Depth' },
+                      { id: 'scaleImpact', label: 'Scale & Impact' },
+                      { id: 'velocityMvp', label: 'Velocity & MVP' }
+                    ].map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleSelectGlobalVariant(p.id as any)}
+                        className={`px-1.5 py-1 text-[10px] font-mono font-semibold rounded-md border transition-colors cursor-pointer ${
+                          globalVariant === p.id
+                            ? 'bg-zinc-950 text-white dark:bg-zinc-100 dark:text-zinc-950 border-zinc-950 dark:border-zinc-100'
+                            : 'bg-white dark:bg-[#121215] text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-800'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {pendingDiffs.length === 0 ? (
                 <div className="p-3 text-center rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-dashed border-zinc-300 dark:border-zinc-700 text-xs text-zinc-500">
                   <CheckCircle2 className="w-5 h-5 mx-auto mb-1 text-emerald-500" />
                   <span>All bullet points currently match active STAR criteria!</span>
                 </div>
               ) : (
-                pendingDiffs.map((diff, dIdx) => (
-                  <div key={dIdx} className="p-3 rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] space-y-2 text-xs">
-                    <div className="text-[10px] font-mono font-semibold uppercase text-emerald-600 dark:text-emerald-400">
-                      Quantifiable STAR Impact Suggestion:
+                pendingDiffs.map((diff, dIdx) => {
+                  const diffKey = diff.id || String(dIdx);
+                  const activeVariantId = diffVariants[diffKey] || globalVariant;
+                  const variants = triVariantService.getAllVariants(diff);
+                  const activeText = activeVariantId === 'primary' 
+                    ? diff.tailoredText 
+                    : variants[activeVariantId as FramingVariantId].text;
+                  const charCount = activeText.length;
+                  const lineEstimate = Math.max(1, Math.ceil(charCount / 95));
+
+                  return (
+                    <div key={diffKey} className="p-3 rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] space-y-2.5 text-xs shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[10px] font-mono font-semibold uppercase text-emerald-600 dark:text-emerald-400">
+                          {activeVariantId === 'primary' ? 'STAR Optimization' : variants[activeVariantId as FramingVariantId].label}
+                        </div>
+                        <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded border ${
+                          lineEstimate === 1
+                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
+                            : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
+                        }`}>
+                          {charCount} chars • {lineEstimate} line{lineEstimate > 1 ? 's' : ''}
+                        </span>
+                      </div>
+
+                      {/* Variant Selection Chips */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleSelectDiffVariant(diffKey, 'primary')}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono border transition-colors cursor-pointer ${
+                            activeVariantId === 'primary'
+                              ? 'bg-zinc-900 text-white dark:bg-zinc-200 dark:text-zinc-900 border-zinc-900 dark:border-zinc-200'
+                              : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400'
+                          }`}
+                        >
+                          STAR Base
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectDiffVariant(diffKey, 'systemsDepth')}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono border transition-colors cursor-pointer ${
+                            activeVariantId === 'systemsDepth'
+                              ? 'bg-zinc-900 text-white dark:bg-zinc-200 dark:text-zinc-900 border-zinc-900 dark:border-zinc-200'
+                              : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400'
+                          }`}
+                        >
+                          Systems Depth
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectDiffVariant(diffKey, 'scaleImpact')}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono border transition-colors cursor-pointer ${
+                            activeVariantId === 'scaleImpact'
+                              ? 'bg-zinc-900 text-white dark:bg-zinc-200 dark:text-zinc-900 border-zinc-900 dark:border-zinc-200'
+                              : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400'
+                          }`}
+                        >
+                          Scale & Impact
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectDiffVariant(diffKey, 'velocityMvp')}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono border transition-colors cursor-pointer ${
+                            activeVariantId === 'velocityMvp'
+                              ? 'bg-zinc-900 text-white dark:bg-zinc-200 dark:text-zinc-900 border-zinc-900 dark:border-zinc-200'
+                              : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400'
+                          }`}
+                        >
+                          Velocity & MVP
+                        </button>
+                      </div>
+
+                      <div className="line-through text-zinc-400 text-[11px] leading-tight">
+                        {diff.originalText}
+                      </div>
+                      <div className="font-medium text-zinc-900 dark:text-zinc-100 leading-snug">
+                        • {activeText}
+                      </div>
+                      {onApplyBulletDiff && (
+                        <button
+                          type="button"
+                          onClick={() => onApplyBulletDiff(dIdx, activeText)}
+                          className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <Check className="w-3 h-3" />
+                          <span>Apply to Document</span>
+                        </button>
+                      )}
                     </div>
-                    <div className="line-through text-zinc-400 text-[11px] leading-tight">
-                      {diff.originalText}
-                    </div>
-                    <div className="font-medium text-zinc-900 dark:text-zinc-100 leading-snug">
-                      • {diff.tailoredText}
-                    </div>
-                    {onApplyBulletDiff && (
-                      <button
-                        type="button"
-                        onClick={() => onApplyBulletDiff(dIdx)}
-                        className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs cursor-pointer"
-                      >
-                        Apply to Document
-                      </button>
-                    )}
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
