@@ -475,29 +475,6 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
         </div>
       )}
 
-      {/* ── Teaser Callout Prompt (Shown when chatbot is closed to ensure maximum visibility) ── */}
-      {!isOpen && (
-        <div
-          onClick={() => setIsOpen(true)}
-          className="pointer-events-auto cursor-pointer flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] shadow-xl text-zinc-700 dark:text-zinc-300 hover:border-zinc-400 dark:hover:border-zinc-600 hover:shadow-2xl transition-all duration-200 animate-in fade-in slide-in-from-bottom-2 group"
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === 'Enter' && setIsOpen(true)}
-          title="Click to ask Hacky about your resume, applications, or job openings"
-        >
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-          <span className="text-[11px] font-medium font-sans">
-            {atsScore !== undefined
-              ? `ATS: ${atsScore}% — Ask Hacky for tips`
-              : 'Ask Hacky: Resume, jobs, or openings?'}
-          </span>
-          <span className="text-[10px] font-bold text-zinc-400 group-hover:text-zinc-950 dark:group-hover:text-white transition-colors flex items-center gap-0.5">
-            <span>Chat</span>
-            <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-          </span>
-        </div>
-      )}
-
       {/* ── Floating Mascot Trigger Capsule ────────────────────────────────────── */}
       <button
         type="button"
