@@ -43,15 +43,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   return (
     <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 md:py-12 animate-in fade-in duration-300">
       {/* Hero Header Section */}
-      <section className="text-center max-w-3xl mx-auto mb-12 md:mb-16">
-        {/* Status indicator chip */}
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-xs font-mono text-zinc-600 dark:text-zinc-400 mb-6">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span className="text-zinc-900 dark:text-zinc-100 font-semibold">ATS Engine v4.2 Active</span>
-          <span className="text-zinc-400 dark:text-zinc-600">|</span>
-          <span>Deterministic Score Matrix</span>
-        </div>
-
+      <section className="text-center max-w-3xl mx-auto pt-2 md:pt-4 mb-12 md:mb-16">
         <h1 className="text-3xl sm:text-4xl md:text-5xl font-headline font-bold text-zinc-950 dark:text-zinc-50 tracking-tight leading-tight mb-4">
           Algorithmic Precision for Your Career
         </h1>

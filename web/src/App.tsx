@@ -528,7 +528,7 @@ export const App: React.FC = () => {
   const currentAtsScore = tailorData?.projectedNewScore || tailorData?.atsReport?.overallScore;
 
   return (
-    <div className={`min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors ${isDark ? 'dark' : ''}`}>
+    <div className={`min-h-screen flex flex-col bg-[#FAFAFA] dark:bg-[#09090B] text-zinc-900 dark:text-zinc-100 transition-colors duration-200 ${isDark ? 'dark' : ''}`}>
       {/* Top Navigation Bar */}
       <Navbar
         activeTab={activeTab}

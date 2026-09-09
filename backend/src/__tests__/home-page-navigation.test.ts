@@ -140,4 +140,68 @@ describe('Home Page Navigation & Dedicated Workspace Separation Contracts', () =
     expect(parseTabParam('invalid_tab')).toBe('home');
     expect(parseTabParam(null)).toBe('home');
   });
+
+  describe('UI Design, Top Navigation Spacing & Dual-Mode Verification', () => {
+    it('HomePage hero section starts directly with the main font without any preceding chip or lines', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+      const homePagePath = path.resolve(__dirname, '../../../web/src/components/HomePage.tsx');
+      const content = fs.readFileSync(homePagePath, 'utf8');
+
+      // Verify 'ATS Engine v4.2 Active' is deleted
+      expect(content).not.toContain('ATS Engine v4.2 Active');
+      expect(content).not.toContain('Deterministic Score Matrix');
+
+      // Verify h1 Algorithmic Precision is the first child of the hero section
+      const heroSectionMatch = content.match(/{\/\*\s*Hero Header Section\s*\*\/}\s*<section[^>]*>([\s\S]*?)<\/section>/);
+      expect(heroSectionMatch).toBeTruthy();
+      const heroContent = heroSectionMatch![1].trim();
+
+      // Starts with <h1
+      expect(heroContent.startsWith('<h1')).toBe(true);
+      expect(heroContent).toContain('Algorithmic Precision for Your Career');
+    });
+
+    it('Top navigation bar is properly spaced out with generous desktop padding and height', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+      const navbarPath = path.resolve(__dirname, '../../../web/src/components/Navbar.tsx');
+      const content = fs.readFileSync(navbarPath, 'utf8');
+
+      // Check header spacing classes
+      expect(content).toContain('h-16');
+      expect(content).toContain('px-4 sm:px-8 lg:px-12');
+      expect(content).toContain('gap-6');
+
+      // Check all 5 tabs are present
+      expect(content).toContain('<span>Home</span>');
+      expect(content).toContain('<span>Match & Tailor</span>');
+      expect(content).toContain('<span>Discovery</span>');
+      expect(content).toContain('<span>Tracker</span>');
+      expect(content).toContain('<span>Settings</span>');
+    });
+
+    it('Guarantees zero purple and zero blue colors in both light and dark modes', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+      const homePagePath = path.resolve(__dirname, '../../../web/src/components/HomePage.tsx');
+      const navbarPath = path.resolve(__dirname, '../../../web/src/components/Navbar.tsx');
+      
+      const homeContent = fs.readFileSync(homePagePath, 'utf8');
+      const navContent = fs.readFileSync(navbarPath, 'utf8');
+
+      // Neither should have purple or blue utility classes
+      expect(homeContent).not.toMatch(/(?:bg|text|border)-(?:purple|blue|violet|indigo)-\d+/);
+      expect(navContent).not.toMatch(/(?:bg|text|border)-(?:purple|blue|violet|indigo)-\d+/);
+
+      // Both should have comprehensive dark: variant classes for dark mode
+      expect(homeContent).toContain('dark:bg-[#121215]');
+      expect(homeContent).toContain('dark:border-[#27272A]');
+      expect(homeContent).toContain('dark:text-zinc-50');
+
+      expect(navContent).toContain('dark:bg-[#09090B]/95');
+      expect(navContent).toContain('dark:border-[#27272A]');
+      expect(navContent).toContain('dark:text-zinc-50');
+    });
+  });
 });

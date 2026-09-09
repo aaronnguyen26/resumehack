@@ -24,42 +24,42 @@ export const Navbar: React.FC<NavbarProps> = ({
   targetJobTitle = 'SWE Intern @ Stripe',
 }) => {
   return (
-    <header className="sticky top-0 z-50 h-14 bg-white/95 dark:bg-[#09090B]/95 backdrop-blur border-b border-zinc-200 dark:border-[#27272A] px-4 sm:px-6 lg:px-8 flex items-center justify-between w-full transition-colors duration-200 select-none">
+    <header className="sticky top-0 z-50 h-16 bg-white/95 dark:bg-[#09090B]/95 backdrop-blur-md border-b border-zinc-200 dark:border-[#27272A] px-4 sm:px-8 lg:px-12 flex items-center justify-between w-full transition-colors duration-200 select-none">
       {/* Left: Brand + Breadcrumb Workspace Target */}
-      <div className="flex items-center gap-5">
-        <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => setActiveTab('home')} title="Return to Home">
-          <div className="w-7 h-7 rounded-md bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 flex items-center justify-center font-bold text-xs font-headline tracking-tighter shadow-xs">
+      <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('home')} title="Return to Home">
+          <div className="w-8 h-8 rounded-lg bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 flex items-center justify-center font-bold text-xs font-headline tracking-tighter shadow-xs">
             RH
           </div>
           <div className="flex flex-col">
-            <span className="font-headline text-sm font-bold tracking-tight text-zinc-950 dark:text-zinc-100 leading-none">
+            <span className="font-headline text-sm font-bold tracking-tight text-zinc-950 dark:text-zinc-50 leading-none">
               ResumeHack
             </span>
-            <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-600 dark:text-zinc-300 font-semibold leading-tight">
+            <span className="text-[9px] font-mono uppercase tracking-widest text-zinc-500 dark:text-zinc-400 font-semibold leading-tight mt-0.5">
               Intelligence
             </span>
           </div>
         </div>
 
-        <div className="h-4 w-px bg-zinc-200 dark:bg-[#27272A] hidden sm:block"></div>
+        <div className="h-5 w-px bg-zinc-200 dark:bg-[#27272A] hidden sm:block"></div>
 
         {/* Target Context Breadcrumb */}
         <div className="hidden lg:flex items-center gap-2 text-xs font-mono">
-          <span className="text-zinc-600 dark:text-zinc-300">Target:</span>
-          <span className="px-2.5 py-0.5 rounded-full bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-zinc-800 dark:text-zinc-200 font-normal flex items-center gap-1.5 text-[11px]">
+          <span className="text-zinc-500 dark:text-zinc-400">Target:</span>
+          <span className="px-3 py-1 rounded-full bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-zinc-800 dark:text-zinc-200 font-normal flex items-center gap-1.5 text-[11px]">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="truncate max-w-[260px]">{targetJobTitle}</span>
+            <span className="truncate max-w-[260px] font-medium">{targetJobTitle}</span>
           </span>
         </div>
       </div>
 
       {/* Center: Desktop Navigation Tabs */}
-      <nav className="hidden md:flex items-center gap-1 h-full" role="tablist" aria-label="Main Navigation">
+      <nav className="hidden md:flex items-center gap-1.5 h-full" role="tablist" aria-label="Main Navigation">
         <button
           role="tab"
           aria-selected={activeTab === 'home'}
           onClick={() => setActiveTab('home')}
-          className={`h-9 px-3.5 rounded-md text-xs font-medium inline-flex items-center gap-2 transition-all ${
+          className={`h-9 px-4 rounded-lg text-xs font-medium inline-flex items-center gap-2 transition-all ${
             activeTab === 'home'
               ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs'
               : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
@@ -73,7 +73,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           role="tab"
           aria-selected={activeTab === 'match'}
           onClick={() => setActiveTab('match')}
-          className={`h-9 px-3.5 rounded-md text-xs font-medium inline-flex items-center gap-2 transition-all ${
+          className={`h-9 px-4 rounded-lg text-xs font-medium inline-flex items-center gap-2 transition-all ${
             activeTab === 'match'
               ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs'
               : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
@@ -87,7 +87,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           role="tab"
           aria-selected={activeTab === 'discovery'}
           onClick={() => setActiveTab('discovery')}
-          className={`h-9 px-3.5 rounded-md text-xs font-medium inline-flex items-center gap-2 transition-all relative ${
+          className={`h-9 px-4 rounded-lg text-xs font-medium inline-flex items-center gap-2 transition-all relative ${
             activeTab === 'discovery'
               ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs'
               : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
@@ -106,7 +106,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           role="tab"
           aria-selected={activeTab === 'tracker'}
           onClick={() => setActiveTab('tracker')}
-          className={`h-9 px-3.5 rounded-md text-xs font-medium inline-flex items-center gap-2 transition-all ${
+          className={`h-9 px-4 rounded-lg text-xs font-medium inline-flex items-center gap-2 transition-all ${
             activeTab === 'tracker'
               ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs'
               : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
@@ -120,7 +120,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           role="tab"
           aria-selected={activeTab === 'settings'}
           onClick={() => setActiveTab('settings')}
-          className={`h-9 px-3.5 rounded-md text-xs font-medium inline-flex items-center gap-2 transition-all ${
+          className={`h-9 px-4 rounded-lg text-xs font-medium inline-flex items-center gap-2 transition-all ${
             activeTab === 'settings'
               ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs'
               : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
@@ -132,10 +132,10 @@ export const Navbar: React.FC<NavbarProps> = ({
       </nav>
 
       {/* Right: Status, Secondary Actions & User Profile */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3.5">
         {/* Document connectivity status chip */}
         <div 
-          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-xs font-medium text-zinc-700 dark:text-zinc-300 max-w-[180px] truncate"
+          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-xs font-medium text-zinc-700 dark:text-zinc-300 max-w-[200px] truncate"
           title={connectedDocTitle ? `Connected to: ${connectedDocTitle}` : 'Master resume ready'}
         >
           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -151,7 +151,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={onToggleTheme}
             aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
             title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            className="w-8 h-8 rounded-md bg-zinc-100 dark:bg-[#18181B] hover:bg-zinc-200 dark:hover:bg-[#27272A] border border-zinc-200 dark:border-[#27272A] text-zinc-600 dark:text-zinc-300 flex items-center justify-center transition-colors focus-visible:outline-none"
+            className="w-9 h-9 rounded-lg bg-zinc-100 dark:bg-[#18181B] hover:bg-zinc-200 dark:hover:bg-[#27272A] border border-zinc-200 dark:border-[#27272A] text-zinc-700 dark:text-zinc-300 flex items-center justify-center transition-colors focus-visible:outline-none shadow-xs"
           >
             {isDark ? (
               <Sun className="w-4 h-4 text-amber-400" />
@@ -162,13 +162,18 @@ export const Navbar: React.FC<NavbarProps> = ({
         )}
 
         {/* User Profile Monogram Badge */}
-        <div className="flex items-center gap-2 pl-2 border-l border-zinc-200 dark:border-[#27272A]">
-          <div className="w-7 h-7 rounded-md bg-zinc-200 dark:bg-[#27272A] text-zinc-800 dark:text-zinc-200 font-mono text-xs font-semibold flex items-center justify-center border border-zinc-300 dark:border-[#3F3F46]">
+        <div className="flex items-center gap-2.5 pl-3 border-l border-zinc-200 dark:border-[#27272A]">
+          <div className="w-8 h-8 rounded-lg bg-zinc-200 dark:bg-[#27272A] text-zinc-800 dark:text-zinc-200 font-mono text-xs font-semibold flex items-center justify-center border border-zinc-300 dark:border-[#3F3F46] shadow-xs">
             AC
           </div>
-          <span className="hidden xl:inline text-xs font-medium text-zinc-700 dark:text-zinc-300">
-            Alex Chen
-          </span>
+          <div className="hidden xl:flex flex-col text-left">
+            <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 leading-none">
+              Alex Chen
+            </span>
+            <span className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 leading-tight mt-0.5">
+              Staff IC
+            </span>
+          </div>
         </div>
       </div>
     </header>

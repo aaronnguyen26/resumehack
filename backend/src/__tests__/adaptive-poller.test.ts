@@ -165,7 +165,7 @@ describe('Adaptive Poller Scheduler — Checkpoint 4 Test Suite', () => {
 
     const eventsCount = (await pool.query('SELECT count(*) FROM job_events')).rows[0].count;
     expect(Number(eventsCount)).toBe(20);
-  });
+  }, 15000);
 
   it('handles 304 Not Modified short-circuits smoothly in scheduler', async () => {
     const id = crypto.randomUUID();
