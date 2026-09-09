@@ -29,7 +29,8 @@ import {
   Cloud,
   UploadCloud,
   Printer,
-  RotateCcw
+  RotateCcw,
+  Maximize2
 } from 'lucide-react';
 
 interface MatchTailorTabProps {
@@ -60,6 +61,7 @@ interface MatchTailorTabProps {
   showWorkspaceGateway?: boolean;
   onCloseGateway?: () => void;
   onUploadResumeFile?: (file: File) => Promise<void>;
+  onOpenCanvasStudio?: () => void;
 }
 
 export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
@@ -89,7 +91,8 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
   applicantProfile,
   showWorkspaceGateway,
   onCloseGateway,
-  onUploadResumeFile
+  onUploadResumeFile,
+  onOpenCanvasStudio
 }) => {
   const [mode, setMode] = useState<'job' | 'general'>('job');
   const [selectedDomain, setSelectedDomain] = useState<string>('Software Engineering');
@@ -381,13 +384,26 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowGateway(true)}
-              className="text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 font-medium px-2 py-1 underline underline-offset-4 cursor-pointer"
-            >
-              Switch Setup
-            </button>
+            <div className="flex items-center gap-2">
+              {onOpenCanvasStudio && (
+                <button
+                  type="button"
+                  onClick={onOpenCanvasStudio}
+                  className="inline-flex items-center gap-1 text-xs text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white font-medium px-2 py-1 rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors cursor-pointer"
+                  title="Open full Document Canvas editor"
+                >
+                  <Maximize2 className="w-3 h-3" />
+                  <span>Full Studio</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowGateway(true)}
+                className="text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 font-medium px-2 py-1 underline underline-offset-4 cursor-pointer"
+              >
+                Switch Setup
+              </button>
+            </div>
           </div>
 
           {/* Conditional Rendering: In-App Canvas (Option 2) vs Google Docs Cloud Sync (Option 1) */}

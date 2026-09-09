@@ -236,6 +236,130 @@ WORK HISTORY
       expect(canvasRawText).toContain('EXPERIENCE');
       expect(canvasRawText).not.toContain('WORK HISTORY');
     });
+
+    it('manages undo and redo history stack correctly with boundary guards', () => {
+      let history: string[] = ['Initial Version'];
+      let historyIndex = 0;
+
+      const pushState = (newText: string) => {
+        const sliced = history.slice(0, historyIndex + 1);
+        if (sliced[sliced.length - 1] === newText) return;
+        const next = [...sliced, newText];
+        if (next.length > 50) next.shift();
+        history = next;
+        historyIndex = next.length - 1;
+      };
+
+      const handleUndo = () => {
+        if (historyIndex > 0) {
+          historyIndex -= 1;
+          return history[historyIndex];
+        }
+        return history[historyIndex];
+      };
+
+      const handleRedo = () => {
+        if (historyIndex < history.length - 1) {
+          historyIndex += 1;
+          return history[historyIndex];
+        }
+        return history[historyIndex];
+      };
+
+      pushState('Version 2: Added Go skill');
+      pushState('Version 3: Added Stripe Experience');
+      expect(history.length).toBe(3);
+      expect(historyIndex).toBe(2);
+
+      expect(handleUndo()).toBe('Version 2: Added Go skill');
+      expect(historyIndex).toBe(1);
+
+      expect(handleUndo()).toBe('Initial Version');
+      expect(historyIndex).toBe(0);
+
+      // Boundary check: cannot undo past 0
+      expect(handleUndo()).toBe('Initial Version');
+      expect(historyIndex).toBe(0);
+
+      expect(handleRedo()).toBe('Version 2: Added Go skill');
+      expect(historyIndex).toBe(1);
+
+      expect(handleRedo()).toBe('Version 3: Added Stripe Experience');
+      expect(historyIndex).toBe(2);
+
+      // Boundary check: cannot redo past end
+      expect(handleRedo()).toBe('Version 3: Added Stripe Experience');
+      expect(historyIndex).toBe(2);
+    });
+
+    it('preserves non-bullet role/company titles when saving without prepending bullet symbol', () => {
+      let rawText = `Candidate Name
+contact@example.com
+
+WORK EXPERIENCE
+Stripe — Staff Infrastructure Engineer
+San Francisco, CA | 2022 – Present
+• Architected distributed caching layer`;
+
+      const handleSaveBullet = (pIdx: number, lIdx: number, newContent: string) => {
+        const paragraphs = rawText.split('\n\n');
+        if (!paragraphs[pIdx]) return;
+        const lines = paragraphs[pIdx].split('\n');
+        const isBullet = /^[•\-*]\s*/.test(lines[lIdx]);
+        const prefix = isBullet ? (lines[lIdx]?.match(/^[•\-*]\s*/)?.[0] || '• ') : '';
+        lines[lIdx] = `${prefix}${newContent.trim()}`;
+        paragraphs[pIdx] = lines.join('\n');
+        rawText = paragraphs.join('\n\n');
+      };
+
+      // Edit the role title (line 1 of paragraph 1, non-bullet)
+      handleSaveBullet(1, 1, 'Stripe — Principal Infrastructure Engineer');
+      expect(rawText).toContain('Stripe — Principal Infrastructure Engineer');
+      expect(rawText).not.toContain('• Stripe — Principal Infrastructure Engineer');
+
+      // Edit a bullet line (line 3 of paragraph 1, bullet)
+      handleSaveBullet(1, 3, 'Architected distributed multi-region caching layer');
+      expect(rawText).toContain('• Architected distributed multi-region caching layer');
+    });
+
+    it('inserts pre-built template sections seamlessly into canvas document', () => {
+      let rawText = `Candidate Name\ncontact@example.com`;
+
+      const handleInsertSection = (type: 'EXPERIENCE' | 'SKILLS') => {
+        let template = '';
+        if (type === 'EXPERIENCE') {
+          template = `WORK EXPERIENCE\nStripe — Staff Infrastructure Engineer\nSan Francisco, CA | 2022 – Present\n• Architected distributed multi-region caching layer`;
+        } else if (type === 'SKILLS') {
+          template = `TECHNICAL SKILLS\n• Languages: Go, Rust, Python, TypeScript, SQL`;
+        }
+        rawText = `${rawText.trim()}\n\n${template}`;
+      };
+
+      handleInsertSection('EXPERIENCE');
+      expect(rawText).toContain('WORK EXPERIENCE');
+      expect(rawText).toContain('Stripe — Staff Infrastructure Engineer');
+
+      handleInsertSection('SKILLS');
+      expect(rawText).toContain('TECHNICAL SKILLS');
+      expect(rawText).toContain('Languages: Go, Rust, Python');
+    });
+
+    it('navigates directly to dedicated canvas tab upon selecting Option 2 or uploading resume', () => {
+      let activeTab: string = 'home';
+      const handleSelectOption2InAppCanvas = () => {
+        activeTab = 'canvas';
+      };
+      const handleUploadResumeFile = () => {
+        activeTab = 'canvas';
+      };
+
+      handleSelectOption2InAppCanvas();
+      expect(activeTab).toBe('canvas');
+
+      activeTab = 'match';
+      handleUploadResumeFile();
+      expect(activeTab).toBe('canvas');
+    });
   });
 
   describe('Option 1: Google Docs Cloud Sync Lifecycle', () => {

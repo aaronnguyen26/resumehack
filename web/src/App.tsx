@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Navbar } from './components/Navbar.js';
+import { Navbar, NavTab } from './components/Navbar.js';
 import { HomePage } from './components/HomePage.js';
+import { InAppDocumentCanvas } from './components/InAppDocumentCanvas.js';
 import { MatchTailorTab } from './components/MatchTailorTab.js';
 import { DiscoveryTab } from './components/DiscoveryTab.js';
 import { TrackerTab } from './components/TrackerTab.js';
@@ -66,7 +67,7 @@ const DEFAULT_JOB: ScrapedJobData = {
 };
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'home' | 'match' | 'discovery' | 'tracker' | 'profile' | 'settings'>('home');
+  const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [currentJob, setCurrentJob] = useState<ScrapedJobData>(DEFAULT_JOB);
   const [tailorData, setTailorData] = useState<TailorResumeResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -136,8 +137,8 @@ export const App: React.FC = () => {
     // Read query parameters to allow direct tab navigation from Hacky or links
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const requestedTab = params.get('tab') as 'home' | 'match' | 'discovery' | 'tracker' | 'settings' | null;
-      if (requestedTab && ['home', 'match', 'discovery', 'tracker', 'settings'].includes(requestedTab)) {
+      const requestedTab = params.get('tab') as NavTab | null;
+      if (requestedTab && ['home', 'canvas', 'match', 'discovery', 'tracker', 'profile', 'settings'].includes(requestedTab)) {
         setActiveTab(requestedTab);
       }
     }
@@ -307,7 +308,7 @@ export const App: React.FC = () => {
         localStorage.setItem('user_custom_resume', parsedFile.text);
       } catch {}
 
-      setActiveTab('match');
+      setActiveTab('canvas');
       setAppliedStatus(`✓ Extracted and loaded "${file.name}" into In-App Canvas!`);
     } catch (err: any) {
       console.error('[App] Failed to parse uploaded resume file:', err);
@@ -793,7 +794,7 @@ export const App: React.FC = () => {
               const textToLoad = screenResume?.fullText || parsedResume?.rawText || googleDocs.getMockMasterResume(applicantProfile).fullText;
               const candidateTitle = applicantProfile?.firstName ? `${applicantProfile.firstName}'s Master Resume` : 'My Master Resume';
               handleSelectOption2InAppCanvas(textToLoad, screenResume?.title || candidateTitle);
-              setActiveTab('match');
+              setActiveTab('canvas');
             }}
             onNavigateToDiscovery={() => setActiveTab('discovery')}
             onNavigateToTracker={() => setActiveTab('tracker')}
@@ -811,6 +812,66 @@ export const App: React.FC = () => {
             newJobsCount={newJobsCount}
             onUploadResumeFile={handleUploadResumeFile}
           />
+        )}
+
+        {activeTab === 'canvas' && (
+          <div className="w-full max-w-7xl mx-auto px-2 sm:px-4 md:px-6 py-4 animate-in fade-in duration-200">
+            <InAppDocumentCanvas
+              parsedResume={parsedResume}
+              rawText={screenResume?.fullText || parsedResume?.rawText || googleDocs.getMockMasterResume(applicantProfile).fullText}
+              diffs={tailorData?.bulletDiffs || []}
+              onUpdateResumeText={handleUpdateCustomResumeText}
+              onApplyBulletDiff={(diffIndex) => {
+                if (!tailorData?.bulletDiffs?.[diffIndex]) return;
+                const diff = tailorData.bulletDiffs[diffIndex];
+                let current = screenResume?.fullText || parsedResume?.rawText || '';
+                if (diff.originalText && current.includes(diff.originalText)) {
+                  current = current.replace(diff.originalText, diff.tailoredText);
+                  handleUpdateCustomResumeText(current);
+                }
+                setTailorData(prev => {
+                  if (!prev) return prev;
+                  return {
+                    ...prev,
+                    bulletDiffs: prev.bulletDiffs.map((d, i) => i === diffIndex ? { ...d, status: 'accepted' as const } : d)
+                  };
+                });
+              }}
+              onApplyAllDiffs={() => {
+                if (!tailorData?.bulletDiffs) return;
+                let current = screenResume?.fullText || parsedResume?.rawText || '';
+                for (const diff of tailorData.bulletDiffs) {
+                  if (diff.originalText && current.includes(diff.originalText)) {
+                    current = current.replace(diff.originalText, diff.tailoredText);
+                  }
+                }
+                handleUpdateCustomResumeText(current);
+                setTailorData(prev => {
+                  if (!prev) return prev;
+                  return {
+                    ...prev,
+                    bulletDiffs: prev.bulletDiffs.map(d => ({ ...d, status: 'accepted' as const }))
+                  };
+                });
+              }}
+              onReopenGateway={() => setShowWorkspaceGateway(true)}
+              applicantProfile={applicantProfile}
+              isGoogleDocMode={workspaceMode === 'google_docs'}
+              docUrl={screenResume?.url}
+              onSyncGoogleDoc={handleReadScreenNow}
+              onPushToGoogleDoc={tailorData?.bulletDiffs ? () => handleApplyToGoogleDoc(tailorData.bulletDiffs.filter(d => d.status === 'accepted')) : undefined}
+              onUploadFile={handleUploadResumeFile}
+              documentTitle={screenResume?.title}
+              onUpdateDocumentTitle={(title) => {
+                if (screenResume) {
+                  setScreenResume({ ...screenResume, title });
+                }
+              }}
+              currentJob={currentJob}
+              targetRole={currentJob.title || 'Senior Software Engineer'}
+              atsScore={currentAtsScore}
+            />
+          </div>
         )}
 
         {activeTab === 'match' && (
@@ -844,6 +905,7 @@ export const App: React.FC = () => {
             showWorkspaceGateway={showWorkspaceGateway}
             onCloseGateway={() => setShowWorkspaceGateway(false)}
             onUploadResumeFile={handleUploadResumeFile}
+            onOpenCanvasStudio={() => setActiveTab('canvas')}
           />
         )}
 
@@ -885,6 +947,10 @@ export const App: React.FC = () => {
               if (mode) {
                 setWorkspaceMode(mode);
                 saveStoredWorkspaceMode(mode);
+                if (mode === 'in_app_canvas') {
+                  setActiveTab('canvas');
+                  return;
+                }
               }
               setActiveTab('match');
             }}
