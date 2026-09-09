@@ -1281,6 +1281,11 @@ export const App: React.FC = () => {
         activeTab={activeTab}
         onNavigateTab={setActiveTab}
         atsScore={currentAtsScore}
+        resumeText={screenResume?.fullText || parsedResume?.rawText || ''}
+        applicantProfile={applicantProfile}
+        applications={applications}
+        jobs={jobs}
+        onSelectJobForTailoring={handleTailorForJob}
       />
     </div>
   );

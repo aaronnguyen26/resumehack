@@ -487,3 +487,63 @@ export interface ApplicantProfile {
   targetRole?: string;
   skills?: string[];
 }
+
+export interface ChatAction {
+  label: string;
+  action: 'navigate_tab' | 'tailor_job' | 'quick_reply';
+  tab?: 'home' | 'canvas' | 'discovery' | 'tracker' | 'profile' | 'settings';
+  payload?: any;
+}
+
+export type ChatDataCard =
+  | {
+      type: 'resume_summary';
+      score: number;
+      metricsCount: number;
+      skillsCount: number;
+      lineCount: number;
+      title: string;
+      topStrengths: string[];
+      topRecommendations: string[];
+    }
+  | {
+      type: 'pipeline_summary';
+      total: number;
+      applied: number;
+      interviewing: number;
+      offered: number;
+      rejected: number;
+      bookmarked: number;
+      interviewRate: number;
+      recentCompanies: string[];
+    }
+  | {
+      type: 'job_openings';
+      totalAvailable: number;
+      openings: Array<{
+        id: string;
+        title: string;
+        company: string;
+        location: string;
+        salary?: string;
+        url?: string;
+      }>;
+    };
+
+export interface ChatMessage {
+  id: string;
+  sender: 'user' | 'hacky';
+  text: string;
+  timestamp: number;
+  actions?: ChatAction[];
+  dataCard?: ChatDataCard;
+}
+
+export interface ChatbotContext {
+  resumeText?: string;
+  atsScore?: number;
+  applicantProfile?: ApplicantProfile;
+  applications?: ApplicationRecord[];
+  jobs?: JobPosting[];
+  activeTab?: string;
+}
