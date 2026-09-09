@@ -11,22 +11,22 @@ body {
   padding: 0;
   width: 100%;
   min-height: 100vh;
-  background-color: #F8FAFC;
-  color: #0F172A;
+  background-color: #FAFAFA;
+  color: #09090B;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   overflow-x: hidden;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 html.dark body {
-  background-color: #0B0F19; /* Stitch Dark Base Canvas */
-  color: #F8FAFC;
+  background-color: #09090B; /* Stitch Minimalist Zinc Canvas */
+  color: #F4F4F5;
 }
 
-/* Custom scrollbars */
+/* Custom thin scrollbars in minimalist zinc */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -34,20 +34,20 @@ html.dark body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
+  background: #E4E4E7;
   border-radius: 9999px;
 }
 
 html.dark ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #27272A;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+  background: #D4D4D8;
 }
 
 html.dark ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #3F3F46;
 }
 
 .tab-transition {
@@ -55,127 +55,118 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 }
 
 /* ==========================================================================
-   Stitch MCP Dark Mode Global Theme Mappings
+   Stitch Minimalist Monochrome Theme Mappings (Zero Purple & Zero Blue)
    ========================================================================== */
 
 /* Surfaces */
 html.dark .bg-white {
-  background-color: #111827 !important;
+  background-color: #121215 !important;
 }
 
 html.dark .bg-slate-50 {
-  background-color: #161F30 !important;
+  background-color: #121215 !important;
 }
 
 html.dark .bg-slate-100 {
-  background-color: #1E293B !important;
+  background-color: #18181B !important;
 }
 
 html.dark .hover\:bg-slate-50:hover {
-  background-color: #1E293B !important;
+  background-color: #18181B !important;
 }
 
 html.dark .hover\:bg-slate-100:hover {
-  background-color: #334155 !important;
+  background-color: #27272A !important;
 }
 
 html.dark .hover\:bg-slate-200:hover {
-  background-color: #475569 !important;
+  background-color: #3F3F46 !important;
 }
 
 /* Borders & Dividers */
 html.dark .border-slate-200 {
-  border-color: #334155 !important;
+  border-color: #27272A !important;
 }
 
 html.dark .border-slate-100 {
-  border-color: #1E293B !important;
+  border-color: #18181B !important;
 }
 
 html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
-  border-color: #334155 !important;
+  border-color: #27272A !important;
 }
 
 html.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
-  border-color: #1E293B !important;
+  border-color: #18181B !important;
 }
 
 /* Typography */
 html.dark .text-slate-900 {
-  color: #F8FAFC !important;
+  color: #FAFAFA !important;
 }
 
 html.dark .text-slate-800 {
-  color: #F1F5F9 !important;
+  color: #F4F4F5 !important;
 }
 
 html.dark .text-slate-700 {
-  color: #CBD5E1 !important;
+  color: #E4E4E7 !important;
 }
 
 html.dark .text-slate-600 {
-  color: #94A3B8 !important;
+  color: #A1A1AA !important;
 }
 
 html.dark .text-slate-500 {
-  color: #94A3B8 !important;
+  color: #71717A !important;
 }
 
 /* Form Controls in Dark Mode */
 html.dark input:not([type="checkbox"]):not([type="radio"]),
 html.dark select,
 html.dark textarea {
-  background-color: #1E293B;
-  color: #F8FAFC;
-  border-color: #334155;
+  background-color: #18181B;
+  color: #FAFAFA;
+  border-color: #27272A;
 }
 
 html.dark input::placeholder,
 html.dark textarea::placeholder {
-  color: #64748B;
+  color: #71717A;
 }
 
-/* Tonal Badges in Dark Mode */
+/* Minimalist Tonal Badges in Dark Mode (No Purple / No Blue) */
 html.dark .bg-brand-50 {
-  background-color: rgba(99, 102, 241, 0.15) !important;
-  color: #A5B4FC !important;
-  border-color: rgba(99, 102, 241, 0.3) !important;
+  background-color: rgba(244, 244, 245, 0.08) !important;
+  color: #FAFAFA !important;
+  border-color: rgba(244, 244, 245, 0.2) !important;
 }
 
 html.dark .bg-emerald-50 {
-  background-color: rgba(16, 185, 129, 0.15) !important;
-  color: #6EE7B7 !important;
-  border-color: rgba(16, 185, 129, 0.3) !important;
+  background-color: rgba(16, 185, 129, 0.12) !important;
+  color: #34D399 !important;
+  border-color: rgba(16, 185, 129, 0.25) !important;
 }
 
 html.dark .bg-amber-50 {
-  background-color: rgba(245, 158, 11, 0.15) !important;
-  color: #FCD34D !important;
-  border-color: rgba(245, 158, 11, 0.3) !important;
+  background-color: rgba(245, 158, 11, 0.12) !important;
+  color: #FBBF24 !important;
+  border-color: rgba(245, 158, 11, 0.25) !important;
 }
 
 html.dark .bg-rose-50 {
-  background-color: rgba(244, 63, 94, 0.15) !important;
-  color: #FDA4AF !important;
-  border-color: rgba(244, 63, 94, 0.3) !important;
+  background-color: rgba(244, 63, 94, 0.12) !important;
+  color: #FB7185 !important;
+  border-color: rgba(244, 63, 94, 0.25) !important;
 }
 
-html.dark .bg-violet-50 {
-  background-color: rgba(139, 92, 246, 0.15) !important;
-  color: #C4B5FD !important;
-  border-color: rgba(139, 92, 246, 0.3) !important;
-}
-
-html.dark .bg-purple-50 {
-  background-color: rgba(168, 85, 247, 0.15) !important;
-  color: #D8B4FE !important;
-  border-color: rgba(168, 85, 247, 0.3) !important;
-}
-
+/* Purge violet, purple, and blue classes to clean neutral */
+html.dark .bg-violet-50,
+html.dark .bg-purple-50,
 html.dark .bg-blue-50 {
-  background-color: rgba(59, 130, 246, 0.15) !important;
-  color: #93C5FD !important;
-  border-color: rgba(59, 130, 246, 0.3) !important;
+  background-color: rgba(244, 244, 245, 0.08) !important;
+  color: #FAFAFA !important;
+  border-color: rgba(244, 244, 245, 0.2) !important;
 }
 
 /* Modals & Popovers Backdrop */
@@ -183,5 +174,6 @@ html.dark .bg-slate-900\/60,
 html.dark .bg-black\/50,
 html.dark .bg-slate-900\/50,
 html.dark .bg-slate-950\/80 {
-  background-color: rgba(11, 15, 25, 0.85) !important;
+  background-color: rgba(9, 9, 11, 0.85) !important;
 }
+

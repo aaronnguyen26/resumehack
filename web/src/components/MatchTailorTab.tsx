@@ -7,7 +7,6 @@ import {
   Check, 
   X, 
   Download, 
-  FileEdit, 
   Layers, 
   ExternalLink,
   Zap,
@@ -21,10 +20,9 @@ import {
   RefreshCw,
   ArrowRight,
   Layout,
-  Sliders,
-  Type,
   AlertCircle,
-  AlertTriangle
+  AlertTriangle,
+  ChevronRight
 } from 'lucide-react';
 
 interface MatchTailorTabProps {
@@ -106,579 +104,403 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
     setIsEditingResume(false);
   };
 
+  const handleToggleBulletAccept = (index: number) => {
+    setDiffs(prev => {
+      const copy = [...prev];
+      if (copy[index]) {
+        copy[index] = {
+          ...copy[index],
+          status: copy[index].status === 'accepted' ? 'rejected' : 'accepted'
+        };
+      }
+      return copy;
+    });
+  };
+
   const appliedCount = diffs.filter((d: TailoredBulletDiff) => d.status === 'accepted').length;
   const totalDiffsCount = diffs.length;
   const progressPercentage = totalDiffsCount > 0 ? Math.round((appliedCount / totalDiffsCount) * 100) : 0;
 
   return (
-    <div className="p-4 space-y-4 pb-24">
-      {/* Mode Switcher: Job Match vs General ATS */}
-      <div className="flex p-1 bg-slate-200/80 rounded-stitch text-xs font-semibold">
-        <button
-          onClick={() => setMode('job')}
-          className={`flex-1 py-1.5 px-2 rounded flex items-center justify-center gap-1.5 transition-all ${
-            mode === 'job'
-              ? 'bg-white text-brand-700 shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Target className="w-3.5 h-3.5" />
-          <span>Job Match ATS Audit</span>
-        </button>
-        <button
-          onClick={() => setMode('general')}
-          className={`flex-1 py-1.5 px-2 rounded flex items-center justify-center gap-1.5 transition-all ${
-            mode === 'general'
-              ? 'bg-white text-emerald-800 shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <span>Universal Master ATS</span>
-        </button>
-      </div>
-
-      {/* 1. On-Demand Resume Screen Reader Card */}
-      {!screenResume ? (
-        <div className="bg-white p-4 rounded-stitch border border-brand-200 shadow-sm space-y-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
-              <Monitor className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="font-headline font-bold text-xs text-slate-900">
-                Load Your Resume from Screen
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                Open your Google Doc or resume tab, then click below.
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={onReadScreenNow}
-            className="w-full py-2.5 px-3 rounded-stitch bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm"
-          >
-            <Scan className="w-3.5 h-3.5" />
-            <span>Scan & Read Active Screen Resume</span>
-          </button>
-
-          <div className="text-center">
-            <button
-              onClick={() => setIsEditingResume(true)}
-              className="text-[11px] text-slate-500 hover:text-brand-600 underline font-medium"
-            >
-              Or paste resume text manually
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="bg-white p-3.5 rounded-stitch border border-slate-200 shadow-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 truncate">
-              <div className="w-7 h-7 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-              <div className="truncate">
-                <span className="text-[10px] uppercase font-mono font-bold text-emerald-600 block leading-none">
-                  {screenResume.isGoogleDoc ? 'Google Doc Connected' : 'Screen Resume Loaded'}
-                </span>
-                <span className="font-headline font-bold text-xs text-slate-900 truncate block mt-0.5" title={screenResume.title}>
-                  {screenResume.title}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1 shrink-0">
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      {/* 1. Desktop Command & Context Header */}
+      <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-4 sm:p-5 shadow-xs transition-colors">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          
+          {/* Left: Mode Segmented Control & Active Target */}
+          <div className="space-y-2.5">
+            <div className="inline-flex p-1 bg-zinc-100 dark:bg-zinc-800/80 rounded-lg text-xs font-semibold border border-zinc-200/60 dark:border-zinc-700/60">
               <button
-                onClick={() => setIsEditingResume(!isEditingResume)}
-                className="p-1.5 rounded hover:bg-slate-100 text-slate-600"
-                title="Edit / View raw text"
+                type="button"
+                onClick={() => setMode('job')}
+                className={`py-1.5 px-3 rounded-md flex items-center gap-1.5 transition-all cursor-pointer ${
+                  mode === 'job'
+                    ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 shadow-xs'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+                }`}
               >
-                <Edit3 className="w-3.5 h-3.5" />
+                <Target className="w-3.5 h-3.5" />
+                <span>Job Match ATS Audit</span>
               </button>
               <button
-                onClick={onReadScreenNow}
-                className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-[10px] font-semibold text-slate-700 flex items-center gap-1"
-                title="Re-read text from active tab"
+                type="button"
+                onClick={() => setMode('general')}
+                className={`py-1.5 px-3 rounded-md flex items-center gap-1.5 transition-all cursor-pointer ${
+                  mode === 'general'
+                    ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 shadow-xs'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+                }`}
               >
-                <RefreshCw className="w-3 h-3 text-slate-500" />
-                <span>Re-scan</span>
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Universal Master ATS</span>
               </button>
             </div>
-          </div>
 
-          <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-100 font-mono">
-            <span>{parsedResume?.bullets.length || 0} bullet points extracted</span>
-            <span>{screenResume.fullText.length.toLocaleString()} chars</span>
-          </div>
-        </div>
-      )}
-
-      {/* In-Sidepanel Resume Text Editor / Paste Drawer */}
-      {isEditingResume && (
-        <div className="bg-white p-3.5 rounded-stitch border border-brand-200 shadow-md space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="font-headline font-bold text-xs text-slate-900 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-brand-600" />
-              <span>Resume Content</span>
-            </span>
-            <button
-              onClick={() => setIsEditingResume(false)}
-              className="text-slate-400 hover:text-slate-600 text-xs font-bold"
-            >
-              ✕
-            </button>
-          </div>
-          <textarea
-            value={customText}
-            onChange={(e) => setCustomText(e.target.value)}
-            rows={7}
-            placeholder="Paste or type your resume bullet points here..."
-            className="w-full p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 font-mono focus:outline-none focus:border-brand-500 leading-relaxed"
-          />
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setIsEditingResume(false)}
-              className="px-3 py-1 text-xs text-slate-600 hover:bg-slate-100 rounded"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSaveCustomText}
-              className="px-3 py-1 bg-brand-600 hover:bg-brand-700 text-white rounded text-xs font-semibold"
-            >
-              Save & Parse
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* MODE A: Job Opening Tailoring */}
-      {mode === 'job' && (
-        <div className="space-y-3">
-          <div className="bg-white p-3.5 rounded-stitch border border-slate-200 shadow-sm space-y-2">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="inline-block px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded bg-brand-50 text-brand-700 font-mono">
-                  {currentJob.source}
+            {mode === 'job' ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700">
+                  {currentJob.source || 'Active Role'}
                 </span>
-                <h2 className="font-headline font-bold text-xs text-slate-900 mt-1">
+                <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
                   {currentJob.title}
-                </h2>
-                <p className="text-xs font-semibold text-slate-600">
-                  {currentJob.company} {currentJob.location ? `• ${currentJob.location}` : ''}
-                </p>
+                </span>
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                  at <strong className="text-zinc-700 dark:text-zinc-300 font-semibold">{currentJob.company}</strong>
+                  {currentJob.location ? ` • ${currentJob.location}` : ''}
+                </span>
               </div>
-
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={onScrapeJobFromCurrentTab}
-                  className="px-2 py-1 text-[10px] font-semibold rounded bg-slate-100 hover:bg-slate-200 text-slate-700"
-                  title="Scrape job from current active tab"
-                >
-                  Scan Job Tab
-                </button>
-                <button
-                  onClick={onTriggerAutofill}
-                  className="px-2.5 py-1 text-[10px] font-bold rounded bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border border-amber-200 hover:from-amber-100 hover:to-orange-100 flex items-center gap-1 shadow-2xs"
-                  title="Prepare, inspect, and review auto-apply application"
-                >
-                  <Zap className="w-3 h-3 text-amber-600" />
-                  <span>Auto-Apply</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {!tailorData && !isLoading && (
-            <button
-              onClick={onTriggerTailor}
-              className="w-full py-3 px-4 rounded-stitch bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 group"
-            >
-              <Sparkles className="w-4 h-4 transition-transform group-hover:scale-110" />
-              <span>Run ATS Match Audit & Generate STAR Bullets</span>
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* MODE B: General Master ATS Optimizer */}
-      {mode === 'general' && (
-        <div className="space-y-3">
-          <div className="bg-white p-3.5 rounded-stitch border border-emerald-200 shadow-sm space-y-2.5">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <div>
-                <h3 className="font-headline font-bold text-xs text-slate-900">
-                  Universal ATS & STAR Optimizer
-                </h3>
-                <p className="text-[11px] text-slate-500">
-                  Polishes verb vitality, quantifiable metrics, and ATS parsing health.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                Target Industry Benchmark
-              </label>
-              <div className="flex gap-1 overflow-x-auto pb-1 no-scrollbar">
+            ) : (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+                <span className="text-[10px] font-mono uppercase font-bold text-zinc-400 mr-1 shrink-0">Benchmark:</span>
                 {domains.map(d => (
                   <button
                     key={d}
+                    type="button"
                     onClick={() => setSelectedDomain(d)}
-                    className={`shrink-0 px-2 py-0.5 text-[11px] rounded-full font-medium transition-all ${
+                    className={`shrink-0 px-2.5 py-0.5 text-[11px] rounded-full font-medium transition-all cursor-pointer ${
                       selectedDomain === d
-                        ? 'bg-emerald-700 text-white shadow-sm'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 shadow-xs font-semibold'
+                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
                     }`}
                   >
                     {d}
                   </button>
                 ))}
               </div>
-            </div>
+            )}
+          </div>
+
+          {/* Right: Actions Bar */}
+          <div className="flex items-center gap-2 shrink-0">
+            {mode === 'job' && (
+              <>
+                <button
+                  type="button"
+                  onClick={onScrapeJobFromCurrentTab}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 transition-colors cursor-pointer"
+                  title="Scrape job from current active tab"
+                >
+                  Scan Job Tab
+                </button>
+                <button
+                  type="button"
+                  onClick={onTriggerAutofill}
+                  className="px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-300/40 dark:border-amber-700/40 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Prepare, inspect, and review auto-apply application"
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                  <span>Auto-Apply</span>
+                </button>
+              </>
+            )}
 
             <button
-              onClick={() => onTriggerGeneralAtsOptimize(selectedDomain)}
-              className="w-full py-2.5 px-4 rounded-stitch bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow transition-all flex items-center justify-center gap-1.5"
+              type="button"
+              onClick={mode === 'job' ? onTriggerTailor : () => onTriggerGeneralAtsOptimize(selectedDomain)}
+              disabled={isLoading}
+              className="px-4 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 font-bold text-xs shadow-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Audit & Optimize Master Resume</span>
+              <Sparkles className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>{isLoading ? 'Analyzing…' : mode === 'job' ? 'Tailor for Job' : 'Audit Master Resume'}</span>
             </button>
           </div>
         </div>
-      )}
+      </div>
 
+      {/* 2. Loading State */}
       {isLoading && (
-        <div className="p-6 flex flex-col items-center justify-center space-y-3 text-center bg-white rounded-stitch border border-slate-200 shadow-sm">
-          <div className="w-10 h-10 border-3 border-brand-200 border-t-brand-600 rounded-full animate-spin"></div>
+        <div className="p-12 flex flex-col items-center justify-center space-y-4 text-center bg-white dark:bg-[#121215] rounded-xl border border-zinc-200 dark:border-[#27272A] shadow-xs">
+          <div className="w-10 h-10 border-2 border-zinc-300 dark:border-zinc-700 border-t-zinc-900 dark:border-t-white rounded-full animate-spin"></div>
           <div>
-            <h3 className="font-headline font-bold text-xs text-slate-900">
-              {mode === 'general' ? 'Running Universal ATS Audit...' : 'Analyzing Job Alignment & Generating STAR Bullets...'}
+            <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+              {mode === 'general' ? 'Running Universal ATS Master Audit...' : 'Analyzing Job Alignment & Generating STAR Bullets...'}
             </h3>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Calculating keyword match, action verb vitality, and metric quantification.
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-md mx-auto">
+              Calculating exact keyword match, verb vitality, quantifiable metrics, and layout parseability.
             </p>
           </div>
         </div>
       )}
 
-      {tailorData && !isLoading && (
-        <>
-          {/* In-Document Suggestion Bridge Card (Replaces duplicate cards) */}
-          <div className="bg-gradient-to-br from-brand-900 to-indigo-950 text-white p-4 rounded-stitch shadow-md space-y-3 border border-brand-700/50">
-            <div className="flex items-start justify-between">
-              <div className="space-y-0.5">
-                <span className="text-[10px] uppercase font-mono font-bold text-brand-300 flex items-center gap-1">
-                  <span>🦉 Google Docs In-Doc Suggestion Bridge</span>
-                </span>
-                <h3 className="font-headline font-bold text-sm text-white">
-                  {totalDiffsCount > 0
-                    ? `${appliedCount} of ${totalDiffsCount} STAR Bullets Applied`
-                    : 'STAR Suggestions Ready'}
-                </h3>
-              </div>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold border border-emerald-400/30">
-                {progressPercentage}% Applied
-              </span>
-            </div>
-
-            {/* Progress Bar */}
-            <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
-              <div
-                className="bg-gradient-to-r from-emerald-400 to-emerald-300 h-full rounded-full transition-all duration-500"
-                style={{ width: `${Math.max(5, progressPercentage)}%` }}
-              ></div>
-            </div>
-
-            <p className="text-[11px] text-slate-300 leading-snug">
-              Individual bullet suggestions and one-click apply controls are floating live inside your Google Docs tab.
-            </p>
-
-            <div className="flex items-center gap-2 pt-1">
-              <button
-                onClick={onShowDiffsOnGoogleDoc}
-                className="flex-1 py-2.5 px-3 rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all"
-              >
-                <span>🎯 View & Apply in Document</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-
-              <button
-                onClick={handleFork}
-                disabled={isForking}
-                className="py-2.5 px-3 rounded bg-white/10 hover:bg-white/20 text-white font-semibold text-xs transition-all flex items-center gap-1"
-                title="Fork a copy in Google Drive"
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>{isForking ? 'Saving…' : 'Fork'}</span>
-              </button>
-
-              {pdfUrl && (
-                <a
-                  href={pdfUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="py-2.5 px-3 rounded bg-white/10 hover:bg-white/20 text-white font-semibold text-xs transition-all flex items-center gap-1"
-                  title="Export PDF"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                </a>
-              )}
-            </div>
-          </div>
-
-          {/* ATS Gauge */}
-          <AtsGauge 
-            score={tailorData.atsReport.overallScore} 
-            projectedScore={tailorData.projectedNewScore} 
-          />
-
-          {/* Company Archetype & Global Tailoring Strategy Banner */}
-          {tailorData.archetype && (
-            <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-3.5 rounded-stitch border border-indigo-800/60 text-white space-y-2 shadow-md">
-              <div className="flex items-center justify-between">
-                <span className="font-headline font-bold text-xs flex items-center gap-1.5 text-indigo-200">
-                  <span>{tailorData.archetype.badge}</span>
-                </span>
-                {tailorData.tokenCostInfo && (
-                  <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
-                    ⚡ ~{tailorData.tokenCostInfo.tokenCount} tokens (${tailorData.tokenCostInfo.estimatedCostUsd})
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-200 leading-relaxed font-normal">
-                {tailorData.documentSummary || tailorData.archetype.narrativeDirective}
-              </p>
-              {tailorData.archetype.keyThemes && tailorData.archetype.keyThemes.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-white/10">
-                  <span className="text-[9px] text-indigo-300 font-semibold mr-1">Narrative Pillars:</span>
-                  {tailorData.archetype.keyThemes.map((theme, tIdx) => (
-                    <span key={tIdx} className="px-1.5 py-0.5 rounded bg-white/10 text-slate-200 text-[9px] font-medium border border-white/10">
-                      {theme}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Detected Job Intelligence */}
-          {tailorData.detectedJobIntel && (
-            <div className="bg-slate-50 border border-slate-200 p-3 rounded-stitch space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-1">
-                  <span>🎯 Role Intelligence</span>
-                </span>
-                {tailorData.detectedJobIntel.seniorityLevel && (
-                  <span className="px-2 py-0.5 rounded-full bg-brand-100 text-brand-800 text-[10px] font-bold">
-                    {tailorData.detectedJobIntel.seniorityLevel}
-                  </span>
-                )}
-              </div>
-
-              {tailorData.detectedJobIntel.topHardSkills && tailorData.detectedJobIntel.topHardSkills.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-slate-200/60">
-                  <span className="text-[10px] text-slate-500 font-semibold mr-1">Core Tech:</span>
-                  {tailorData.detectedJobIntel.topHardSkills.map((skill, sIdx) => (
-                    <span
-                      key={sIdx}
-                      className="px-1.5 py-0.5 rounded bg-white text-slate-700 text-[10px] font-medium border border-slate-200 shadow-xs"
-                    >
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 6-Dimensional ATS Scoring Grid (HackerRank-Inspired Rubric) */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-white p-2.5 rounded-stitch border border-slate-200 shadow-sm space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">Hard Skills</span>
-                <span className="font-mono font-bold text-xs text-brand-600">
-                  {tailorData.atsReport.breakdown.hardSkillsScore}%
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-500 leading-tight">
-                {tailorData.atsReport.matchedKeywordsCount} of {tailorData.atsReport.totalKeywords} keywords matched (30% wt).
-              </p>
-            </div>
-
-            <div className="bg-white p-2.5 rounded-stitch border border-slate-200 shadow-sm space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">Production Exp</span>
-                <span className="font-mono font-bold text-xs text-emerald-600">
-                  {tailorData.atsReport.breakdown.productionExperienceScore ?? tailorData.atsReport.productionExperienceAudit?.score ?? 85}%
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-500 leading-tight">
-                {tailorData.atsReport.productionExperienceAudit?.roleCount ?? 1} roles &bull; {tailorData.atsReport.productionExperienceAudit?.productionKeywordsFound?.length ?? 0} infra signals (15% wt).
-              </p>
-            </div>
-
-            <div className="bg-white p-2.5 rounded-stitch border border-slate-200 shadow-sm space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">Self Projects</span>
-                <span className="font-mono font-bold text-xs text-violet-600">
-                  {tailorData.atsReport.breakdown.selfProjectsScore ?? tailorData.atsReport.selfProjectsAudit?.score ?? 80}%
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-500 leading-tight">
-                {tailorData.atsReport.selfProjectsAudit?.hasWorkingLinks ? 'Live link detected' : 'Code complexity audit'} (10% wt).
-              </p>
-            </div>
-
-            <div className="bg-white p-2.5 rounded-stitch border border-slate-200 shadow-sm space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">Action Verbs</span>
-                <span className="font-mono font-bold text-xs text-brand-600">
-                  {tailorData.atsReport.actionVerbStrength
-                    ? `${Math.round((tailorData.atsReport.actionVerbStrength.strongCount / (tailorData.atsReport.actionVerbStrength.strongCount + tailorData.atsReport.actionVerbStrength.weakCount || 1)) * 100)}%`
-                    : `${tailorData.atsReport.breakdown.experienceRelevanceScore}%`}
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-500 leading-tight">
-                {tailorData.atsReport.actionVerbStrength?.weakCount
-                  ? `Flagged ${tailorData.atsReport.actionVerbStrength.weakCount} passive verbs.`
-                  : 'High STAR power verb density (15% wt).'}
-              </p>
-            </div>
-
-            <div className="bg-white p-2.5 rounded-stitch border border-slate-200 shadow-sm space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">Quantification</span>
-                <span className="font-mono font-bold text-xs text-emerald-600">
-                  {tailorData.atsReport.quantificationStats
-                    ? `${tailorData.atsReport.quantificationStats.percentage}%`
-                    : `${tailorData.atsReport.breakdown.softSkillsScore}%`}
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-500 leading-tight">
-                {tailorData.atsReport.quantificationStats
-                  ? `${tailorData.atsReport.quantificationStats.quantifiedBullets} of ${tailorData.atsReport.quantificationStats.totalBullets} bullets have metrics (15% wt).`
-                  : 'Measurable metric density.'}
-              </p>
-            </div>
-
-            <div className="bg-white p-2.5 rounded-stitch border border-slate-200 shadow-sm space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">ATS Format</span>
-                <span className={`font-mono font-bold text-xs ${
-                  tailorData.atsReport.breakdown.formattingScore >= 80 ? 'text-emerald-600' : 'text-amber-600'
+      {/* 3. Main Dual-Pane Workspace (Desktop Grid: 7 cols Canvas + 5 cols Inspector) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        {/* LEFT PANE: Resume Document Canvas & STAR Bullet Editor (7 cols) */}
+        <div className="lg:col-span-7 space-y-6">
+          
+          {/* Document Header & Status Card */}
+          <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-5 shadow-xs space-y-4 transition-colors">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                  screenResume 
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' 
+                    : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
                 }`}>
-                  {tailorData.atsReport.breakdown.formattingScore}%
-                </span>
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 truncate">
+                      {screenResume?.title || 'Master Resume Canvas'}
+                    </h3>
+                    {screenResume && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                        {screenResume.isGoogleDoc ? 'Google Doc Active' : 'Loaded'}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    {screenResume 
+                      ? `${parsedResume?.bullets?.length || diffs.length || 0} bullet points extracted · ${screenResume.fullText.length.toLocaleString()} characters`
+                      : 'Open your Google Doc or resume tab and scan to load your live document'}
+                  </p>
+                </div>
               </div>
-              <p className="text-[10px] text-slate-500 leading-tight">
-                {tailorData.atsReport.layoutReport?.summary ||
-                  (tailorData.atsReport.breakdown.formattingScore >= 90
-                    ? 'Standard single-column flow (5% wt).'
-                    : 'Formatting issues detected.')}
-              </p>
-            </div>
-          </div>
 
-          {/* HackerRank-Inspired Evaluation Rubrics & Inline Evidence */}
-          {(tailorData.atsReport.selfProjectsAudit || tailorData.atsReport.productionExperienceAudit) && (
-            <div className="bg-slate-50 p-3 rounded-stitch border border-slate-200/80 shadow-xs space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-brand-600" />
-                  <span className="font-headline font-bold text-[11px] text-slate-900">
-                    Evaluation Rubric &amp; Verified Evidence
+              {/* Action Buttons for Document */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingResume(!isEditingResume)}
+                  className="p-1.5 rounded-lg text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
+                  title="Edit or paste raw text"
+                >
+                  <Edit3 className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={onReadScreenNow}
+                  className="px-2.5 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-xs font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Re-read text from active Google Doc or tab"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-zinc-500" />
+                  <span>Re-scan</span>
+                </button>
+              </div>
+            </div>
+
+            {/* In-App Resume Text Editor / Paste Drawer */}
+            {isEditingResume && (
+              <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-xs text-zinc-700 dark:text-zinc-300">
+                    Raw Resume Text Input
+                  </span>
+                  <span className="text-[11px] text-zinc-400 font-mono">
+                    {customText.length.toLocaleString()} chars
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-500 font-medium">Text-Derivable Audit</span>
+                <textarea
+                  value={customText}
+                  onChange={(e) => setCustomText(e.target.value)}
+                  rows={8}
+                  placeholder="Paste or edit your resume text and bullets here..."
+                  className="w-full p-3 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-zinc-100 font-mono leading-relaxed focus:outline-none focus:border-zinc-400 dark:focus:border-zinc-500 resize-y"
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingResume(false)}
+                    className="px-3 py-1.5 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveCustomText}
+                    className="px-3.5 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    Save & Parse
+                  </button>
+                </div>
               </div>
+            )}
+          </div>
 
-              {/* Self Projects Evidence */}
-              {tailorData.atsReport.selfProjectsAudit && (
-                <div className="bg-white p-2 rounded border border-slate-200/70 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1">
-                      <span>💻 Self Projects:</span>
-                      <span className="font-mono text-violet-600">
-                        {tailorData.atsReport.selfProjectsAudit.score}/100
-                      </span>
-                    </span>
-                    {tailorData.atsReport.selfProjectsAudit.hasWorkingLinks && (
-                      <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
-                        🔗 Link Detected
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-slate-600 leading-relaxed italic bg-slate-50/70 p-1.5 rounded border border-slate-100">
-                    {tailorData.atsReport.selfProjectsAudit.evidence}
-                  </p>
-                  {tailorData.atsReport.selfProjectsAudit.complexitySignals.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                      <span className="text-[9px] text-slate-400 font-medium">Signals:</span>
-                      {tailorData.atsReport.selfProjectsAudit.complexitySignals.slice(0, 4).map((sig, idx) => (
-                        <span key={idx} className="px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 text-[9px] font-mono">
-                          {sig}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Production Experience Evidence */}
-              {tailorData.atsReport.productionExperienceAudit && (
-                <div className="bg-white p-2 rounded border border-slate-200/70 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1">
-                      <span>🏢 Production Experience:</span>
-                      <span className="font-mono text-emerald-600">
-                        {tailorData.atsReport.productionExperienceAudit.score}/100
-                      </span>
-                    </span>
-                    {tailorData.atsReport.productionExperienceAudit.isProductionHeavy && (
-                      <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
-                        🚀 High Production Maturity
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-slate-600 leading-relaxed italic bg-slate-50/70 p-1.5 rounded border border-slate-100">
-                    {tailorData.atsReport.productionExperienceAudit.evidence}
-                  </p>
-                  {tailorData.atsReport.productionExperienceAudit.productionKeywordsFound.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                      <span className="text-[9px] text-slate-400 font-medium">Infra Signals:</span>
-                      {tailorData.atsReport.productionExperienceAudit.productionKeywordsFound.slice(0, 4).map((sig, idx) => (
-                        <span key={idx} className="px-1 py-0.2 rounded bg-emerald-50 text-emerald-700 text-[9px] font-mono">
-                          {sig}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+          {/* Empty Resume State */}
+          {!screenResume && !isEditingResume && (
+            <div className="bg-white dark:bg-[#121215] border border-dashed border-zinc-300 dark:border-zinc-800 rounded-xl p-8 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto text-zinc-600 dark:text-zinc-300">
+                <Monitor className="w-6 h-6" />
+              </div>
+              <div className="max-w-md mx-auto space-y-1">
+                <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+                  No Resume Loaded on Canvas
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                  Open your Google Docs resume in your browser or paste the text directly to start real-time ATS optimization.
+                </p>
+              </div>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={onReadScreenNow}
+                  className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs"
+                >
+                  <Scan className="w-4 h-4" />
+                  <span>Scan Active Screen Tab</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingResume(true)}
+                  className="px-4 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Paste Text Manually
+                </button>
+              </div>
             </div>
           )}
 
-          {/* Dedicated ATS Layout & Structural + Visual Polish Suggestions */}
-          {tailorData.atsReport.layoutReport && tailorData.atsReport.layoutReport.issues.length > 0 && (
-            <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white p-3.5 rounded-stitch shadow-md space-y-3 border border-indigo-800/60">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Layout className="w-4 h-4 text-indigo-400" />
-                  <span className="font-headline font-bold text-xs text-white">
-                    ATS Layout &amp; Visual Hygiene
-                  </span>
+          {/* STAR Bullets & Interactive Diff Inspector */}
+          {diffs.length > 0 && (
+            <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-5 sm:p-6 shadow-xs space-y-5 transition-colors">
+              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+                <div>
+                  <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                    <span>AI-Tailored STAR Bullets</span>
+                    <span className="px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-mono font-semibold">
+                      {appliedCount} / {totalDiffsCount} Applied
+                    </span>
+                  </h3>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    Review and toggle AI-enhanced bullet points with quantified results and verified anti-hallucination.
+                  </p>
                 </div>
-                <div className="flex items-center gap-1.5">
+
+                {onShowDiffsOnGoogleDoc && (
+                  <button
+                    type="button"
+                    onClick={onShowDiffsOnGoogleDoc}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border border-emerald-500/20 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <span>View in Docs</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full bg-zinc-100 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                  style={{ width: `${Math.max(5, progressPercentage)}%` }}
+                />
+              </div>
+
+              {/* Bullets List */}
+              <div className="space-y-4">
+                {diffs.map((diff, idx) => {
+                  const isAccepted = diff.status === 'accepted';
+                  return (
+                    <div
+                      key={diff.id || idx}
+                      className={`p-4 rounded-xl border transition-all ${
+                        isAccepted
+                          ? 'bg-emerald-500/5 dark:bg-emerald-500/10 border-emerald-500/30 ring-1 ring-emerald-500/20'
+                          : 'bg-zinc-50/70 dark:bg-zinc-900/40 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
+                            Bullet #{idx + 1}
+                          </span>
+                          {diff.injectedKeywords && diff.injectedKeywords.length > 0 && (
+                            <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                              +{diff.injectedKeywords.join(', ')}
+                            </span>
+                          )}
+                          {typeof diff.scoreGain === 'number' && (
+                            <span className="text-[10px] font-mono text-zinc-400">
+                              +{diff.scoreGain} pts
+                            </span>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleBulletAccept(idx)}
+                          className={`px-3 py-1 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                            isAccepted
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                              : 'bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200'
+                          }`}
+                        >
+                          {isAccepted ? <Check className="w-3.5 h-3.5" /> : null}
+                          <span>{isAccepted ? 'Accepted' : 'Accept Fix'}</span>
+                        </button>
+                      </div>
+
+                      {/* Original bullet */}
+                      <div className="mb-2 text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed font-sans line-through decoration-zinc-400 dark:decoration-zinc-600">
+                        {diff.originalText}
+                      </div>
+
+                      {/* Tailored bullet */}
+                      <div className="text-xs font-medium text-zinc-900 dark:text-zinc-100 leading-relaxed font-sans bg-white dark:bg-[#18181B] p-3 rounded-lg border border-zinc-200/80 dark:border-zinc-700/60 shadow-2xs">
+                        {diff.tailoredText}
+                      </div>
+
+                      {/* Rationale & impact notes */}
+                      {diff.rationale && (
+                        <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                          <span className="font-semibold text-zinc-700 dark:text-zinc-300">Why: </span>
+                          <span>{diff.rationale}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Dedicated ATS Layout & Structural Hygiene Suggestions */}
+          {tailorData?.atsReport?.layoutReport && tailorData.atsReport.layoutReport.issues.length > 0 && (
+            <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-5 sm:p-6 shadow-xs space-y-4 transition-colors">
+              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                    <Layout className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+                      ATS Layout &amp; Visual Hygiene
+                    </h3>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Eliminate parsing roadblocks like multi-column splits, header drift, and margin overflows.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
                   {tailorData.atsReport.layoutReport.visualPolishScore !== undefined && (
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold border border-emerald-400/30">
-                      👁️ {tailorData.atsReport.layoutReport.visualPolishScore}% Polish
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-[10px] font-mono font-bold">
+                      {tailorData.atsReport.layoutReport.visualPolishScore}% Polish
                     </span>
                   )}
-                  <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-mono font-bold border border-indigo-400/30">
+                  <span className="px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 text-[10px] font-mono font-bold">
                     {tailorData.atsReport.layoutReport.issues.length} Flagged
                   </span>
                 </div>
@@ -686,42 +508,43 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
 
               {/* Visual Snapshot & Page Fill Banner */}
               {tailorData.atsReport.layoutReport.visualReport && (
-                <div className="p-2.5 bg-indigo-900/40 rounded border border-indigo-700/50 space-y-2 text-xs">
+                <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-2 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-indigo-200 text-[11px] flex items-center gap-1">
-                      <span>📄 Rendered Page Fill:</span>
-                      <span className={`px-1.5 py-0.2 rounded text-[10px] uppercase font-bold ${
+                    <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-xs flex items-center gap-1.5">
+                      <span>Rendered Page Fill:</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase font-bold ${
                         tailorData.atsReport.layoutReport.visualReport.pageFillAssessment === 'optimal_single_page'
-                          ? 'bg-emerald-500/30 text-emerald-300'
-                          : 'bg-amber-500/30 text-amber-300'
+                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20'
+                          : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20'
                       }`}>
                         {tailorData.atsReport.layoutReport.visualReport.pageFillAssessment.replace(/_/g, ' ')}
                       </span>
                     </span>
                     {tailorData.atsReport.layoutReport.visualReport.snapshots.length > 0 && (
                       <button
+                        type="button"
                         onClick={() => setShowVisualSnapshots(!showVisualSnapshots)}
-                        className="text-[10px] font-bold text-indigo-300 hover:text-indigo-100 underline flex items-center gap-1"
+                        className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white underline cursor-pointer"
                       >
-                        <span>{showVisualSnapshots ? 'Hide Snapshot' : '👁️ View Snapshot'}</span>
+                        {showVisualSnapshots ? 'Hide Snapshot' : 'View Snapshot'}
                       </button>
                     )}
                   </div>
-                  <p className="text-[10px] text-slate-300 leading-tight">
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
                     {tailorData.atsReport.layoutReport.visualReport.pageFillDescription}
                   </p>
 
                   {/* Rendered Page Thumbnail Preview */}
                   {showVisualSnapshots && tailorData.atsReport.layoutReport.visualReport.snapshots.length > 0 && (
-                    <div className="pt-2 flex gap-2 overflow-x-auto pb-1">
+                    <div className="pt-2 flex gap-3 overflow-x-auto pb-1">
                       {tailorData.atsReport.layoutReport.visualReport.snapshots.map((snap) => (
-                        <div key={snap.pageNumber} className="relative group shrink-0 border border-white/20 rounded shadow-md overflow-hidden bg-white">
+                        <div key={snap.pageNumber} className="relative group shrink-0 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-sm overflow-hidden bg-white">
                           <img
                             src={snap.dataUrl}
                             alt={`Rendered Page ${snap.pageNumber}`}
-                            className="w-36 h-auto object-contain"
+                            className="w-40 h-auto object-contain"
                           />
-                          <span className="absolute bottom-1 right-1 bg-slate-900/80 text-[9px] text-white px-1.5 py-0.5 rounded font-mono">
+                          <span className="absolute bottom-1 right-1 bg-zinc-900/80 text-[9px] text-white px-1.5 py-0.5 rounded font-mono">
                             Page {snap.pageNumber}
                           </span>
                         </div>
@@ -731,115 +554,68 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
                 </div>
               )}
 
-              <div className="space-y-2">
+              {/* Layout Issues List */}
+              <div className="space-y-3">
                 {tailorData.atsReport.layoutReport.issues.map((issue) => {
                   const isAccepted = issue.status === 'accepted';
                   return (
                     <div
                       key={issue.id}
-                      className="bg-white/10 p-2.5 rounded border border-white/10 space-y-1.5 text-xs text-slate-200"
+                      className="bg-zinc-50 dark:bg-zinc-900/40 p-3.5 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-2 text-xs"
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-1.5 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span
-                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
                               issue.severity === 'critical'
-                                ? 'bg-rose-500/30 text-rose-300 border border-rose-500/40'
+                                ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20'
                                 : issue.severity === 'warning'
-                                ? 'bg-amber-500/30 text-amber-300 border border-amber-500/40'
-                                : 'bg-blue-500/30 text-blue-300 border border-blue-500/40'
+                                ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20'
+                                : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-600'
                             }`}
                           >
-                            {issue.category === 'table_risk'
-                              ? '⚠️ Table Risk'
-                              : issue.category === 'multicolumn_risk'
-                              ? '⚠️ Multi-Column Risk'
-                              : issue.category === 'margin_extremes'
-                              ? '📐 Margin Bounds'
-                              : issue.category === 'typography_hierarchy'
-                              ? '🔠 Typography Scale'
-                              : issue.category === 'widow_line'
-                              ? '✂️ Widow Line'
-                              : issue.category === 'bold_density'
-                              ? '𝐁 Bold Balance'
-                              : issue.category === 'section_volume_bloat'
-                              ? '⚖️ Section Volume'
-                              : issue.category === 'contact_header_bloat'
-                              ? '👤 Contact Layout'
-                              : issue.category === 'manual_tab_alignment'
-                              ? '↔️ Space Alignment'
-                              : issue.category === 'font_inconsistency'
-                              ? '🔤 Font Drift'
-                              : issue.category === 'spacing_drift'
-                              ? '📏 Spacing Drift'
-                              : issue.category === 'visual_crowding'
-                              ? '👁️ Visual Crowding'
-                              : issue.category === 'page_overflow'
-                              ? '📄 Page Overflow'
-                              : issue.category === 'whitespace_rhythm'
-                              ? '📐 Whitespace Rhythm'
-                              : issue.category === 'section_imbalance'
-                              ? '⚖️ Section Balance'
-                              : issue.category === 'visual_polish'
-                              ? '✨ Visual Polish'
-                              : '• List Inconsistency'}
+                            {issue.category.replace(/_/g, ' ')}
                           </span>
                           {issue.fixTier && (
-                            <span className={`px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider font-bold ${
-                              issue.fixTier === 'safe_styling'
-                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                                : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                            }`}>
-                              {issue.fixTier === 'safe_styling' ? '⚡ Safe Restyle' : '📝 Content Edit'}
+                            <span className="px-1.5 py-0.5 rounded text-[9px] uppercase font-mono font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
+                              {issue.fixTier === 'safe_styling' ? 'Safe Restyle' : 'Content Edit'}
                             </span>
                           )}
-                          {issue.sectionName && (
-                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300 text-[9px] font-mono font-bold">
-                              {issue.sectionName}
-                            </span>
-                          )}
-                          <span className="font-bold text-white text-xs">{issue.title}</span>
+                          <span className="font-bold text-zinc-900 dark:text-zinc-100">{issue.title}</span>
                         </div>
                       </div>
 
-                      <p className="text-[11px] text-slate-300 leading-snug">
+                      <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
                         {issue.description}
                       </p>
 
                       {issue.proposedReplacementText && (
-                        <div className="p-1.5 bg-black/30 rounded border border-white/10 space-y-0.5 text-[10px]">
-                          <span className="text-amber-300 font-bold block">Proposed Text Preview:</span>
-                          <p className="text-slate-200 italic font-mono">{issue.proposedReplacementText}</p>
+                        <div className="p-2.5 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 space-y-1">
+                          <span className="text-amber-700 dark:text-amber-400 font-bold text-[10px] block">Proposed Text Preview:</span>
+                          <p className="text-zinc-800 dark:text-zinc-200 italic font-mono text-[11px]">{issue.proposedReplacementText}</p>
                         </div>
                       )}
 
-                      {issue.visualObservation && (
-                        <p className="text-[10px] text-indigo-200/90 italic bg-black/20 p-1.5 rounded">
-                          👁️ <strong>Visual evidence:</strong> {issue.visualObservation}
-                        </p>
-                      )}
-
-                      <div className="flex items-center justify-between pt-1 text-[10px]">
-                        <span className="text-indigo-300 font-medium italic">
-                          💡 {issue.impact}
+                      <div className="flex items-center justify-between pt-1 text-[11px]">
+                        <span className="text-zinc-500 dark:text-zinc-400 italic">
+                          {issue.impact}
                         </span>
 
                         {issue.suggestedFix && onApplyLayoutFix && (
                           <button
+                            type="button"
                             onClick={() => onApplyLayoutFix(issue)}
                             disabled={isAccepted}
-                            className={`px-2.5 py-1 rounded font-bold text-[11px] transition-all flex items-center gap-1 ${
+                            className={`px-3 py-1 rounded-md font-bold text-xs transition-all cursor-pointer ${
                               isAccepted
-                                ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-400/40'
-                                : issue.fixTier === 'content_generating'
-                                ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-sm'
-                                : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-sm'
+                                ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                                : 'bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 shadow-xs'
                             }`}
                           >
                             {isAccepted ? (
-                              <span>✓ Fixed in Doc</span>
+                              <span>✓ Fixed</span>
                             ) : (
-                              <span>{issue.suggestedFix.actionLabel || (issue.fixTier === 'content_generating' ? '📝 Apply Text Fix' : '⚡ Restyle in Doc')}</span>
+                              <span>{issue.suggestedFix.actionLabel || (issue.fixTier === 'content_generating' ? 'Apply Fix' : 'Restyle in Doc')}</span>
                             )}
                           </button>
                         )}
@@ -850,143 +626,276 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
               </div>
             </div>
           )}
+        </div>
 
-          {/* Keywords Match Breakdown */}
-          <div className="bg-white p-3.5 rounded-stitch border border-slate-200 shadow-sm space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="font-headline font-bold text-xs text-slate-900">
-                {mode === 'general' ? 'Industry Core Competencies' : 'ATS Keywords Match'}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setActiveFilter('all')}
-                  className={`px-1.5 py-0.5 text-[10px] rounded font-semibold ${
-                    activeFilter === 'all' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-100'
-                  }`}
-                >
-                  All ({tailorData.atsReport.keywords.length})
-                </button>
-                <button
-                  onClick={() => setActiveFilter('missing')}
-                  className={`px-1.5 py-0.5 text-[10px] rounded font-semibold ${
-                    activeFilter === 'missing' ? 'bg-amber-500 text-white' : 'text-amber-700 hover:bg-amber-50'
-                  }`}
-                >
-                  Missing ({tailorData.atsReport.keywords.filter(k => !k.foundInResume).length})
-                </button>
-                <button
-                  onClick={() => setActiveFilter('matched')}
-                  className={`px-1.5 py-0.5 text-[10px] rounded font-semibold ${
-                    activeFilter === 'matched' ? 'bg-emerald-600 text-white' : 'text-emerald-700 hover:bg-emerald-50'
-                  }`}
-                >
-                  Matched ({tailorData.atsReport.keywords.filter(k => k.foundInResume).length})
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-1">
-              {tailorData.atsReport.keywords
-                .filter(k => activeFilter === 'all' || (activeFilter === 'missing' ? !k.foundInResume : k.foundInResume))
-                .map((k, idx) => (
-                  <span
-                    key={idx}
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                      k.foundInResume
-                        ? k.matchType === 'strong_semantic'
-                          ? 'bg-indigo-50 text-indigo-800 border border-indigo-200'
-                          : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                        : 'bg-amber-50 text-amber-800 border border-amber-200'
-                    }`}
-                  >
-                    {k.foundInResume ? (
-                      k.matchType === 'strong_semantic' ? (
-                        <Sparkles className="w-3 h-3 text-indigo-600" />
-                      ) : (
-                        <Check className="w-3 h-3 text-emerald-600" />
-                      )
-                    ) : (
-                      <span className="text-amber-600 font-bold">+</span>
-                    )}
-                    <span>{k.keyword}</span>
-                    {k.matchType === 'strong_semantic' && (
-                      <span className="text-[9px] px-1 rounded bg-indigo-100 text-indigo-700 font-bold ml-0.5">
-                        Semantic
-                      </span>
-                    )}
-                    {k.importance === 'Critical' && k.matchType !== 'strong_semantic' && (
-                      <span className="text-[9px] px-1 rounded bg-rose-100 text-rose-700 font-bold ml-0.5">
-                        High
-                      </span>
-                    )}
-                  </span>
-                ))}
-            </div>
-          </div>
-
-          {/* ATS Structural & Formatting Hygiene Checklist */}
-          <div className="bg-white p-3.5 rounded-stitch border border-slate-200 shadow-sm space-y-2.5">
-            <h3 className="font-headline font-bold text-xs text-slate-900 flex items-center gap-1.5">
-              <span>🛡️ ATS Structural & Formatting Health</span>
-            </h3>
-
-            <div className="space-y-2 text-[11px]">
-              <div className="flex items-start gap-2 p-2 bg-slate-50 rounded border border-slate-100">
-                <span className="text-emerald-600 font-bold text-xs">
-                  {tailorData.atsReport.layoutReport?.isSingleColumnStandard !== false ? '✓' : '⚠️'}
+        {/* RIGHT PANE: Intelligence Inspector & Co-pilot (5 cols) */}
+        <div className="lg:col-span-5 space-y-6">
+          
+          {/* AtsGauge & Projected Delta Card */}
+          {tailorData ? (
+            <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-6 shadow-xs space-y-5 transition-colors">
+              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+                <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+                  ATS Match Score &amp; Quality
+                </h3>
+                <span className="text-xs font-mono font-bold text-zinc-400">
+                  Rubric v2.4
                 </span>
-                <div>
-                  <span className="font-bold text-slate-800">
-                    {tailorData.atsReport.layoutReport?.isSingleColumnStandard !== false
-                      ? 'Single-Column Parseable Layout'
-                      : 'Non-Standard Layout Detected'}
-                  </span>
-                  <p className="text-slate-500 text-[10px]">
-                    {tailorData.atsReport.layoutReport?.summary || 'Standard single-column flow with no complex tables or column splits.'}
+              </div>
+
+              <AtsGauge 
+                score={tailorData.atsReport.overallScore} 
+                projectedScore={tailorData.projectedNewScore} 
+              />
+
+              {/* 6-Dimensional ATS Scoring Grid */}
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <div className="bg-zinc-50 dark:bg-zinc-900/50 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-mono font-bold text-zinc-500">Hard Skills</span>
+                    <span className="font-mono font-bold text-xs text-zinc-900 dark:text-zinc-100">
+                      {tailorData.atsReport.breakdown.hardSkillsScore}%
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 leading-tight">
+                    {tailorData.atsReport.matchedKeywordsCount} of {tailorData.atsReport.totalKeywords} keywords matched.
+                  </p>
+                </div>
+
+                <div className="bg-zinc-50 dark:bg-zinc-900/50 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-mono font-bold text-zinc-500">Production Exp</span>
+                    <span className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400">
+                      {tailorData.atsReport.breakdown.productionExperienceScore ?? tailorData.atsReport.productionExperienceAudit?.score ?? 85}%
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 leading-tight">
+                    {tailorData.atsReport.productionExperienceAudit?.roleCount ?? 1} roles &bull; {tailorData.atsReport.productionExperienceAudit?.productionKeywordsFound?.length ?? 0} infra signals.
+                  </p>
+                </div>
+
+                <div className="bg-zinc-50 dark:bg-zinc-900/50 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-mono font-bold text-zinc-500">Self Projects</span>
+                    <span className="font-mono font-bold text-xs text-zinc-900 dark:text-zinc-100">
+                      {tailorData.atsReport.breakdown.selfProjectsScore ?? tailorData.atsReport.selfProjectsAudit?.score ?? 80}%
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 leading-tight">
+                    {tailorData.atsReport.selfProjectsAudit?.hasWorkingLinks ? 'Live link detected' : 'Code complexity audit'}.
+                  </p>
+                </div>
+
+                <div className="bg-zinc-50 dark:bg-zinc-900/50 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-mono font-bold text-zinc-500">Action Verbs</span>
+                    <span className="font-mono font-bold text-xs text-zinc-900 dark:text-zinc-100">
+                      {tailorData.atsReport.actionVerbStrength
+                        ? `${Math.round((tailorData.atsReport.actionVerbStrength.strongCount / (tailorData.atsReport.actionVerbStrength.strongCount + tailorData.atsReport.actionVerbStrength.weakCount || 1)) * 100)}%`
+                        : `${tailorData.atsReport.breakdown.experienceRelevanceScore}%`}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 leading-tight">
+                    {tailorData.atsReport.actionVerbStrength?.weakCount
+                      ? `Flagged ${tailorData.atsReport.actionVerbStrength.weakCount} passive verbs.`
+                      : 'High STAR power verb density.'}
+                  </p>
+                </div>
+
+                <div className="bg-zinc-50 dark:bg-zinc-900/50 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-mono font-bold text-zinc-500">Quantification</span>
+                    <span className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400">
+                      {tailorData.atsReport.quantificationStats
+                        ? `${tailorData.atsReport.quantificationStats.percentage}%`
+                        : `${tailorData.atsReport.breakdown.softSkillsScore}%`}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 leading-tight">
+                    {tailorData.atsReport.quantificationStats
+                      ? `${tailorData.atsReport.quantificationStats.quantifiedBullets} of ${tailorData.atsReport.quantificationStats.totalBullets} bullets measured.`
+                      : 'Measurable metric density.'}
+                  </p>
+                </div>
+
+                <div className="bg-zinc-50 dark:bg-zinc-900/50 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-mono font-bold text-zinc-500">ATS Format</span>
+                    <span className={`font-mono font-bold text-xs ${
+                      tailorData.atsReport.breakdown.formattingScore >= 80 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                    }`}>
+                      {tailorData.atsReport.breakdown.formattingScore}%
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 leading-tight">
+                    {tailorData.atsReport.breakdown.formattingScore >= 90 ? 'Standard single-column flow.' : 'Formatting issues detected.'}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-2 p-2 bg-slate-50 rounded border border-slate-100">
-                <span className="text-emerald-600 font-bold text-xs">✓</span>
-                <div>
-                  <span className="font-bold text-slate-800">Standard Section Headings</span>
-                  <p className="text-slate-500 text-[10px]">Experience, Education, and Skills sections are cleanly formatted.</p>
-                </div>
-              </div>
+              {/* In-Document Suggestion Bridge Deck */}
+              <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onShowDiffsOnGoogleDoc}
+                  className="flex-1 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <span>🎯 View & Apply in Docs</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
 
-              {tailorData.atsReport.actionVerbStrength?.weakCount ? (
-                <div className="flex items-start gap-2 p-2 bg-amber-50 rounded border border-amber-200">
-                  <span className="text-amber-600 font-bold text-xs">⚠️</span>
-                  <div>
-                    <span className="font-bold text-amber-900">Passive Verb Replacement Recommended</span>
-                    <p className="text-amber-800 text-[10px]">
-                      Found {tailorData.atsReport.actionVerbStrength.weakCount} passive phrases ({tailorData.atsReport.actionVerbStrength.weakVerbsFound.slice(0, 3).map(v => `"${v}"`).join(', ')}). Upgrade using the in-doc suggestion overlay.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start gap-2 p-2 bg-slate-50 rounded border border-slate-100">
-                  <span className="text-emerald-600 font-bold text-xs">✓</span>
-                  <div>
-                    <span className="font-bold text-slate-800">High STAR Action Verb Vitality</span>
-                    <p className="text-slate-500 text-[10px]">Strong lead verbs throughout all bullet points.</p>
-                  </div>
+                <button
+                  type="button"
+                  onClick={handleFork}
+                  disabled={isForking}
+                  className="py-2 px-3 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-semibold text-xs border border-zinc-200 dark:border-zinc-700 flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                  title="Fork a clean copy into Google Drive"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>{isForking ? 'Forking…' : 'Fork'}</span>
+                </button>
+
+                {pdfUrl && (
+                  <a
+                    href={pdfUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="py-2 px-3 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-semibold text-xs border border-zinc-200 dark:border-zinc-700 flex items-center gap-1 transition-all"
+                    title="Download tailored PDF"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </a>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-6 shadow-xs text-center space-y-3">
+              <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto text-zinc-500">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100">
+                  Ready to Run ATS Audit
+                </h4>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 max-w-xs mx-auto">
+                  Click the button above to compare your resume against the job description or industry benchmark.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Company Archetype & Tailoring Strategy Card */}
+          {tailorData?.archetype && (
+            <div className="bg-zinc-900 text-white p-5 rounded-xl border border-zinc-800 shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-xs text-zinc-200">
+                  {tailorData.archetype.badge}
+                </span>
+                {tailorData.tokenCostInfo && (
+                  <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-zinc-800 text-zinc-300 border border-zinc-700">
+                    ⚡ ~{tailorData.tokenCostInfo.tokenCount} tokens
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-zinc-300 leading-relaxed">
+                {tailorData.documentSummary || tailorData.archetype.narrativeDirective}
+              </p>
+              {tailorData.archetype.keyThemes && tailorData.archetype.keyThemes.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-zinc-800">
+                  <span className="text-[10px] text-zinc-400 font-mono mr-1">Narrative Pillars:</span>
+                  {tailorData.archetype.keyThemes.map((theme, tIdx) => (
+                    <span key={tIdx} className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 text-[10px] font-medium border border-zinc-700">
+                      {theme}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
-          </div>
+          )}
 
-          {/* Actionable ATS Improvement Suggestions */}
-          {tailorData.atsReport.improvementSuggestions && tailorData.atsReport.improvementSuggestions.length > 0 && (
-            <div className="bg-white p-3.5 rounded-stitch border border-slate-200 shadow-sm space-y-2">
-              <h3 className="font-headline font-bold text-xs text-slate-900">
-                💡 High-Impact ATS Recommendations
+          {/* ATS Keyword Match Matrix */}
+          {tailorData?.atsReport?.keywords && (
+            <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-5 shadow-xs space-y-3 transition-colors">
+              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-2.5">
+                <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100">
+                  {mode === 'general' ? 'Industry Core Competencies' : 'ATS Keywords Match'}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setActiveFilter('all')}
+                    className={`px-2 py-0.5 text-[10px] rounded font-semibold cursor-pointer ${
+                      activeFilter === 'all' 
+                        ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950' 
+                        : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                    }`}
+                  >
+                    All ({tailorData.atsReport.keywords.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveFilter('missing')}
+                    className={`px-2 py-0.5 text-[10px] rounded font-semibold cursor-pointer ${
+                      activeFilter === 'missing' 
+                        ? 'bg-amber-600 text-white' 
+                        : 'text-amber-700 dark:text-amber-400 hover:bg-amber-500/10'
+                    }`}
+                  >
+                    Missing ({tailorData.atsReport.keywords.filter(k => !k.foundInResume).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveFilter('matched')}
+                    className={`px-2 py-0.5 text-[10px] rounded font-semibold cursor-pointer ${
+                      activeFilter === 'matched' 
+                        ? 'bg-emerald-600 text-white' 
+                        : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10'
+                    }`}
+                  >
+                    Matched ({tailorData.atsReport.keywords.filter(k => k.foundInResume).length})
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 max-h-56 overflow-y-auto pr-1">
+                {tailorData.atsReport.keywords
+                  .filter(k => activeFilter === 'all' || (activeFilter === 'missing' ? !k.foundInResume : k.foundInResume))
+                  .map((k, idx) => (
+                    <span
+                      key={idx}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
+                        k.foundInResume
+                          ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 border border-emerald-500/20'
+                          : 'bg-amber-500/10 text-amber-800 dark:text-amber-200 border border-amber-500/20'
+                      }`}
+                    >
+                      {k.foundInResume ? (
+                        <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                      ) : (
+                        <span className="text-amber-600 dark:text-amber-400 font-bold">+</span>
+                      )}
+                      <span>{k.keyword}</span>
+                      {k.importance === 'Critical' && (
+                        <span className="text-[9px] px-1 rounded bg-rose-500/10 text-rose-700 dark:text-rose-300 font-bold ml-0.5">
+                          High
+                        </span>
+                      )}
+                    </span>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* High-Impact ATS Recommendations */}
+          {tailorData?.atsReport?.improvementSuggestions && tailorData.atsReport.improvementSuggestions.length > 0 && (
+            <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-5 shadow-xs space-y-3 transition-colors">
+              <h3 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                <span>High-Impact ATS Recommendations</span>
               </h3>
-              <ul className="space-y-1.5">
+              <ul className="space-y-2">
                 {tailorData.atsReport.improvementSuggestions.map((sug, sIdx) => (
-                  <li key={sIdx} className="text-[11px] text-slate-600 flex items-start gap-2 leading-tight">
-                    <span className="text-brand-600 font-bold mt-0.5">•</span>
+                  <li key={sIdx} className="text-xs text-zinc-600 dark:text-zinc-300 flex items-start gap-2 leading-relaxed">
+                    <span className="text-emerald-600 dark:text-emerald-400 font-bold mt-0.5">•</span>
                     <span>{sug}</span>
                   </li>
                 ))}
@@ -994,11 +903,12 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
             </div>
           )}
 
+          {/* Applied Status Alert Toast / Banner */}
           {appliedStatus && (
-            <div className={`p-3 rounded-stitch text-xs flex items-center justify-between gap-2 shadow-xs ${
+            <div className={`p-3.5 rounded-xl text-xs flex items-center justify-between gap-2 shadow-xs ${
               appliedStatus.startsWith('⚠️')
-                ? 'bg-amber-50 border border-amber-300 text-amber-900'
-                : 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                ? 'bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200'
+                : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-900 dark:text-emerald-200'
             }`}>
               <div className="flex items-center gap-2">
                 {appliedStatus.startsWith('⚠️') ? (
@@ -1012,7 +922,7 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
                 <button
                   type="button"
                   onClick={onNavigateToSettings}
-                  className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] font-bold shrink-0 transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
+                  className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] font-bold shrink-0 transition-colors flex items-center gap-1 cursor-pointer"
                 >
                   <span>Connect Now</span>
                   <ArrowRight className="w-3 h-3" />
@@ -1021,57 +931,24 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
             </div>
           )}
 
+          {/* Forked Doc Notification */}
           {forkedDocUrl && (
-            <div className="p-3 bg-brand-50 border border-brand-200 rounded-stitch text-xs text-brand-900 flex items-center justify-between">
-              <span className="truncate">📂 Saved to Google Drive!</span>
+            <div className="p-3.5 bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-zinc-100 flex items-center justify-between">
+              <span className="truncate">Saved to Google Drive</span>
               <a
                 href={forkedDocUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 font-bold text-brand-700 hover:underline shrink-0"
+                className="inline-flex items-center gap-1 font-bold text-zinc-900 dark:text-white hover:underline shrink-0"
               >
                 <span>Open Doc</span>
-                <ExternalLink className="w-3 h-3" />
+                <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
           )}
 
-          {/* Sticky Bottom Action Bar */}
-          <div className="fixed bottom-0 left-0 right-0 p-3 bg-white border-t border-slate-200 shadow-lg space-y-2 z-40">
-            <div className="flex gap-2">
-              <button
-                onClick={onShowDiffsOnGoogleDoc}
-                className="flex-1 py-2.5 px-3 rounded-stitch bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow flex items-center justify-center gap-1.5"
-              >
-                <span>🎯 View Suggestions in Google Docs</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-
-              <button
-                onClick={handleFork}
-                disabled={isForking}
-                className="py-2.5 px-3 rounded-stitch bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white font-semibold text-xs shadow flex items-center justify-center gap-1.5"
-                title="Fork a clean copy into your Google Drive"
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>{isForking ? 'Forking...' : 'Fork'}</span>
-              </button>
-
-              {pdfUrl && (
-                <a
-                  href={pdfUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="py-2.5 px-3 rounded-stitch bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs shadow flex items-center justify-center gap-1.5"
-                  title="Download tailored PDF"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                </a>
-              )}
-            </div>
-          </div>
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 };

@@ -24,9 +24,9 @@ export const AtsGauge: React.FC<AtsGaugeProps> = ({ score, projectedScore }) => 
   const strokeDashoffset = circumference - (score / 100) * circumference;
 
   return (
-    <div className="flex items-center gap-4 bg-white dark:bg-slate-900 p-3.5 rounded-stitch border border-slate-200 dark:border-slate-800 shadow-sm transition-colors duration-200">
+    <div className="flex items-center gap-4 bg-zinc-50 dark:bg-[#121215] p-3.5 rounded-lg border border-zinc-200 dark:border-[#27272A] shadow-xs transition-colors duration-200">
       <div 
-        className="relative w-24 h-24 flex items-center justify-center shrink-0"
+        className="relative w-20 h-20 flex items-center justify-center shrink-0"
         role="meter"
         aria-valuenow={score}
         aria-valuemin={0}
@@ -38,43 +38,43 @@ export const AtsGauge: React.FC<AtsGaugeProps> = ({ score, projectedScore }) => 
             cx="48"
             cy="48"
             r={radius}
-            className="stroke-slate-100 dark:stroke-slate-800 fill-none"
-            strokeWidth="8"
+            className="stroke-zinc-200 dark:stroke-[#27272A] fill-none"
+            strokeWidth="7"
           />
           <circle
             cx="48"
             cy="48"
             r={radius}
             className={`fill-none transition-all duration-1000 ease-out ${getScoreColor(score).split(' ')[2] || 'stroke-emerald-500'}`}
-            strokeWidth="8"
+            strokeWidth="7"
             strokeDasharray={circumference}
             strokeDashoffset={strokeDashoffset}
             strokeLinecap="round"
           />
         </svg>
         <div className="absolute flex flex-col items-center justify-center text-center select-none">
-          <span className={`font-mono font-bold text-2xl tracking-tighter ${getScoreColor(score).split(' ').slice(0, 2).join(' ')}`}>
+          <span className={`font-mono font-bold text-xl tracking-tight ${getScoreColor(score).split(' ').slice(0, 2).join(' ')}`}>
             {score}%
           </span>
-          <span className="text-[10px] uppercase font-bold text-slate-700 dark:text-slate-400 tracking-wider">
-            ATS Match
+          <span className="text-[9px] uppercase font-mono font-medium text-zinc-500 dark:text-zinc-400 tracking-wider">
+            Match
           </span>
         </div>
       </div>
 
       <div className="flex-1 space-y-1.5">
         <div className="flex items-center justify-between text-xs">
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${status.bg}`}>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border ${status.bg}`}>
             {status.label}
           </span>
           <div className="flex items-center gap-1">
-            <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">Post-Tailor:</span>
-            <span className="font-mono font-bold text-brand-700 dark:text-brand-300 text-xs bg-brand-50 dark:bg-brand-950/50 px-1.5 py-0.5 rounded border border-transparent dark:border-brand-800/40">
+            <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400">Projected:</span>
+            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-xs bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/40">
               +{Math.max(0, (projectedScore || score + 18) - score)}%
             </span>
           </div>
         </div>
-        <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+        <p className="text-[11px] text-zinc-600 dark:text-zinc-300 leading-snug">
           {score >= 80
             ? 'Strong keyword density and formatting match for ATS filters.'
             : score >= 60

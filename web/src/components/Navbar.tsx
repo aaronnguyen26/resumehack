@@ -1,5 +1,5 @@
 import React from 'react';
-import { Target, Compass, Kanban, Settings, CheckCircle2, Sun, Moon } from 'lucide-react';
+import { Target, Compass, Kanban, Settings, CheckCircle2, Sun, Moon, Sparkles, FileText } from 'lucide-react';
 import { ThemeMode } from '../services/theme.js';
 
 interface NavbarProps {
@@ -10,6 +10,7 @@ interface NavbarProps {
   themeMode?: ThemeMode;
   isDark?: boolean;
   onToggleTheme?: () => void;
+  targetJobTitle?: string;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -20,86 +21,68 @@ export const Navbar: React.FC<NavbarProps> = ({
   themeMode = 'system',
   isDark = false,
   onToggleTheme,
+  targetJobTitle = 'SWE Intern @ Stripe',
 }) => {
   return (
-    <header className="sticky top-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-4 py-3 shadow-xs transition-colors duration-200">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-stitch bg-brand-600 flex items-center justify-center text-white shadow-sm font-headline font-bold text-base select-none">
+    <header className="sticky top-0 z-50 h-14 bg-white/95 dark:bg-[#09090B]/95 backdrop-blur border-b border-zinc-200 dark:border-[#27272A] px-4 sm:px-6 lg:px-8 flex items-center justify-between w-full transition-colors duration-200 select-none">
+      {/* Left: Brand + Breadcrumb Workspace Target */}
+      <div className="flex items-center gap-5">
+        <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => setActiveTab('match')}>
+          <div className="w-7 h-7 rounded-md bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 flex items-center justify-center font-bold text-xs font-headline tracking-tighter shadow-xs">
             RH
           </div>
-          <div>
-            <div className="font-headline font-bold text-sm tracking-tight text-slate-900 dark:text-white leading-tight">
+          <div className="flex flex-col">
+            <span className="font-headline text-sm font-bold tracking-tight text-zinc-950 dark:text-zinc-100 leading-none">
               ResumeHack
-            </div>
-            <div className="text-[10px] font-mono text-brand-600 dark:text-brand-400 uppercase tracking-wider font-semibold">
-              Hacky AI
-            </div>
+            </span>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-600 dark:text-zinc-300 font-semibold leading-tight">
+              Intelligence
+            </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {/* Google Doc connectivity indicator */}
-          <div 
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300 max-w-[155px] truncate"
-            title={connectedDocTitle ? `Connected to: ${connectedDocTitle}` : 'No Google Doc currently detected'}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span className="truncate text-[11px] font-medium text-slate-800 dark:text-slate-200">
-              {connectedDocTitle ? connectedDocTitle.replace(' - Google Docs', '') : 'Doc Ready'}
-            </span>
-            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" aria-hidden="true"></span>
-          </div>
+        <div className="h-4 w-px bg-zinc-200 dark:bg-[#27272A] hidden sm:block"></div>
 
-          {/* Quick Theme Toggle Button */}
-          {onToggleTheme && (
-            <button
-              type="button"
-              onClick={onToggleTheme}
-              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-              title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-              className="p-1.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-            >
-              {isDark ? (
-                <Sun className="w-3.5 h-3.5 text-amber-400" />
-              ) : (
-                <Moon className="w-3.5 h-3.5 text-slate-600" />
-              )}
-            </button>
-          )}
+        {/* Target Context Breadcrumb */}
+        <div className="hidden lg:flex items-center gap-2 text-xs font-mono">
+          <span className="text-zinc-600 dark:text-zinc-300">Target:</span>
+          <span className="px-2.5 py-0.5 rounded-full bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-zinc-800 dark:text-zinc-200 font-normal flex items-center gap-1.5 text-[11px]">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="truncate max-w-[260px]">{targetJobTitle}</span>
+          </span>
         </div>
       </div>
 
-      {/* Tabs with ARIA accessibility & notification badge */}
-      <nav className="flex items-center gap-1 p-1 bg-slate-100/80 dark:bg-slate-800/80 rounded-stitch transition-colors duration-200" role="tablist" aria-label="Sidepanel Navigation">
+      {/* Center: Desktop Navigation Tabs */}
+      <nav className="hidden md:flex items-center gap-1 h-full" role="tablist" aria-label="Main Navigation">
         <button
           role="tab"
           aria-selected={activeTab === 'match'}
           onClick={() => setActiveTab('match')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 min-h-[36px] rounded-md text-xs font-semibold tab-transition focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none ${
+          className={`h-9 px-3.5 rounded-md text-xs font-medium inline-flex items-center gap-2 transition-all ${
             activeTab === 'match'
-              ? 'bg-white dark:bg-slate-900 text-brand-700 dark:text-brand-400 shadow-sm border border-transparent dark:border-slate-700/60'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs'
+              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
           }`}
         >
           <Target className="w-3.5 h-3.5" />
-          <span>Tailor</span>
+          <span>Match & Tailor</span>
         </button>
 
         <button
           role="tab"
           aria-selected={activeTab === 'discovery'}
           onClick={() => setActiveTab('discovery')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 min-h-[36px] rounded-md text-xs font-semibold tab-transition relative focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none ${
+          className={`h-9 px-3.5 rounded-md text-xs font-medium inline-flex items-center gap-2 transition-all relative ${
             activeTab === 'discovery'
-              ? 'bg-white dark:bg-slate-900 text-brand-700 dark:text-brand-400 shadow-sm border border-transparent dark:border-slate-700/60'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs'
+              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
           }`}
         >
           <Compass className="w-3.5 h-3.5" />
-          <span>Jobs</span>
+          <span>Discovery</span>
           {newJobsCount > 0 && (
-            <span className="px-1.5 py-0.2 text-[9px] font-mono font-bold bg-emerald-600 dark:bg-emerald-500 text-white rounded-full leading-tight">
+            <span className="px-1.5 py-0.2 text-[9px] font-mono font-bold bg-emerald-500 text-white rounded-full">
               +{newJobsCount}
             </span>
           )}
@@ -109,10 +92,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           role="tab"
           aria-selected={activeTab === 'tracker'}
           onClick={() => setActiveTab('tracker')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 min-h-[36px] rounded-md text-xs font-semibold tab-transition focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none ${
+          className={`h-9 px-3.5 rounded-md text-xs font-medium inline-flex items-center gap-2 transition-all ${
             activeTab === 'tracker'
-              ? 'bg-white dark:bg-slate-900 text-brand-700 dark:text-brand-400 shadow-sm border border-transparent dark:border-slate-700/60'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs'
+              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
           }`}
         >
           <Kanban className="w-3.5 h-3.5" />
@@ -122,17 +105,59 @@ export const Navbar: React.FC<NavbarProps> = ({
         <button
           role="tab"
           aria-selected={activeTab === 'settings'}
-          aria-label="Extension Settings"
           onClick={() => setActiveTab('settings')}
-          className={`flex items-center justify-center py-2 px-2.5 min-h-[36px] min-w-[36px] rounded-md text-xs font-semibold tab-transition focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none ${
+          className={`h-9 px-3.5 rounded-md text-xs font-medium inline-flex items-center gap-2 transition-all ${
             activeTab === 'settings'
-              ? 'bg-white dark:bg-slate-900 text-brand-700 dark:text-brand-400 shadow-sm border border-transparent dark:border-slate-700/60'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs'
+              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
           }`}
         >
           <Settings className="w-3.5 h-3.5" />
+          <span>Settings</span>
         </button>
       </nav>
+
+      {/* Right: Status, Secondary Actions & User Profile */}
+      <div className="flex items-center gap-3">
+        {/* Document connectivity status chip */}
+        <div 
+          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-xs font-medium text-zinc-700 dark:text-zinc-300 max-w-[180px] truncate"
+          title={connectedDocTitle ? `Connected to: ${connectedDocTitle}` : 'Master resume ready'}
+        >
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <span className="truncate text-[11px] font-medium">
+            {connectedDocTitle ? connectedDocTitle.replace(' - Google Docs', '') : 'Master Resume'}
+          </span>
+        </div>
+
+        {/* Quick Theme Toggle Button */}
+        {onToggleTheme && (
+          <button
+            type="button"
+            onClick={onToggleTheme}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            className="w-8 h-8 rounded-md bg-zinc-100 dark:bg-[#18181B] hover:bg-zinc-200 dark:hover:bg-[#27272A] border border-zinc-200 dark:border-[#27272A] text-zinc-600 dark:text-zinc-300 flex items-center justify-center transition-colors focus-visible:outline-none"
+          >
+            {isDark ? (
+              <Sun className="w-4 h-4 text-amber-400" />
+            ) : (
+              <Moon className="w-4 h-4 text-zinc-600" />
+            )}
+          </button>
+        )}
+
+        {/* User Profile Monogram Badge */}
+        <div className="flex items-center gap-2 pl-2 border-l border-zinc-200 dark:border-[#27272A]">
+          <div className="w-7 h-7 rounded-md bg-zinc-200 dark:bg-[#27272A] text-zinc-800 dark:text-zinc-200 font-mono text-xs font-semibold flex items-center justify-center border border-zinc-300 dark:border-[#3F3F46]">
+            AC
+          </div>
+          <span className="hidden xl:inline text-xs font-medium text-zinc-700 dark:text-zinc-300">
+            Alex Chen
+          </span>
+        </div>
+      </div>
     </header>
   );
 };
+
