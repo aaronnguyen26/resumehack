@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "postinstall": "npm --prefix web install",
     "build": "npm --prefix web run build",
     "dev:web": "npm --prefix web run dev",
     "build:web": "npm --prefix web run build",
