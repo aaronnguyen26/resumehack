@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { AtsGauge } from './AtsGauge.js';
-import { ScrapedJobData, TailorResumeResponse, TailoredBulletDiff, LayoutIssue } from '../types/index.js';
+import { ResumeWorkspaceGateway } from './ResumeWorkspaceGateway.js';
+import { InAppDocumentCanvas } from './InAppDocumentCanvas.js';
+import { WorkspaceMode } from '../services/storage.js';
+import { ScrapedJobData, TailorResumeResponse, TailoredBulletDiff, LayoutIssue, ApplicantProfile } from '../types/index.js';
 import { ParsedResume } from '../services/resume-parser.js';
 import { 
   Sparkles, 
@@ -8,21 +11,25 @@ import {
   X, 
   Download, 
   Layers, 
-  ExternalLink,
-  Zap,
-  CheckCircle2,
-  Scan,
-  Monitor,
-  Edit3,
-  FileText,
-  ShieldCheck,
-  Target,
-  RefreshCw,
-  ArrowRight,
-  Layout,
-  AlertCircle,
-  AlertTriangle,
-  ChevronRight
+  ExternalLink, 
+  Zap, 
+  CheckCircle2, 
+  Scan, 
+  Monitor, 
+  Edit3, 
+  FileText, 
+  ShieldCheck, 
+  Target, 
+  RefreshCw, 
+  ArrowRight, 
+  Layout, 
+  AlertCircle, 
+  AlertTriangle, 
+  ChevronRight,
+  Cloud,
+  UploadCloud,
+  Printer,
+  RotateCcw
 } from 'lucide-react';
 
 interface MatchTailorTabProps {
@@ -45,6 +52,13 @@ interface MatchTailorTabProps {
   appliedStatus: string | null;
   forkedDocUrl: string | null;
   pdfUrl: string | null;
+  workspaceMode?: WorkspaceMode | null;
+  onSetWorkspaceMode?: (mode: WorkspaceMode) => void;
+  onOpenGooglePicker?: () => void;
+  onSelectGoogleDoc?: (docId: string, docTitle?: string) => void;
+  applicantProfile?: ApplicantProfile;
+  showWorkspaceGateway?: boolean;
+  onCloseGateway?: () => void;
 }
 
 export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
@@ -53,6 +67,7 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
   isLoading,
   onTriggerTailor,
   onTriggerGeneralAtsOptimize,
+  onApplyToGoogleDoc,
   onApplyLayoutFix,
   onForkToDrive,
   onTriggerAutofill,
@@ -65,7 +80,14 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
   onNavigateToSettings,
   appliedStatus,
   forkedDocUrl,
-  pdfUrl
+  pdfUrl,
+  workspaceMode = 'in_app_canvas',
+  onSetWorkspaceMode,
+  onOpenGooglePicker,
+  onSelectGoogleDoc,
+  applicantProfile,
+  showWorkspaceGateway,
+  onCloseGateway
 }) => {
   const [mode, setMode] = useState<'job' | 'general'>('job');
   const [selectedDomain, setSelectedDomain] = useState<string>('Software Engineering');
@@ -75,6 +97,15 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
   const [isEditingResume, setIsEditingResume] = useState(false);
   const [customText, setCustomText] = useState(screenResume?.fullText || '');
   const [showVisualSnapshots, setShowVisualSnapshots] = useState(false);
+  const [showGateway, setShowGateway] = useState<boolean>(
+    showWorkspaceGateway !== undefined ? showWorkspaceGateway : (!screenResume && !workspaceMode)
+  );
+
+  React.useEffect(() => {
+    if (showWorkspaceGateway !== undefined) {
+      setShowGateway(showWorkspaceGateway);
+    }
+  }, [showWorkspaceGateway]);
 
   const domains = ['Software Engineering', 'Data & AI', 'Product Management', 'Finance & Quant', 'General'];
 
@@ -115,6 +146,31 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
       }
       return copy;
     });
+  };
+
+  const handleApplyBulletDiffInCanvas = (index: number) => {
+    const diff = diffs[index];
+    if (!diff) return;
+
+    let current = screenResume?.fullText || customText;
+    if (diff.originalText && current.includes(diff.originalText)) {
+      current = current.replace(diff.originalText, diff.tailoredText);
+      setCustomText(current);
+      onUpdateCustomResumeText(current);
+    }
+    setDiffs(prev => prev.map((d, i) => i === index ? { ...d, status: 'accepted' } : d));
+  };
+
+  const handleApplyAllDiffsInCanvas = () => {
+    let current = screenResume?.fullText || customText;
+    diffs.forEach(diff => {
+      if (diff.status === 'pending' && diff.originalText && current.includes(diff.originalText)) {
+        current = current.replace(diff.originalText, diff.tailoredText);
+      }
+    });
+    setCustomText(current);
+    onUpdateCustomResumeText(current);
+    setDiffs(prev => prev.map(d => ({ ...d, status: 'accepted' })));
   };
 
   const appliedCount = diffs.filter((d: TailoredBulletDiff) => d.status === 'accepted').length;
@@ -242,139 +298,219 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
         </div>
       )}
 
+      {/* 2. Workspace Setup Choice Gateway (Option 1 vs Option 2) */}
+      {showGateway && (
+        <div className="mb-6">
+          <ResumeWorkspaceGateway
+            currentMode={workspaceMode}
+            applicantProfile={applicantProfile}
+            onSelectOption1GoogleDocs={(docId, docTitle) => {
+              onSetWorkspaceMode?.('google_docs');
+              setShowGateway(false);
+              if (onSelectGoogleDoc && docId) {
+                onSelectGoogleDoc(docId, docTitle);
+              }
+            }}
+            onSelectOption2InAppCanvas={(text, title) => {
+              onSetWorkspaceMode?.('in_app_canvas');
+              onUpdateCustomResumeText(text);
+              setShowGateway(false);
+            }}
+            onOpenGooglePicker={onOpenGooglePicker}
+            onDismiss={screenResume ? () => {
+              setShowGateway(false);
+              onCloseGateway?.();
+            } : undefined}
+          />
+        </div>
+      )}
+
       {/* 3. Main Dual-Pane Workspace (Desktop Grid: 7 cols Canvas + 5 cols Inspector) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* LEFT PANE: Resume Document Canvas & STAR Bullet Editor (7 cols) */}
         <div className="lg:col-span-7 space-y-6">
           
-          {/* Document Header & Status Card */}
-          <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-5 shadow-xs space-y-4 transition-colors">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                  screenResume 
-                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' 
-                    : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
-                }`}>
-                  <FileText className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 truncate">
-                      {screenResume?.title || 'Master Resume Canvas'}
-                    </h3>
-                    {screenResume && (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
-                        {screenResume.isGoogleDoc ? 'Google Doc Active' : 'Loaded'}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                    {screenResume 
-                      ? `${parsedResume?.bullets?.length || diffs.length || 0} bullet points extracted · ${screenResume.fullText.length.toLocaleString()} characters`
-                      : 'Open your Google Doc or resume tab and scan to load your live document'}
-                  </p>
-                </div>
-              </div>
+          {/* Workspace Architecture Switcher Bar */}
+          <div className="flex flex-wrap items-center justify-between bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-2 shadow-xs gap-2">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => onSetWorkspaceMode?.('google_docs')}
+                className={`py-1.5 px-3 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  workspaceMode === 'google_docs'
+                    ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 shadow-xs'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+                }`}
+              >
+                <Cloud className="w-3.5 h-3.5" />
+                <span>Option 1: Google Docs Sync</span>
+              </button>
 
-              {/* Action Buttons for Document */}
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsEditingResume(!isEditingResume)}
-                  className="p-1.5 rounded-lg text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-white transition-colors cursor-pointer"
-                  title="Edit or paste raw text"
-                >
-                  <Edit3 className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={onReadScreenNow}
-                  className="px-2.5 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-xs font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 transition-colors cursor-pointer"
-                  title="Re-read text from active Google Doc or tab"
-                >
-                  <RefreshCw className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>Re-scan</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => onSetWorkspaceMode?.('in_app_canvas')}
+                className={`py-1.5 px-3 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  workspaceMode === 'in_app_canvas'
+                    ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 shadow-xs'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Option 2: In-App Canvas</span>
+              </button>
             </div>
 
-            {/* In-App Resume Text Editor / Paste Drawer */}
-            {isEditingResume && (
-              <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-xs text-zinc-700 dark:text-zinc-300">
-                    Raw Resume Text Input
-                  </span>
-                  <span className="text-[11px] text-zinc-400 font-mono">
-                    {customText.length.toLocaleString()} chars
-                  </span>
-                </div>
-                <textarea
-                  value={customText}
-                  onChange={(e) => setCustomText(e.target.value)}
-                  rows={8}
-                  placeholder="Paste or edit your resume text and bullets here..."
-                  className="w-full p-3 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-zinc-100 font-mono leading-relaxed focus:outline-none focus:border-zinc-400 dark:focus:border-zinc-500 resize-y"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingResume(false)}
-                    className="px-3 py-1.5 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveCustomText}
-                    className="px-3.5 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 rounded-lg text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    Save & Parse
-                  </button>
-                </div>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => setShowGateway(true)}
+              className="text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 font-medium px-2 py-1 underline underline-offset-4 cursor-pointer"
+            >
+              Switch Setup
+            </button>
           </div>
 
-          {/* Empty Resume State */}
-          {!screenResume && !isEditingResume && (
-            <div className="bg-white dark:bg-[#121215] border border-dashed border-zinc-300 dark:border-zinc-800 rounded-xl p-8 text-center space-y-4">
-              <div className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto text-zinc-600 dark:text-zinc-300">
-                <Monitor className="w-6 h-6" />
-              </div>
-              <div className="max-w-md mx-auto space-y-1">
-                <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
-                  No Resume Loaded on Canvas
-                </h3>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                  Open your Google Docs resume in your browser or paste the text directly to start real-time ATS optimization.
-                </p>
-              </div>
-              <div className="flex items-center justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={onReadScreenNow}
-                  className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs"
-                >
-                  <Scan className="w-4 h-4" />
-                  <span>Scan Active Screen Tab</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsEditingResume(true)}
-                  className="px-4 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-                >
-                  Paste Text Manually
-                </button>
-              </div>
-            </div>
-          )}
+          {/* Conditional Rendering: In-App Canvas (Option 2) vs Google Docs Cloud Sync (Option 1) */}
+          {workspaceMode === 'in_app_canvas' ? (
+            <InAppDocumentCanvas
+              parsedResume={parsedResume}
+              rawText={screenResume?.fullText || customText}
+              diffs={diffs}
+              onUpdateResumeText={(newText) => {
+                setCustomText(newText);
+                onUpdateCustomResumeText(newText);
+              }}
+              onApplyBulletDiff={handleApplyBulletDiffInCanvas}
+              onApplyAllDiffs={handleApplyAllDiffsInCanvas}
+              onReopenGateway={() => setShowGateway(true)}
+            />
+          ) : (
+            <>
+              {/* Option 1: Google Docs Status Card */}
+              <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-5 shadow-xs space-y-4 transition-colors">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                      screenResume?.isGoogleDoc 
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' 
+                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
+                    }`}>
+                      <Cloud className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 truncate">
+                          {screenResume?.title || 'Google Docs Master Resume'}
+                        </h3>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                          {screenResume?.isGoogleDoc ? 'Cloud Sync Active' : 'Connected'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                        {screenResume?.fullText 
+                          ? `${parsedResume?.bullets?.length || diffs.length || 0} bullets synchronized with Google Drive`
+                          : 'Authorize Google Docs to sync tailored bullets directly back to your document'}
+                      </p>
+                    </div>
+                  </div>
 
-          {/* STAR Bullets & Interactive Diff Inspector */}
-          {diffs.length > 0 && (
-            <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-5 sm:p-6 shadow-xs space-y-5 transition-colors">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onOpenGooglePicker) {
+                          onOpenGooglePicker();
+                        } else if (onSelectGoogleDoc) {
+                          onSelectGoogleDoc('mock-master-resume-doc-id', 'Alex Chen — Master Resume (Google Doc)');
+                        }
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-xs font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Select a different Google Doc via Google Picker"
+                    >
+                      <Cloud className="w-3.5 h-3.5 text-zinc-500" />
+                      <span>Select via Picker</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    {appliedCount > 0 && onApplyToGoogleDoc && (
+                      <button
+                        type="button"
+                        onClick={() => onApplyToGoogleDoc(diffs.filter(d => d.status === 'accepted'))}
+                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Push {appliedCount} Fixes to Google Doc</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleFork}
+                      disabled={isForking}
+                      className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Create a tailored copy in Google Drive"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>{isForking ? 'Forking…' : 'Fork to Google Drive'}</span>
+                    </button>
+                  </div>
+
+                  {pdfUrl && (
+                    <a
+                      href={pdfUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500 text-zinc-700 dark:text-zinc-300 rounded-lg font-semibold flex items-center gap-1.5 transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Export PDF</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* Empty Google Doc Prompt if nothing loaded */}
+              {!screenResume && (
+                <div className="bg-white dark:bg-[#121215] border border-dashed border-zinc-300 dark:border-zinc-800 rounded-xl p-8 text-center space-y-4">
+                  <div className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto text-zinc-600 dark:text-zinc-300">
+                    <Cloud className="w-6 h-6" />
+                  </div>
+                  <div className="max-w-md mx-auto space-y-1">
+                    <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+                      Connect Your Google Doc Resume
+                    </h3>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                      Select your existing resume from Google Drive to enable direct, two-way atomic syncing.
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onOpenGooglePicker) onOpenGooglePicker();
+                        else if (onSelectGoogleDoc) onSelectGoogleDoc('mock-master-resume-doc-id', 'Alex Chen — Master Resume (Google Doc)');
+                      }}
+                      className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs"
+                    >
+                      <Cloud className="w-4 h-4" />
+                      <span>Select from Google Drive</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSetWorkspaceMode?.('in_app_canvas')}
+                      className="px-4 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                    >
+                      Switch to In-App Canvas
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STAR Bullets & Interactive Diff Inspector for Google Docs Mode */}
+              {diffs.length > 0 && (
+                <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-5 sm:p-6 shadow-xs space-y-5 transition-colors">
               <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
                 <div>
                   <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
@@ -474,6 +610,8 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
                 })}
               </div>
             </div>
+          )}
+            </>
           )}
 
           {/* Dedicated ATS Layout & Structural Hygiene Suggestions */}

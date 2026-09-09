@@ -21,7 +21,13 @@ import {
   DEFAULT_APPLICANT_PROFILE,
   isNewUser,
   getStoredSettings,
+  WorkspaceMode,
+  getStoredWorkspaceMode,
+  saveStoredWorkspaceMode,
+  getGoogleAccessToken,
 } from './services/storage.js';
+import { authenticateGoogleAccount } from './services/google-auth.js';
+import { openGoogleDocPicker } from './services/google-picker.js';
 import { ThemeMode, initTheme, saveStoredThemeMode } from './services/theme.js';
 import { 
   JobPosting, 
@@ -85,6 +91,10 @@ export const App: React.FC = () => {
   // Onboarding state — strictly required for all users until profile setup is complete
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
 
+  // Workspace Mode (Option 1: Google Docs Sync vs Option 2: In-App Document Canvas)
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('in_app_canvas');
+  const [showWorkspaceGateway, setShowWorkspaceGateway] = useState<boolean>(false);
+
   // Appearance & Theme State (Light, Dark, System)
   const [themeMode, setThemeMode] = useState<ThemeMode>('system');
   const [isDark, setIsDark] = useState<boolean>(false);
@@ -121,11 +131,18 @@ export const App: React.FC = () => {
 
     getStoredApplications().then(apps => setApplications(apps));
 
+    // Load workspace mode preference
+    getStoredWorkspaceMode().then(mode => {
+      if (mode) setWorkspaceMode(mode);
+    });
+
     // Load applicant profile and strictly require onboarding if not completed or incomplete
     getStoredApplicantProfile().then((profile) => {
       setApplicantProfile(profile);
       isNewUser().then((needsOnboarding) => {
-        if (needsOnboarding) setIsOnboardingOpen(true);
+        if (needsOnboarding) {
+          setIsOnboardingOpen(true);
+        }
       });
     });
 
@@ -145,6 +162,72 @@ export const App: React.FC = () => {
       }
     } catch {}
   }, []);
+
+  const handleSelectOption1GoogleDocs = (docId?: string, docTitle?: string) => {
+    setWorkspaceMode('google_docs');
+    saveStoredWorkspaceMode('google_docs');
+    setShowWorkspaceGateway(false);
+    if (docId === 'mock-master-resume-doc-id' || !docId) {
+      const mock = googleDocs.getMockMasterResume();
+      setScreenResume({ title: docTitle || mock.title, fullText: mock.fullText, isGoogleDoc: true });
+      setParsedResume(resumeParser.parse(mock.fullText));
+    } else {
+      setScreenResume({ 
+        title: docTitle || 'Linked Google Doc', 
+        fullText: screenResume?.fullText || googleDocs.getMockMasterResume().fullText, 
+        isGoogleDoc: true 
+      });
+    }
+    setAppliedStatus('✓ Connected Google Docs Workspace');
+    setTimeout(() => setAppliedStatus(null), 3500);
+  };
+
+  const handleSelectOption2InAppCanvas = (text: string, title?: string) => {
+    setWorkspaceMode('in_app_canvas');
+    saveStoredWorkspaceMode('in_app_canvas');
+    setShowWorkspaceGateway(false);
+    const parsed = resumeParser.parse(text);
+    setParsedResume(parsed);
+    setScreenResume({
+      title: title || (parsed.candidateName !== 'Your Resume' ? `${parsed.candidateName} Resume` : 'My Master Resume'),
+      fullText: text,
+      isGoogleDoc: false,
+    });
+    try {
+      localStorage.setItem('user_custom_resume', text);
+    } catch {}
+    setAppliedStatus('✓ Loaded In-App Document Canvas');
+    setTimeout(() => setAppliedStatus(null), 3500);
+  };
+
+  const handleOpenGooglePicker = async () => {
+    try {
+      let token = await getGoogleAccessToken();
+      if (!token) {
+        const authRes = await authenticateGoogleAccount(true);
+        if (authRes.success && authRes.accessToken) {
+          token = authRes.accessToken;
+        } else {
+          handleSelectOption1GoogleDocs('mock-master-resume-doc-id', 'Alex Chen — Master Resume (Google Doc)');
+          return;
+        }
+      }
+      await openGoogleDocPicker({
+        accessToken: token,
+        onPicked: async (doc) => {
+          handleSelectOption1GoogleDocs(doc.id, doc.name);
+        },
+        onCancel: () => {},
+        onError: (err) => {
+          console.warn('[App] Google Picker note:', err);
+          handleSelectOption1GoogleDocs('mock-master-resume-doc-id', 'Alex Chen — Master Resume (Google Doc)');
+        }
+      });
+    } catch (err) {
+      console.warn('[App] Google Picker note:', err);
+      handleSelectOption1GoogleDocs('mock-master-resume-doc-id', 'Alex Chen — Master Resume (Google Doc)');
+    }
+  };
 
   const handleUpdateStatus = async (appId: string, newStatus: ApplicationRecord['status']) => {
     const updated = applications.map((app) =>
@@ -478,6 +561,16 @@ export const App: React.FC = () => {
             appliedStatus={appliedStatus}
             forkedDocUrl={forkedDocUrl}
             pdfUrl={pdfUrl}
+            workspaceMode={workspaceMode}
+            onSetWorkspaceMode={(newMode) => {
+              setWorkspaceMode(newMode);
+              saveStoredWorkspaceMode(newMode);
+            }}
+            onOpenGooglePicker={handleOpenGooglePicker}
+            onSelectGoogleDoc={handleSelectOption1GoogleDocs}
+            applicantProfile={applicantProfile}
+            showWorkspaceGateway={showWorkspaceGateway}
+            onCloseGateway={() => setShowWorkspaceGateway(false)}
           />
         )}
 
@@ -551,6 +644,9 @@ export const App: React.FC = () => {
           onComplete={(savedProfile) => {
             setApplicantProfile(savedProfile);
             setIsOnboardingOpen(false);
+            // As requested: after onboarding completes, present the Option 1 vs Option 2 choice on the main page
+            setShowWorkspaceGateway(true);
+            setActiveTab('match');
           }}
         />
       )}

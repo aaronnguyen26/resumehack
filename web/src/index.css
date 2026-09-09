@@ -177,3 +177,30 @@ html.dark .bg-slate-950\/80 {
   background-color: rgba(9, 9, 11, 0.85) !important;
 }
 
+/* Print Styles for ATS PDF Generation */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .resume-canvas-print,
+  .resume-canvas-print * {
+    visibility: visible;
+  }
+  .resume-canvas-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20mm 15mm !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: white !important;
+    color: black !important;
+  }
+  @page {
+    size: letter portrait;
+    margin: 10mm;
+  }
+}
+

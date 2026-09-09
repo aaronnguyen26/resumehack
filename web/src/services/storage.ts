@@ -543,3 +543,42 @@ export async function saveStoredApplicantProfile(profile: Partial<ApplicantProfi
   } catch {}
 }
 
+export type WorkspaceMode = 'google_docs' | 'in_app_canvas';
+
+export async function getStoredWorkspaceMode(): Promise<WorkspaceMode | null> {
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['resumehack_workspace_mode'], (res) => {
+        const mode = res.resumehack_workspace_mode as WorkspaceMode;
+        if (mode === 'google_docs' || mode === 'in_app_canvas') {
+          resolve(mode);
+        } else {
+          resolve(null);
+        }
+      });
+    });
+  }
+
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const mode = localStorage.getItem('resumehack_workspace_mode') as WorkspaceMode | null;
+      if (mode === 'google_docs' || mode === 'in_app_canvas') return mode;
+    }
+  } catch {}
+  return null;
+}
+
+export async function saveStoredWorkspaceMode(mode: WorkspaceMode): Promise<void> {
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ resumehack_workspace_mode: mode }, () => resolve());
+    });
+  }
+
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('resumehack_workspace_mode', mode);
+    }
+  } catch {}
+}
+
