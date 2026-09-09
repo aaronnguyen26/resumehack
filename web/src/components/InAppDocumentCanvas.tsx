@@ -44,7 +44,7 @@ import {
   escapeHtml 
 } from '../services/canvas-editor.js';
 import { TailoredBulletDiff, ApplicantProfile, ScrapedJobData, TailorResumeResponse } from '../types/index.js';
-import { HackerRankAtsPanel } from './HackerRankAtsPanel.js';
+import { HackyAiAtsPanel } from './HackyAiAtsPanel.js';
 
 export interface InAppDocumentCanvasProps {
   parsedResume: ParsedResume | null;
@@ -371,6 +371,38 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     }
   };
 
+  // Insert AI recommended bullet point into document
+  const handleInsertBulletIntoDoc = (bulletText: string, sectionHint?: string) => {
+    if (editorRef.current) {
+      const headers = Array.from(editorRef.current.querySelectorAll('h2'));
+      const targetHeader = headers.find(h => {
+        const t = (h.textContent || '').toLowerCase();
+        if (sectionHint === 'projects') return t.includes('project');
+        if (sectionHint === 'skills') return t.includes('skill');
+        return t.includes('experience') || t.includes('work') || t.includes('employment');
+      }) || headers[0];
+
+      const cleanText = bulletText.replace(/^[•\-\*\s]+/, '').trim();
+
+      if (targetHeader && targetHeader.parentElement) {
+        const ul = targetHeader.parentElement.querySelector('ul');
+        if (ul) {
+          const li = document.createElement('li');
+          li.textContent = cleanText;
+          ul.appendChild(li);
+        } else {
+          const p = document.createElement('p');
+          p.className = 'text-xs text-zinc-800 dark:text-zinc-200 my-1';
+          p.textContent = `• ${cleanText}`;
+          targetHeader.parentElement.appendChild(p);
+        }
+      } else {
+        editorRef.current.innerHTML += `<p class="text-xs text-zinc-800 dark:text-zinc-200 my-1">• ${escapeHtml(cleanText)}</p>`;
+      }
+      handleEditorInput();
+    }
+  };
+
   // PDF File Upload Handler
   const handleCanvasFileUpload = async (file: File) => {
     setIsExtractingPdf(true);
@@ -604,7 +636,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
             <span>Export ATS PDF</span>
           </button>
 
-          {/* Toggle Right HackerRank ATS Inspector */}
+          {/* Toggle Right Hacky AI Inspector */}
           <button
             type="button"
             onClick={() => setIsInspectorOpen(!isInspectorOpen)}
@@ -613,10 +645,10 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
                 ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 border-zinc-900 dark:border-white shadow-xs'
                 : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-[#27272A] text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
             }`}
-            title="Toggle HackerRank ATS Architecture Panel"
+            title="Toggle Hacky AI ATS Architecture Panel"
           >
-            <SlidersHorizontal className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">HackerRank ATS</span>
+            <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+            <span className="hidden md:inline font-bold">Hacky AI</span>
           </button>
         </div>
       </header>
@@ -1055,9 +1087,9 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
           )}
         </div>
 
-        {/* ── RIGHT HACKERRANK ATS ARCHITECTURE INSPECTOR (Collapsible) ────────── */}
+        {/* ── RIGHT HACKY AI ATS ARCHITECTURE INSPECTOR (Collapsible) ────────── */}
         {isInspectorOpen && (
-          <HackerRankAtsPanel
+          <HackyAiAtsPanel
             resumeText={rawEditText || rawText}
             applicantProfile={applicantProfile}
             currentJob={currentJob}
@@ -1087,6 +1119,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
               }
             }}
             onInsertKeyword={handleInsertKeywordIntoDoc}
+            onInsertBullet={handleInsertBulletIntoDoc}
             onClose={() => setIsInspectorOpen(false)}
             lineCount={lineCount}
             maxRecommendedLines={maxRecommendedLines}

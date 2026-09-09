@@ -15,7 +15,7 @@ const TIPS: Record<string, string[]> = {
     'Pro Tip: Document Canvas protects your single-page line budget and eliminates hallucinations.',
   ],
   canvas: [
-    'Hacky: The HackerRank ATS panel updates live next to your canvas as you type!',
+    'Hacky: The Hacky AI ATS panel updates live next to your canvas as you type!',
     'Tip: Quantify your results with metrics (e.g., "reduced P99 latency by 35%") to boost your ATS score!',
     'Pro Tip: Matching 5+ hard skills from the target role puts you in the top 5% of applicants.',
   ],

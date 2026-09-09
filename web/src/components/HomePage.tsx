@@ -11,7 +11,8 @@ import {
   ChevronRight, 
   UploadCloud, 
   Loader2,
-  Award
+  Award,
+  Sparkles
 } from 'lucide-react';
 import { ScrapedJobData } from '../types/index.js';
 
@@ -82,7 +83,7 @@ export const HomePage: React.FC<HomePageProps> = ({
         </h1>
 
         <p className="text-base sm:text-lg text-zinc-600 dark:text-zinc-400 leading-relaxed mb-8 max-w-2xl mx-auto">
-          AI-Powered ATS Optimization & HackerRank Evaluation Architecture. Upload your resume to edit directly on the canvas and benchmark against tier-1 engineering rubrics.
+          AI-Powered ATS Optimization & Hacky AI Architecture. Upload your resume to edit directly on the canvas and benchmark against tier-1 engineering rubrics.
         </p>
 
         {/* Minimalist Telemetry Badges */}
@@ -96,8 +97,8 @@ export const HomePage: React.FC<HomePageProps> = ({
             <span>Zero Hallucination Engine</span>
           </div>
           <div className="flex items-center gap-2 px-3.5 py-1.5 bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-md shadow-xs">
-            <Award className="w-3.5 h-3.5 text-emerald-500" />
-            <span>HackerRank ATS Architecture</span>
+            <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Hacky AI ATS Architecture</span>
           </div>
         </div>
       </section>
@@ -201,7 +202,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               <div className="flex items-start gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
                 <div>
-                  <div className="font-semibold text-zinc-900 dark:text-zinc-100">HackerRank ATS Rubric</div>
+                  <div className="font-semibold text-zinc-900 dark:text-zinc-100">Hacky AI ATS Rubric</div>
                   <div className="text-zinc-500 dark:text-zinc-400 text-[11px] mt-0.5">6-dimensional scoring, production signals, and tutorial flag penalty audit.</div>
                 </div>
               </div>

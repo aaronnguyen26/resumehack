@@ -139,7 +139,7 @@ https://github.com/sarahconnor/cache-engine
       // Features direct PDF dropzone & Canvas launchpad
       expect(content).toContain('Upload Resume File');
       expect(content).toContain('Open Document Canvas');
-      expect(content).toContain('HackerRank ATS Architecture');
+      expect(content).toContain('Hacky AI ATS Architecture');
       expect(content).toContain('onOpenCanvas');
     });
 
@@ -148,20 +148,37 @@ https://github.com/sarahconnor/cache-engine
       expect(fs.existsSync(matchTabPath)).toBe(false);
     });
 
-    it('InAppDocumentCanvas mounts HackerRankAtsPanel right next to the canvas', () => {
+    it('InAppDocumentCanvas mounts HackyAiAtsPanel right next to the canvas with Hacky AI branding', () => {
       const canvasPath = path.resolve(__dirname, '../../../web/src/components/InAppDocumentCanvas.tsx');
       const content = fs.readFileSync(canvasPath, 'utf8');
 
-      expect(content).toContain('HackerRankAtsPanel');
-      expect(content).toContain('<HackerRankAtsPanel');
-      expect(content).toContain('HackerRank ATS');
+      expect(content).toContain('HackyAiAtsPanel');
+      expect(content).toContain('<HackyAiAtsPanel');
+      expect(content).toContain('Hacky AI');
+      expect(content).toContain('onInsertBullet');
+    });
+
+    it('HackerRankAtsPanel backwards compatibility proxy re-exports HackyAiAtsPanel cleanly', () => {
+      const legacyPath = path.resolve(__dirname, '../../../web/src/components/HackerRankAtsPanel.tsx');
+      const content = fs.readFileSync(legacyPath, 'utf8');
+
+      expect(content).toContain('HackyAiAtsPanel');
+      expect(content).toContain('export const HackerRankAtsPanel = HackyAiAtsPanel');
     });
   });
 
-  describe('Design System: Strict Monochromatic Zero Purple and Zero Blue', () => {
-    it('HackerRankAtsPanel strictly adheres to zero purple and zero blue colors', () => {
-      const panelPath = path.resolve(__dirname, '../../../web/src/components/HackerRankAtsPanel.tsx');
+  describe('Design System & AI Recommendations: Strict Monochromatic Zero Purple/Blue', () => {
+    it('HackyAiAtsPanel features AI Recommendations tab, score potential gauge, and zero purple/blue colors', () => {
+      const panelPath = path.resolve(__dirname, '../../../web/src/components/HackyAiAtsPanel.tsx');
       const content = fs.readFileSync(panelPath, 'utf8');
+
+      // AI Recommendations tab & scoring potential
+      expect(content).toContain('AI Recommendations');
+      expect(content).toContain('Hacky AI ATS Optimizer');
+      expect(content).toContain('pts Potential');
+      expect(content).toContain('1-Click Insert into Skills');
+      expect(content).toContain('Suggested Hacky AI Enhancement');
+      expect(content).toContain('Single-Page Capacity Guard');
 
       // Strict check: zero purple/blue/violet/indigo classes
       expect(content).not.toMatch(/(?:bg|text|border)-(?:purple|blue|violet|indigo)-\d+/);
