@@ -6,13 +6,9 @@ import {
   Send,
   RotateCcw,
   FileText,
-  Briefcase,
   TrendingUp,
-  CheckCircle2,
   AlertCircle,
-  Building2,
-  Compass,
-  ArrowRight,
+  MessageSquare,
 } from 'lucide-react';
 
 import { NavTab } from './Navbar.js';
@@ -87,6 +83,7 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
   const [inputValue, setInputValue] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Auto-scroll to bottom on new message
   useEffect(() => {
@@ -94,6 +91,16 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isOpen, isThinking]);
+
+  // Focus input field when chatbot opens
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 120);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
 
   // Persist messages to localStorage
   useEffect(() => {
@@ -275,6 +282,7 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
               </div>
               {onSelectJobForTailoring && (
                 <button
+                  type="button"
                   onClick={() => {
                     const fullJob = jobs.find((j) => j.id === job.id) || {
                       id: job.id,
@@ -304,11 +312,14 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2.5 pointer-events-none select-none">
-      {/* Expanded Chatbot Panel */}
+    <aside
+      className="fixed bottom-6 right-6 z-[60] flex flex-col items-end gap-2.5 pointer-events-none select-none"
+      aria-label="Ask Hacky AI Assistant Area"
+    >
+      {/* ── Chatbot Window (Shown when isOpen is true) ─────────────────────────── */}
       {isOpen && (
         <div
-          className="pointer-events-auto w-[370px] max-w-[calc(100vw-2rem)] h-[510px] max-h-[min(540px,calc(100vh-100px))] flex flex-col bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl shadow-2xl overflow-hidden transition-all duration-200 animate-in fade-in slide-in-from-bottom-3"
+          className="pointer-events-auto w-[380px] max-w-[calc(100vw-2rem)] h-[510px] max-h-[min(550px,calc(100vh-100px))] flex flex-col bg-white dark:bg-[#121215] border-2 border-zinc-200 dark:border-[#27272A] rounded-2xl shadow-2xl overflow-hidden transition-all duration-200 animate-in fade-in slide-in-from-bottom-3"
           role="dialog"
           aria-label="Ask Hacky AI Chatbot"
         >
@@ -444,6 +455,7 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
             className="p-3 bg-white dark:bg-[#121215] border-t border-zinc-200 dark:border-zinc-800 flex items-center gap-2 shrink-0"
           >
             <input
+              ref={inputRef}
               type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
@@ -463,22 +475,61 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
         </div>
       )}
 
-      {/* Floating Mascot Trigger Button */}
-      <button
-        onClick={() => setIsOpen((prev) => !prev)}
-        className="pointer-events-auto relative group flex items-center gap-2 p-3 rounded-full bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 shadow-2xl border-2 border-zinc-200 dark:border-zinc-800 transition-all duration-200 cursor-pointer hover:scale-105 active:scale-95"
-        title={isOpen ? 'Minimize Hacky' : 'Chat with Hacky'}
-      >
-        <span className="text-xl leading-none">🦉</span>
-        {/* Pulsing online status indicator */}
-        <span className="absolute top-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-zinc-900 animate-pulse" />
-        {!isOpen && (
-          <span className="text-xs font-bold pr-1.5 hidden sm:inline-block font-sans">
-            Ask Hacky
+      {/* ── Teaser Callout Prompt (Shown when chatbot is closed to ensure maximum visibility) ── */}
+      {!isOpen && (
+        <div
+          onClick={() => setIsOpen(true)}
+          className="pointer-events-auto cursor-pointer flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] shadow-xl text-zinc-700 dark:text-zinc-300 hover:border-zinc-400 dark:hover:border-zinc-600 hover:shadow-2xl transition-all duration-200 animate-in fade-in slide-in-from-bottom-2 group"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && setIsOpen(true)}
+          title="Click to ask Hacky about your resume, applications, or job openings"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+          <span className="text-[11px] font-medium font-sans">
+            {atsScore !== undefined
+              ? `ATS: ${atsScore}% — Ask Hacky for tips`
+              : 'Ask Hacky: Resume, jobs, or openings?'}
           </span>
-        )}
+          <span className="text-[10px] font-bold text-zinc-400 group-hover:text-zinc-950 dark:group-hover:text-white transition-colors flex items-center gap-0.5">
+            <span>Chat</span>
+            <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+          </span>
+        </div>
+      )}
+
+      {/* ── Floating Mascot Trigger Capsule ────────────────────────────────────── */}
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="pointer-events-auto relative group flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-zinc-950 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 shadow-2xl border-2 border-zinc-200/80 dark:border-zinc-800 transition-all duration-200 cursor-pointer hover:scale-[1.03] active:scale-95 ring-2 ring-zinc-900/10 dark:ring-white/10"
+        title={isOpen ? 'Minimize Hacky Chatbot' : 'Click to chat with Hacky'}
+        aria-expanded={isOpen}
+      >
+        <div className="relative flex items-center justify-center">
+          <span className="text-xl leading-none">🦉</span>
+          {/* Pulsing online status indicator */}
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-zinc-950 dark:border-white animate-pulse" />
+        </div>
+
+        <div className="flex flex-col text-left">
+          <span className="text-xs font-bold font-headline leading-tight tracking-tight">
+            {isOpen ? 'Close Hacky' : 'Ask Hacky'}
+          </span>
+          <span className="text-[9px] font-mono leading-none text-zinc-400 dark:text-zinc-500">
+            {isOpen ? 'Minimize' : 'AI Copilot'}
+          </span>
+        </div>
+
+        <div className="pl-1 border-l border-zinc-800 dark:border-zinc-200 flex items-center">
+          {isOpen ? (
+            <X className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500 group-hover:text-white dark:group-hover:text-zinc-950 transition-colors" />
+          ) : (
+            <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+          )}
+        </div>
       </button>
-    </div>
+    </aside>
   );
 };
 
