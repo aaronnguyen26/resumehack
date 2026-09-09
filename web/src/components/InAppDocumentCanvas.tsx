@@ -13,7 +13,9 @@ import {
   Eye, 
   AlertTriangle,
   RotateCcw,
-  Plus
+  Plus,
+  ExternalLink,
+  Cloud
 } from 'lucide-react';
 import { ParsedResume } from '../services/resume-parser.js';
 import { TailoredBulletDiff, ApplicantProfile } from '../types/index.js';
@@ -27,6 +29,10 @@ export interface InAppDocumentCanvasProps {
   onApplyAllDiffs?: () => void;
   onReopenGateway?: () => void;
   applicantProfile?: ApplicantProfile;
+  isGoogleDocMode?: boolean;
+  docUrl?: string;
+  onSyncGoogleDoc?: () => void;
+  onPushToGoogleDoc?: () => void;
 }
 
 export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
@@ -38,6 +44,10 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   onApplyAllDiffs,
   onReopenGateway,
   applicantProfile,
+  isGoogleDocMode = false,
+  docUrl,
+  onSyncGoogleDoc,
+  onPushToGoogleDoc,
 }) => {
   const [isRawEditing, setIsRawEditing] = useState(false);
   const [editText, setEditText] = useState(rawText);
@@ -106,10 +116,11 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100">
-                {parsedResume?.candidateName || 'Master Tech Resume'}
+                {parsedResume?.candidateName || (isGoogleDocMode ? 'Google Doc Master' : 'Master Tech Resume')}
               </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-semibold">
-                In-App Canvas
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-semibold flex items-center gap-1">
+                {isGoogleDocMode && <Cloud className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />}
+                <span>{isGoogleDocMode ? 'Google Doc (Cloud Synced)' : 'In-App Canvas'}</span>
               </span>
             </div>
             <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
@@ -120,6 +131,43 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
+          {docUrl && (
+            <a
+              href={docUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2.5 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              title="Open Google Doc in new tab"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Open in Docs ↗</span>
+            </a>
+          )}
+
+          {onSyncGoogleDoc && (
+            <button
+              type="button"
+              onClick={onSyncGoogleDoc}
+              className="px-2.5 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Re-sync content with Google Docs"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Re-sync</span>
+            </button>
+          )}
+
+          {onPushToGoogleDoc && (
+            <button
+              type="button"
+              onClick={onPushToGoogleDoc}
+              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              title="Push accepted diffs to Google Doc"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Push Fixes</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setIsCompact(!isCompact)}

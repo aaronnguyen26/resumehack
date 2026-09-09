@@ -83,7 +83,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ currentThemeMode, onTh
 
   // Master doc is tracked by name only — the actual ID is stored internally, never shown raw
   const [masterDocName, setMasterDocName] = useState<string | null>(null);
-  const [targetTitle, setTargetTitle] = useState('Software Engineer');
+  const [targetTitle, setTargetTitle] = useState('');
   const [strictAntiHallucination, setStrictAntiHallucination] = useState(true);
   
   // Google Picker State

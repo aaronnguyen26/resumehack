@@ -22,7 +22,7 @@ export const EMBEDDED_GOOGLE_REFRESH_TOKEN = '';
 const DEFAULT_SETTINGS: StoredSettings = {
   masterDocId: '',
   candidateName: '',
-  targetTitle: 'Software Engineer',
+  targetTitle: '',
   strictAntiHallucination: true,
   googleAccessToken: undefined,
   googleRefreshToken: undefined,

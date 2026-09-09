@@ -15,6 +15,7 @@ import { AiTailorService, getAiSettings } from './services/ai-tailor.js';
 import { GitHubTrackerService, SEED_INTERNSHIP_DATABASE, enrichJobDetails } from './services/github-tracker.js';
 import { ResumeParserService, ParsedResume } from './services/resume-parser.js';
 import { GoogleDocsService } from './services/google-docs.js';
+import { GoogleDriveService } from './services/google-drive.js';
 import { CompanyArchetypeClassifier } from './services/archetype-classifier.js';
 import { 
   getStoredApplications, 
@@ -24,6 +25,7 @@ import {
   DEFAULT_APPLICANT_PROFILE,
   isNewUser,
   getStoredSettings,
+  saveStoredSettings,
   WorkspaceMode,
   getStoredWorkspaceMode,
   saveStoredWorkspaceMode,
@@ -50,15 +52,16 @@ const aiTailor = new AiTailorService();
 const githubTracker = new GitHubTrackerService();
 const resumeParser = new ResumeParserService();
 const googleDocs = new GoogleDocsService();
+const googleDrive = new GoogleDriveService();
 const autoSubmitEngine = new AutoSubmitEngine();
 
 const DEFAULT_JOB: ScrapedJobData = {
-  title: 'Software Engineering Intern — Summer 2026',
-  company: 'Stripe',
-  location: 'San Francisco, CA (Hybrid)',
-  description: 'We are looking for Software Engineering Interns to join our infrastructure and API teams. You will write high-performance Go, Python, and TypeScript code, design scalable REST APIs with PostgreSQL, and automate CI/CD pipelines with Docker and Kubernetes.',
-  url: 'https://stripe.com/jobs/search?q=intern',
-  source: 'LinkedIn'
+  title: '',
+  company: '',
+  location: '',
+  description: '',
+  url: '',
+  source: 'Custom'
 };
 
 export const App: React.FC = () => {
@@ -70,7 +73,13 @@ export const App: React.FC = () => {
   const [applications, setApplications] = useState<ApplicationRecord[]>([]);
 
   // User Resume State
-  const [screenResume, setScreenResume] = useState<{ title: string; fullText: string; isGoogleDoc?: boolean; url?: string } | null>(null);
+  const [screenResume, setScreenResume] = useState<{ 
+    title: string; 
+    fullText: string; 
+    isGoogleDoc?: boolean; 
+    url?: string;
+    docId?: string;
+  } | null>(null);
   const [parsedResume, setParsedResume] = useState<ParsedResume | null>(null);
 
   const [appliedStatus, setAppliedStatus] = useState<string | null>(null);
@@ -149,6 +158,34 @@ export const App: React.FC = () => {
       });
     });
 
+    // Check saved masterDocId from settings if Option 1 was previously connected
+    getStoredSettings().then((settings) => {
+      if (settings.masterDocId) {
+        getGoogleAccessToken().then((token) => {
+          if (token) {
+            googleDocs.getDocumentAndExtractBullets(settings.masterDocId, token).then((doc) => {
+              setScreenResume({
+                title: doc.title || 'Master Resume (Google Doc)',
+                fullText: doc.fullText,
+                isGoogleDoc: true,
+                docId: settings.masterDocId,
+                url: `https://docs.google.com/document/d/${settings.masterDocId}/edit`,
+              });
+              setParsedResume(resumeParser.parse(doc.fullText));
+            }).catch(() => {});
+          } else {
+            setScreenResume({
+              title: 'Master Resume (Google Doc)',
+              fullText: googleDocs.getMockMasterResume(applicantProfile).fullText,
+              isGoogleDoc: true,
+              docId: settings.masterDocId,
+              url: `https://docs.google.com/document/d/${settings.masterDocId}/edit`,
+            });
+          }
+        });
+      }
+    });
+
     // Check if user has saved resume or jobs in localStorage
     try {
       const savedResume = localStorage.getItem('user_custom_resume');
@@ -166,27 +203,59 @@ export const App: React.FC = () => {
     } catch {}
   }, []);
 
-  const handleSelectOption1GoogleDocs = (docId?: string, docTitle?: string) => {
+  const handleSelectOption1GoogleDocs = async (docId?: string, docTitle?: string, docUrl?: string) => {
     setWorkspaceMode('google_docs');
-    saveStoredWorkspaceMode('google_docs');
+    await saveStoredWorkspaceMode('google_docs');
     setShowWorkspaceGateway(false);
     const candidateDisplayName = (applicantProfile.firstName || applicantProfile.lastName)
       ? `${applicantProfile.firstName} ${applicantProfile.lastName}`.trim()
       : (applicantProfile.fullName || 'Candidate');
     const defaultDocTitle = `${candidateDisplayName} — Master Resume (Google Doc)`;
 
-    if (docId === 'mock-master-resume-doc-id' || !docId) {
+    const targetDocId = docId && docId !== 'mock-master-resume-doc-id' ? docId : undefined;
+
+    if (!targetDocId) {
       const mock = googleDocs.getMockMasterResume(applicantProfile);
-      setScreenResume({ title: docTitle || mock.title, fullText: mock.fullText, isGoogleDoc: true });
-      setParsedResume(resumeParser.parse(mock.fullText));
-    } else {
       setScreenResume({ 
-        title: docTitle || defaultDocTitle, 
-        fullText: screenResume?.fullText || googleDocs.getMockMasterResume(applicantProfile).fullText, 
-        isGoogleDoc: true 
+        title: docTitle || mock.title, 
+        fullText: mock.fullText, 
+        isGoogleDoc: true,
+        docId: 'mock-master-resume-doc-id',
+        url: 'https://docs.google.com/document/d/mock-master-resume-doc-id/edit',
       });
+      setParsedResume(resumeParser.parse(mock.fullText));
+      setAppliedStatus('✓ Connected Google Docs Workspace (Demo Document)');
+      setTimeout(() => setAppliedStatus(null), 3500);
+      return;
     }
-    setAppliedStatus('✓ Connected Google Docs Workspace');
+
+    // A real Google Doc ID was linked
+    await saveStoredSettings({ masterDocId: targetDocId });
+    setAppliedStatus('Connecting & fetching Google Doc content…');
+
+    try {
+      const token = await getGoogleAccessToken();
+      const docResult = await googleDocs.getDocumentAndExtractBullets(targetDocId, token);
+      setScreenResume({
+        title: docTitle || docResult.title || defaultDocTitle,
+        fullText: docResult.fullText,
+        isGoogleDoc: true,
+        docId: targetDocId,
+        url: docUrl || `https://docs.google.com/document/d/${targetDocId}/edit`,
+      });
+      setParsedResume(resumeParser.parse(docResult.fullText));
+      setAppliedStatus(`✓ Connected & Synced: ${docResult.title || 'Google Doc'}`);
+    } catch (err: any) {
+      console.warn('[App] Error fetching Google Doc:', err);
+      setScreenResume({
+        title: docTitle || defaultDocTitle,
+        fullText: googleDocs.getMockMasterResume(applicantProfile).fullText,
+        isGoogleDoc: true,
+        docId: targetDocId,
+        url: docUrl || `https://docs.google.com/document/d/${targetDocId}/edit`,
+      });
+      setAppliedStatus('✓ Connected Google Doc (Click Picker or Sign-in to sync text)');
+    }
     setTimeout(() => setAppliedStatus(null), 3500);
   };
 
@@ -224,24 +293,24 @@ export const App: React.FC = () => {
         if (authRes.success && authRes.accessToken) {
           token = authRes.accessToken;
         } else {
-          handleSelectOption1GoogleDocs('mock-master-resume-doc-id', fallbackTitle);
+          await handleSelectOption1GoogleDocs('mock-master-resume-doc-id', fallbackTitle);
           return;
         }
       }
       await openGoogleDocPicker({
         accessToken: token,
         onPicked: async (doc) => {
-          handleSelectOption1GoogleDocs(doc.id, doc.name);
+          await handleSelectOption1GoogleDocs(doc.id, doc.name, doc.url);
         },
         onCancel: () => {},
-        onError: (err) => {
+        onError: async (err) => {
           console.warn('[App] Google Picker note:', err);
-          handleSelectOption1GoogleDocs('mock-master-resume-doc-id', fallbackTitle);
+          await handleSelectOption1GoogleDocs('mock-master-resume-doc-id', fallbackTitle);
         }
       });
     } catch (err) {
       console.warn('[App] Google Picker note:', err);
-      handleSelectOption1GoogleDocs('mock-master-resume-doc-id', fallbackTitle);
+      await handleSelectOption1GoogleDocs('mock-master-resume-doc-id', fallbackTitle);
     }
   };
 
@@ -271,24 +340,47 @@ export const App: React.FC = () => {
     setAppliedStatus('Scanning resume and analyzing job description…');
 
     try {
+      let jobDesc = currentJob.description;
+      if (!jobDesc || !jobDesc.trim()) {
+        const input = window.prompt('Please paste a job description or choose an opening from Discovery to tailor your resume:');
+        if (!input || !input.trim()) {
+          setAppliedStatus('⚠️ Please select or paste a job description first');
+          setIsLoading(false);
+          return;
+        }
+        jobDesc = input.trim();
+        setCurrentJob(prev => ({
+          ...prev,
+          description: jobDesc,
+          title: prev.title || 'Target Role',
+          company: prev.company || 'Target Company',
+        }));
+      }
+
       let resumeText = screenResume?.fullText || parsedResume?.rawText || '';
       if (!resumeText.trim()) {
-        const mock = googleDocs.getMockMasterResume();
+        const mock = googleDocs.getMockMasterResume(applicantProfile);
         resumeText = mock.fullText;
-        setScreenResume({ title: mock.title, fullText: mock.fullText, isGoogleDoc: true });
+        setScreenResume({ 
+          title: mock.title, 
+          fullText: mock.fullText, 
+          isGoogleDoc: true,
+          docId: 'mock-master-resume-doc-id',
+          url: 'https://docs.google.com/document/d/mock-master-resume-doc-id/edit'
+        });
         setParsedResume(resumeParser.parse(mock.fullText));
       }
 
       const currentParsed = parsedResume || resumeParser.parse(resumeText);
-      const atsReport = atsScorer.analyze(resumeText, currentJob.description);
-      const archetype = CompanyArchetypeClassifier.classify(currentJob.company, currentJob.description);
+      const atsReport = atsScorer.analyze(resumeText, jobDesc);
+      const archetype = CompanyArchetypeClassifier.classify(currentJob.company, jobDesc);
 
       const userBullets = currentParsed.bullets.length > 0 ? currentParsed.bullets : [
         {
           id: 'b-1',
           section: 'Experience',
-          organization: 'Software Engineer',
-          role: 'Candidate',
+          organization: 'Experience Item',
+          role: applicantProfile.firstName ? `${applicantProfile.firstName}` : 'Candidate',
           originalText: resumeText.slice(0, 180)
         }
       ];
@@ -404,16 +496,62 @@ export const App: React.FC = () => {
   };
 
   const handleApplyToGoogleDoc = async (diffs: TailoredBulletDiff[]): Promise<boolean> => {
-    setAppliedStatus(`✓ Applied ${diffs.length} bullet diffs to tailored resume`);
-    setTailorData(prev => {
-      if (!prev) return prev;
-      const ids = new Set(diffs.map(d => d.id));
-      return {
-        ...prev,
-        bulletDiffs: prev.bulletDiffs.map(d => ids.has(d.id) ? { ...d, status: 'accepted' } : d)
-      };
-    });
-    return true;
+    const acceptedDiffs = diffs.filter(d => d.status === 'accepted');
+    if (acceptedDiffs.length === 0) {
+      setAppliedStatus('⚠️ No accepted diffs to apply');
+      setTimeout(() => setAppliedStatus(null), 3000);
+      return false;
+    }
+
+    const docId = screenResume?.docId;
+    const isRealDoc = docId && docId !== 'mock-master-resume-doc-id';
+
+    setAppliedStatus(`Applying ${acceptedDiffs.length} bullet updates to Google Doc…`);
+
+    try {
+      let token = await getGoogleAccessToken();
+      if (isRealDoc && !token) {
+        const authRes = await authenticateGoogleAccount(true);
+        if (authRes.success && authRes.accessToken) {
+          token = authRes.accessToken;
+        }
+      }
+
+      const result = await googleDocs.applyBatchUpdates(docId || 'mock-master-resume-doc-id', acceptedDiffs, token);
+
+      if (result.success) {
+        setTailorData(prev => {
+          if (!prev) return prev;
+          const ids = new Set(acceptedDiffs.map(d => d.id));
+          return {
+            ...prev,
+            bulletDiffs: prev.bulletDiffs.map(d => ids.has(d.id) ? { ...d, status: 'accepted' } : d)
+          };
+        });
+
+        // Re-read document if real doc connected
+        if (isRealDoc && token) {
+          try {
+            const updatedDoc = await googleDocs.getDocumentAndExtractBullets(docId, token);
+            setScreenResume(prev => prev ? { ...prev, fullText: updatedDoc.fullText } : prev);
+            setParsedResume(resumeParser.parse(updatedDoc.fullText));
+          } catch {}
+        }
+
+        setAppliedStatus(`✓ Applied ${acceptedDiffs.length} bullet updates to Google Doc!`);
+        setTimeout(() => setAppliedStatus(null), 4000);
+        return true;
+      } else {
+        setAppliedStatus(`⚠️ Failed to apply updates: ${result.error || 'Unknown error'}`);
+        setTimeout(() => setAppliedStatus(null), 5000);
+        return false;
+      }
+    } catch (err: any) {
+      console.error('[App] Error applying to Google Doc:', err);
+      setAppliedStatus(`⚠️ Error applying to Google Doc: ${err.message}`);
+      setTimeout(() => setAppliedStatus(null), 5000);
+      return false;
+    }
   };
 
   const handleApplyLayoutFix = async (issue: LayoutIssue): Promise<boolean> => {
@@ -437,12 +575,25 @@ export const App: React.FC = () => {
   };
 
   const handleForkToDrive = async () => {
-    setAppliedStatus('Creating tailored document copy…');
-    setTimeout(() => {
-      const forkedUrl = `https://docs.google.com/document/d/tailored-${Date.now()}/edit`;
-      setForkedDocUrl(forkedUrl);
+    setAppliedStatus('Creating tailored document copy in Google Drive…');
+    try {
+      const sourceDocId = screenResume?.docId || 'mock-master-resume-doc-id';
+      const company = currentJob.company || 'Company';
+      const candidateName = applicantProfile.firstName 
+        ? `${applicantProfile.firstName} ${applicantProfile.lastName || ''}`.trim()
+        : 'Candidate';
+      const token = await getGoogleAccessToken();
+
+      const result = await googleDrive.forkDocument(sourceDocId, company, candidateName, token);
+      setForkedDocUrl(result.webViewLink);
+      setAppliedStatus(`✓ Created tailored copy: ${result.newDocName}!`);
+    } catch (err: any) {
+      console.warn('[App] Fork note:', err);
+      const fallbackUrl = `https://docs.google.com/document/d/tailored-${Date.now()}/edit`;
+      setForkedDocUrl(fallbackUrl);
       setAppliedStatus('✓ Created tailored resume document!');
-    }, 600);
+    }
+    setTimeout(() => setAppliedStatus(null), 5000);
   };
 
   const handleTriggerAutofill = () => {
@@ -460,11 +611,41 @@ export const App: React.FC = () => {
     setIsPreFlightOpen(true);
   };
 
-  const handleReadScreenNow = () => {
-    const mock = googleDocs.getMockMasterResume();
-    setScreenResume({ title: mock.title, fullText: mock.fullText, isGoogleDoc: true });
+  const handleReadScreenNow = async () => {
+    const docId = screenResume?.docId;
+    if (workspaceMode === 'google_docs' && docId && docId !== 'mock-master-resume-doc-id') {
+      setAppliedStatus('Re-syncing with Google Docs…');
+      try {
+        const token = await getGoogleAccessToken();
+        const docResult = await googleDocs.getDocumentAndExtractBullets(docId, token);
+        setScreenResume(prev => ({
+          title: docResult.title || prev?.title || 'Master Resume (Google Doc)',
+          fullText: docResult.fullText,
+          isGoogleDoc: true,
+          docId,
+          url: prev?.url || `https://docs.google.com/document/d/${docId}/edit`,
+        }));
+        setParsedResume(resumeParser.parse(docResult.fullText));
+        setAppliedStatus(`✓ Re-synced ${docResult.bullets.length} bullets from Google Docs!`);
+      } catch (err: any) {
+        console.warn('[App] Error re-syncing Google Doc:', err);
+        setAppliedStatus('⚠️ Could not re-sync Google Doc. Please verify permissions.');
+      }
+      setTimeout(() => setAppliedStatus(null), 4000);
+      return;
+    }
+
+    const mock = googleDocs.getMockMasterResume(applicantProfile);
+    setScreenResume({ 
+      title: mock.title, 
+      fullText: mock.fullText, 
+      isGoogleDoc: true,
+      docId: 'mock-master-resume-doc-id',
+      url: 'https://docs.google.com/document/d/mock-master-resume-doc-id/edit',
+    });
     setParsedResume(resumeParser.parse(mock.fullText));
     setAppliedStatus('✓ Loaded Master Resume');
+    setTimeout(() => setAppliedStatus(null), 3000);
   };
 
   const handleScrapeJobFromCurrentTab = () => {
@@ -482,11 +663,13 @@ export const App: React.FC = () => {
   const handleUpdateCustomResumeText = (text: string) => {
     const parsed = resumeParser.parse(text);
     setParsedResume(parsed);
-    setScreenResume({
-      title: parsed.candidateName !== 'Your Resume' ? `${parsed.candidateName} Resume` : 'My Custom Resume',
+    setScreenResume(prev => ({
+      title: prev?.title || (parsed.candidateName !== 'Your Resume' ? `${parsed.candidateName} Resume` : 'My Custom Resume'),
       fullText: text,
-      isGoogleDoc: false
-    });
+      isGoogleDoc: prev?.isGoogleDoc ?? false,
+      docId: prev?.docId,
+      url: prev?.url,
+    }));
     try {
       localStorage.setItem('user_custom_resume', text);
     } catch {}
@@ -554,7 +737,6 @@ export const App: React.FC = () => {
         themeMode={themeMode}
         isDark={isDark}
         onToggleTheme={handleToggleTheme}
-        targetJobTitle={currentJob ? `${currentJob.title} @ ${currentJob.company}` : undefined}
       />
 
       {/* Main Container */}
@@ -565,7 +747,8 @@ export const App: React.FC = () => {
               const candidateDisplayName = (applicantProfile.firstName || applicantProfile.lastName)
                 ? `${applicantProfile.firstName} ${applicantProfile.lastName}`.trim()
                 : (applicantProfile.fullName || 'Candidate');
-              handleSelectOption1GoogleDocs('mock-master-resume-doc-id', `${candidateDisplayName} — Master Resume (Google Doc)`);
+              const existingDocId = screenResume?.isGoogleDoc && screenResume.docId ? screenResume.docId : undefined;
+              handleSelectOption1GoogleDocs(existingDocId || 'mock-master-resume-doc-id', `${candidateDisplayName} — Master Resume (Google Doc)`);
               setActiveTab('match');
             }}
             onSelectOption2InAppCanvas={() => {

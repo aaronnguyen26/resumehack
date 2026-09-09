@@ -98,6 +98,7 @@ export async function openGoogleDocPicker(options: GooglePickerOptions): Promise
       .setTitle('Select Master Resume Google Doc')
       .setOAuthToken(accessToken)
       .addView(docsView)
+      .setAppId(options.appId || '412130143258')
       .setCallback((data: any) => {
         if (data.action === window.google.picker.Action.PICKED) {
           const doc = data.docs?.[0];
@@ -115,9 +116,6 @@ export async function openGoogleDocPicker(options: GooglePickerOptions): Promise
         }
       });
 
-    if (options.appId) {
-      builder.setAppId(options.appId);
-    }
     if (options.developerKey) {
       builder.setDeveloperKey(options.developerKey);
     }

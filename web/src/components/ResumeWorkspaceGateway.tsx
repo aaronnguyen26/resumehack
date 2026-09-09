@@ -19,7 +19,7 @@ import { parseUploadedResumeFile, buildStarterResumeText } from '../services/fil
 import { ApplicantProfile } from '../types/index.js';
 
 export interface ResumeWorkspaceGatewayProps {
-  onSelectOption1GoogleDocs: (docId?: string, docTitle?: string) => void;
+  onSelectOption1GoogleDocs: (docId?: string, docTitle?: string, docUrl?: string) => void;
   onSelectOption2InAppCanvas: (resumeText: string, title?: string) => void;
   onOpenGooglePicker?: () => void;
   applicantProfile?: ApplicantProfile;
@@ -85,7 +85,8 @@ export const ResumeWorkspaceGateway: React.FC<ResumeWorkspaceGatewayProps> = ({
     // Extract Google Doc ID from URL or raw ID
     const match = docUrlInput.match(/\/document\/d\/([a-zA-Z0-9-_]+)/);
     const docId = match ? match[1] : docUrlInput.trim();
-    onSelectOption1GoogleDocs(docId, 'Linked Google Doc');
+    const docUrl = docUrlInput.trim().startsWith('http') ? docUrlInput.trim() : `https://docs.google.com/document/d/${docId}/edit`;
+    onSelectOption1GoogleDocs(docId, 'Linked Google Doc', docUrl);
   };
 
   const handleUseStarterTemplate = () => {

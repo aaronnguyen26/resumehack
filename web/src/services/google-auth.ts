@@ -1,4 +1,4 @@
-import { setGoogleAccessToken, saveStoredSettings, getStoredSettings } from './storage.js';
+import { setGoogleAccessToken, getGoogleAccessToken, saveStoredSettings, getStoredSettings } from './storage.js';
 
 export const GOOGLE_WEB_CLIENT_ID = '412130143258-9cd7652sbbfn8ldqgj9lh74clpvccqup.apps.googleusercontent.com';
 export const GOOGLE_EXTENSION_CLIENT_ID = '412130143258-4b1t8drhkii7hqagt7sdvd8n3qmchl8i.apps.googleusercontent.com';
@@ -339,20 +339,248 @@ export async function launchGoogleWebAuthFlow(interactive: boolean = true): Prom
   }
 }
 
+let gisLoadingPromise: Promise<void> | null = null;
+
+export async function loadGoogleIdentityServices(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  if (window.google?.accounts?.oauth2) return;
+
+  if (gisLoadingPromise) return gisLoadingPromise;
+
+  gisLoadingPromise = new Promise((resolve, reject) => {
+    const existingScript = document.getElementById('google-identity-services-script');
+    if (!existingScript) {
+      const script = document.createElement('script');
+      script.id = 'google-identity-services-script';
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        if (window.google?.accounts?.oauth2) {
+          resolve();
+        } else {
+          const interval = setInterval(() => {
+            if (window.google?.accounts?.oauth2) {
+              clearInterval(interval);
+              resolve();
+            }
+          }, 50);
+          setTimeout(() => {
+            clearInterval(interval);
+            resolve();
+          }, 1500);
+        }
+      };
+      script.onerror = () => reject(new Error('Failed to load Google Identity Services'));
+      document.head.appendChild(script);
+    } else {
+      resolve();
+    }
+  });
+
+  return gisLoadingPromise;
+}
+
+export async function launchWebOAuthPopup(options?: {
+  clientId?: string;
+  scopes?: string[];
+}): Promise<AuthResult> {
+  if (typeof window === 'undefined') {
+    return { success: false, error: 'Window is not defined' };
+  }
+
+  const clientId = options?.clientId || GOOGLE_WEB_CLIENT_ID;
+  const scopes = options?.scopes || GOOGLE_OAUTH_SCOPES;
+  const redirectUri = window.location.origin;
+
+  const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  authUrl.searchParams.set('client_id', clientId.trim());
+  authUrl.searchParams.set('redirect_uri', redirectUri);
+  authUrl.searchParams.set('response_type', 'token');
+  authUrl.searchParams.set('scope', scopes.join(' '));
+  authUrl.searchParams.set('prompt', 'consent');
+  authUrl.searchParams.set('include_granted_scopes', 'true');
+
+  const width = 500;
+  const height = 650;
+  const left = window.screenX + (window.outerWidth - width) / 2;
+  const top = window.screenY + (window.outerHeight - height) / 2;
+
+  const popup = window.open(
+    authUrl.toString(),
+    'google_oauth_popup',
+    `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
+  );
+
+  if (!popup) {
+    return { success: false, error: 'Popup blocked by browser. Please allow popups for Google sign-in.' };
+  }
+
+  return new Promise<AuthResult>((resolve) => {
+    let resolved = false;
+
+    const cleanup = () => {
+      window.removeEventListener('message', handleMessage);
+      clearInterval(checkClosed);
+    };
+
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'GOOGLE_AUTH_TOKEN' && event.data.accessToken) {
+        resolved = true;
+        cleanup();
+        popup.close();
+        const token = event.data.accessToken;
+        const expiresIn = Number(event.data.expiresIn) || 3500;
+        await setGoogleAccessToken(token, expiresIn);
+        const userInfo = await fetchGoogleUserInfo(token);
+        if (userInfo?.email) {
+          await saveStoredSettings({ googleUserEmail: userInfo.email });
+        }
+        resolve({
+          success: true,
+          accessToken: token,
+          email: userInfo?.email,
+          method: 'launchWebAuthFlow',
+        });
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    const checkClosed = setInterval(async () => {
+      try {
+        if (popup.closed) {
+          clearInterval(checkClosed);
+          if (!resolved) {
+            cleanup();
+            const token = await getGoogleAccessToken();
+            if (token) {
+              const userInfo = await fetchGoogleUserInfo(token);
+              resolve({
+                success: true,
+                accessToken: token,
+                email: userInfo?.email,
+                method: 'launchWebAuthFlow',
+              });
+            } else {
+              resolve({
+                success: false,
+                error: 'Google authorization window was closed without completing sign-in.',
+              });
+            }
+          }
+          return;
+        }
+
+        if (popup.location && popup.location.origin === window.location.origin) {
+          const hash = popup.location.hash;
+          if (hash) {
+            const params = new URLSearchParams(hash.replace(/^#/, ''));
+            const token = params.get('access_token');
+            const expiresIn = Number(params.get('expires_in')) || 3500;
+            if (token) {
+              resolved = true;
+              cleanup();
+              popup.close();
+              await setGoogleAccessToken(token, expiresIn);
+              const userInfo = await fetchGoogleUserInfo(token);
+              if (userInfo?.email) {
+                await saveStoredSettings({ googleUserEmail: userInfo.email });
+              }
+              resolve({
+                success: true,
+                accessToken: token,
+                email: userInfo?.email,
+                method: 'launchWebAuthFlow',
+              });
+            }
+          }
+        }
+      } catch {
+        // Cross-origin access while on Google login page
+      }
+    }, 500);
+  });
+}
+
+export async function requestGoogleWebToken(options?: {
+  clientId?: string;
+  scopes?: string[];
+  prompt?: string;
+}): Promise<AuthResult> {
+  const clientId = options?.clientId || GOOGLE_WEB_CLIENT_ID;
+  const scopes = options?.scopes || GOOGLE_OAUTH_SCOPES;
+
+  try {
+    await loadGoogleIdentityServices();
+
+    if (!window.google?.accounts?.oauth2?.initTokenClient) {
+      return await launchWebOAuthPopup({ clientId, scopes });
+    }
+
+    return new Promise<AuthResult>((resolve) => {
+      try {
+        const tokenClient = window.google.accounts.oauth2.initTokenClient({
+          client_id: clientId.trim(),
+          scope: scopes.join(' '),
+          prompt: options?.prompt || 'consent',
+          callback: async (tokenResponse: any) => {
+            if (tokenResponse.error) {
+              resolve({
+                success: false,
+                error: `Google OAuth Error: ${tokenResponse.error_description || tokenResponse.error}`,
+              });
+              return;
+            }
+
+            const accessToken = tokenResponse.access_token;
+            const expiresIn = Number(tokenResponse.expires_in) || 3500;
+            await setGoogleAccessToken(accessToken, expiresIn);
+
+            const userInfo = await fetchGoogleUserInfo(accessToken);
+            if (userInfo?.email) {
+              await saveStoredSettings({ googleUserEmail: userInfo.email });
+            }
+
+            resolve({
+              success: true,
+              accessToken,
+              email: userInfo?.email,
+              method: 'launchWebAuthFlow',
+            });
+          },
+          error_callback: async (err: any) => {
+            console.warn('[GoogleAuth] GIS error callback, falling back to popup:', err);
+            const popupResult = await launchWebOAuthPopup({ clientId, scopes });
+            resolve(popupResult);
+          },
+        });
+
+        tokenClient.requestAccessToken();
+      } catch (initErr) {
+        console.warn('[GoogleAuth] initTokenClient exception, falling back to popup:', initErr);
+        launchWebOAuthPopup({ clientId, scopes }).then(resolve);
+      }
+    });
+  } catch {
+    return await launchWebOAuthPopup({ clientId, scopes });
+  }
+}
+
 /**
- * Universal Hybrid Connect: Tries native getAuthToken first, automatically
- * falls back to launchWebAuthFlow() with PKCE if getAuthToken is unsupported (e.g. in Comet/Brave).
+ * Universal Hybrid Connect: Tries native getAuthToken first (extension),
+ * falls back to launchWebAuthFlow (extension), and in standard web browsers
+ * uses Google Identity Services (GIS) / web popup authentication.
  */
 export async function authenticateGoogleAccount(interactive: boolean = true): Promise<AuthResult> {
-  // Check if getAuthToken is available and works
+  // 1. Extension environment: native getAuthToken
   if (typeof chrome !== 'undefined' && chrome.identity?.getAuthToken) {
     try {
       const nativeResult = await new Promise<AuthResult>((resolve) => {
         chrome.identity.getAuthToken({ interactive }, async (tok) => {
           if (chrome.runtime?.lastError || !tok) {
-            const rawMsg = chrome.runtime?.lastError?.message || 'Native OAuth failed';
-            console.warn('[GoogleAuth] Native getAuthToken note (falling back to launchWebAuthFlow):', rawMsg);
-            resolve({ success: false, error: rawMsg, method: 'getAuthToken' });
+            resolve({ success: false, error: chrome.runtime?.lastError?.message || 'Native OAuth failed', method: 'getAuthToken' });
           } else {
             const tokenStr = tok as string;
             await setGoogleAccessToken(tokenStr, 3300);
@@ -378,7 +606,15 @@ export async function authenticateGoogleAccount(interactive: boolean = true): Pr
     }
   }
 
-  // Universal Fallback: launchWebAuthFlow() with PKCE (Comet, Edge, Brave, Vivaldi, etc.)
-  console.log('[GoogleAuth] Initiating launchWebAuthFlow with PKCE fallback using Web client ID...');
-  return await launchGoogleWebAuthFlow(interactive);
+  // 2. Extension environment: launchWebAuthFlow
+  if (typeof chrome !== 'undefined' && typeof chrome.identity?.launchWebAuthFlow === 'function') {
+    return await launchGoogleWebAuthFlow(interactive);
+  }
+
+  // 3. Web Application environment: Google Identity Services (GIS) / Web OAuth Popup
+  return await requestGoogleWebToken({
+    clientId: GOOGLE_WEB_CLIENT_ID,
+    scopes: GOOGLE_OAUTH_SCOPES,
+  });
 }
+

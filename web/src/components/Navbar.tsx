@@ -11,7 +11,6 @@ interface NavbarProps {
   themeMode?: ThemeMode;
   isDark?: boolean;
   onToggleTheme?: () => void;
-  targetJobTitle?: string;
   applicantProfile?: ApplicantProfile;
 }
 
@@ -23,7 +22,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   themeMode = 'system',
   isDark = false,
   onToggleTheme,
-  targetJobTitle = 'SWE Intern @ Stripe',
   applicantProfile,
 }) => {
   // Compute user profile initials and display labels dynamically
@@ -39,7 +37,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="sticky top-0 z-50 h-16 bg-white/95 dark:bg-[#09090B]/95 backdrop-blur-md border-b border-zinc-200 dark:border-[#27272A] px-4 sm:px-8 lg:px-12 flex items-center justify-between w-full transition-colors duration-200 select-none">
-      {/* Left: Brand + Breadcrumb Workspace Target */}
+      {/* Left: Brand Workspace Home */}
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('home')} title="Return to Home">
           <div className="w-8 h-8 rounded-lg bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 flex items-center justify-center font-bold text-xs font-headline tracking-tighter shadow-xs">
@@ -53,17 +51,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               Intelligence
             </span>
           </div>
-        </div>
-
-        <div className="h-5 w-px bg-zinc-200 dark:bg-[#27272A] hidden sm:block"></div>
-
-        {/* Target Context Breadcrumb */}
-        <div className="hidden lg:flex items-center gap-2 text-xs font-mono">
-          <span className="text-zinc-500 dark:text-zinc-400">Target:</span>
-          <span className="px-3 py-1 rounded-full bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-zinc-800 dark:text-zinc-200 font-normal flex items-center gap-1.5 text-[11px]">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="truncate max-w-[260px] font-medium">{targetJobTitle}</span>
-          </span>
         </div>
       </div>
 

@@ -44,7 +44,7 @@ interface MatchTailorTabProps {
   onTriggerAutofill: () => void;
   onReadScreenNow: () => void;
   onScrapeJobFromCurrentTab: () => void;
-  screenResume: { title: string; fullText: string; isGoogleDoc?: boolean } | null;
+  screenResume: { title: string; fullText: string; isGoogleDoc?: boolean; url?: string; docId?: string } | null;
   parsedResume: ParsedResume | null;
   onUpdateCustomResumeText: (text: string) => void;
   onShowDiffsOnGoogleDoc?: () => void;
@@ -55,7 +55,7 @@ interface MatchTailorTabProps {
   workspaceMode?: WorkspaceMode | null;
   onSetWorkspaceMode?: (mode: WorkspaceMode) => void;
   onOpenGooglePicker?: () => void;
-  onSelectGoogleDoc?: (docId: string, docTitle?: string) => void;
+  onSelectGoogleDoc?: (docId: string, docTitle?: string, docUrl?: string) => void;
   applicantProfile?: ApplicantProfile;
   showWorkspaceGateway?: boolean;
   onCloseGateway?: () => void;
@@ -216,18 +216,33 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
             </div>
 
             {mode === 'job' ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700">
-                  {currentJob.source || 'Active Role'}
-                </span>
-                <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
-                  {currentJob.title}
-                </span>
-                <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                  at <strong className="text-zinc-700 dark:text-zinc-300 font-semibold">{currentJob.company}</strong>
-                  {currentJob.location ? ` • ${currentJob.location}` : ''}
-                </span>
-              </div>
+              currentJob.title ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700">
+                    {currentJob.source || 'Active Role'}
+                  </span>
+                  <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+                    {currentJob.title}
+                  </span>
+                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                    at <strong className="text-zinc-700 dark:text-zinc-300 font-semibold">{currentJob.company}</strong>
+                    {currentJob.location ? ` • ${currentJob.location}` : ''}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  <Target className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>No target role selected yet.</span>
+                  <button
+                    type="button"
+                    onClick={onScrapeJobFromCurrentTab}
+                    className="font-bold text-zinc-800 dark:text-zinc-200 hover:underline cursor-pointer"
+                  >
+                    Paste a Job Posting
+                  </button>
+                  <span>or pick from Discovery.</span>
+                </div>
+              )
             ) : (
               <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
                 <span className="text-[10px] font-mono uppercase font-bold text-zinc-400 mr-1 shrink-0">Benchmark:</span>
@@ -418,7 +433,28 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                    {screenResume?.docId && screenResume.docId !== 'mock-master-resume-doc-id' && (
+                      <a
+                        href={`https://docs.google.com/document/d/${screenResume.docId}/edit`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-xs font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 transition-colors"
+                        title="Open this resume in Google Docs in a new tab"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-zinc-500" />
+                        <span>Open Doc ↗</span>
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={onReadScreenNow}
+                      className="px-2.5 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-xs font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Fetch latest document text from Google Docs"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-zinc-500" />
+                      <span>Re-sync</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -474,6 +510,27 @@ export const MatchTailorTab: React.FC<MatchTailorTabProps> = ({
                   )}
                 </div>
               </div>
+
+              {/* Live In-App Document Canvas Preview for Option 1: Google Docs Sync */}
+              {screenResume && (
+                <InAppDocumentCanvas
+                  parsedResume={parsedResume}
+                  rawText={screenResume.fullText || customText}
+                  diffs={diffs}
+                  onUpdateResumeText={(newText) => {
+                    setCustomText(newText);
+                    onUpdateCustomResumeText(newText);
+                  }}
+                  onApplyBulletDiff={handleApplyBulletDiffInCanvas}
+                  onApplyAllDiffs={handleApplyAllDiffsInCanvas}
+                  onReopenGateway={() => setShowGateway(true)}
+                  applicantProfile={applicantProfile}
+                  isGoogleDocMode={true}
+                  docUrl={screenResume.url || (screenResume.docId && screenResume.docId !== 'mock-master-resume-doc-id' ? `https://docs.google.com/document/d/${screenResume.docId}/edit` : undefined)}
+                  onSyncGoogleDoc={onReadScreenNow}
+                  onPushToGoogleDoc={appliedCount > 0 && onApplyToGoogleDoc ? () => onApplyToGoogleDoc(diffs.filter(d => d.status === 'accepted')) : undefined}
+                />
+              )}
 
               {/* Empty Google Doc Prompt if nothing loaded */}
               {!screenResume && (
