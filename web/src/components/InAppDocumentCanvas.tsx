@@ -34,6 +34,7 @@ import {
   PanelRightClose, 
   PanelRightOpen,
   CheckCircle2,
+  Cloud,
 } from 'lucide-react';
 import { ParsedResume } from '../services/resume-parser.js';
 import { parseUploadedResumeFile } from '../services/file-parser.js';
@@ -69,6 +70,13 @@ export interface InAppDocumentCanvasProps {
   isTailorLoading?: boolean;
   targetRole?: string;
   atsScore?: number;
+  isCloudSynced?: boolean;
+  isCloudSaving?: boolean;
+  onSaveToCloud?: () => Promise<void>;
+  onOpenCloudManager?: () => void;
+  cloudResumesCount?: number;
+  currentUser?: { id: string; email?: string } | null;
+  onOpenAuthModal?: () => void;
 }
 
 type FontFamily = 'sans' | 'serif' | 'mono';
@@ -100,6 +108,13 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   isTailorLoading = false,
   targetRole = 'Senior Software Engineer',
   atsScore = 92,
+  isCloudSynced = false,
+  isCloudSaving = false,
+  onSaveToCloud,
+  onOpenCloudManager,
+  cloudResumesCount = 0,
+  currentUser,
+  onOpenAuthModal,
 }) => {
   // ── Document ContentEditable Reference & Sync ────────────────────────────
   const editorRef = useRef<HTMLDivElement>(null);
@@ -563,10 +578,62 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
               />
             </div>
           </div>
+
+          {/* Supabase Cloud Persistence Status */}
+          {currentUser ? (
+            <button
+              type="button"
+              onClick={onOpenCloudManager}
+              className="flex items-center gap-1.5 px-3 py-1 bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] hover:border-zinc-300 dark:hover:border-zinc-700 rounded-lg text-xs font-mono cursor-pointer transition-colors shadow-2xs"
+              title="Supabase Cloud Sync Active. Click to manage cloud versions."
+            >
+              <Cloud className="w-3.5 h-3.5 text-emerald-500" />
+              <span className="text-[11px] font-semibold text-zinc-800 dark:text-zinc-200">
+                {isCloudSaving ? 'Saving…' : 'Cloud Synced'}
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenAuthModal}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-zinc-100 dark:bg-[#18181B] border border-dashed border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-600 rounded-lg text-xs font-mono cursor-pointer transition-colors shadow-2xs"
+              title="Sign in to save this resume persistently to Supabase Cloud"
+            >
+              <Cloud className="w-3.5 h-3.5 text-zinc-400" />
+              <span className="text-[11px] text-zinc-500">Sync to Cloud</span>
+            </button>
+          )}
         </div>
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Supabase Cloud Resumes Manager Button */}
+          {currentUser ? (
+            <button
+              type="button"
+              onClick={onOpenCloudManager}
+              className="px-2.5 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              title="Open Cloud Resume Manager"
+            >
+              <Cloud className="w-3.5 h-3.5 text-emerald-500" />
+              <span className="hidden sm:inline">Cloud Resumes</span>
+              {cloudResumesCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200">
+                  {cloudResumesCount}
+                </span>
+              )}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenAuthModal}
+              className="px-2.5 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              title="Sign in to save this resume to the cloud"
+            >
+              <Cloud className="w-3.5 h-3.5 text-zinc-400" />
+              <span className="hidden sm:inline">Save to Cloud</span>
+            </button>
+          )}
           {docUrl && (
             <a
               href={docUrl}

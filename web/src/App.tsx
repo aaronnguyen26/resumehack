@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Navbar, NavTab } from './components/Navbar.js';
 import { HomePage } from './components/HomePage.js';
 import { InAppDocumentCanvas } from './components/InAppDocumentCanvas.js';
@@ -46,6 +46,22 @@ import {
 } from './types/index.js';
 import { extractGoogleDocId } from './services/precision-extractor.js';
 import { AutoSubmitReport, AutoSubmitEngine } from './services/auto-submit-engine.js';
+import { AuthModal } from './components/AuthModal.js';
+import { CloudResumeManagerModal } from './components/CloudResumeManagerModal.js';
+import { 
+  getCurrentUser, 
+  signOut as supabaseSignOut, 
+  onAuthStateChange, 
+  fetchUserProfile, 
+  upsertUserProfile, 
+  fetchUserResumes, 
+  saveResume, 
+  deleteResume, 
+  setDefaultResume, 
+  fetchUserApplications, 
+  CloudResume,
+  AuthUser
+} from './services/supabase-db.js';
 
 const atsScorer = new AtsScorerService();
 const llmTailor = new LlmTailorService();
@@ -103,6 +119,86 @@ export const App: React.FC = () => {
 
   // Onboarding state — strictly required for all users until profile setup is complete
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+
+  // Supabase Auth & Cloud Persistence State
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isCloudManagerOpen, setIsCloudManagerOpen] = useState<boolean>(false);
+  const [userCloudResumes, setUserCloudResumes] = useState<CloudResume[]>([]);
+  const [activeCloudResumeId, setActiveCloudResumeId] = useState<string | null>(null);
+  const [isCloudSaving, setIsCloudSaving] = useState<boolean>(false);
+
+  const syncUserDataFromCloud = async (userId: string) => {
+    try {
+      // 1. Fetch Cloud Profile and merge with local
+      const cloudProfile = await fetchUserProfile(userId);
+      if (cloudProfile && (cloudProfile.firstName || cloudProfile.lastName || cloudProfile.email)) {
+        setApplicantProfile(prev => {
+          const merged = { ...prev, ...cloudProfile };
+          saveStoredApplicantProfile(merged).catch(() => {});
+          return merged;
+        });
+      }
+
+      // 2. Fetch User Cloud Resumes
+      const resumes = await fetchUserResumes(userId);
+      setUserCloudResumes(resumes);
+      if (resumes.length > 0) {
+        const defaultResume = resumes.find(r => r.is_default) || resumes[0];
+        setActiveCloudResumeId(defaultResume.id);
+        const resumeText = defaultResume.content_html || defaultResume.raw_text;
+        if (resumeText) {
+          setScreenResume(prev => (prev && prev.fullText.trim().length > 100 ? prev : {
+            title: defaultResume.title,
+            fullText: resumeText,
+            isGoogleDoc: false,
+          }));
+          const parsed = resumeParser.parse(resumeText);
+          setParsedResume(prev => (prev && prev.bullets.length > 0 ? prev : parsed));
+        }
+      }
+
+      // 3. Fetch User Cloud Applications
+      const cloudApps = await fetchUserApplications(userId);
+      if (cloudApps && cloudApps.length > 0) {
+        setApplications(cloudApps);
+        await saveStoredApplications(cloudApps);
+      }
+    } catch (err) {
+      console.warn('[Supabase] syncUserDataFromCloud note:', err);
+    }
+  };
+
+  // Listen to Supabase auth session
+  useEffect(() => {
+    let isMounted = true;
+
+    getCurrentUser().then(async (user) => {
+      if (!isMounted) return;
+      if (user) {
+        setCurrentUser(user);
+        await syncUserDataFromCloud(user.id);
+      }
+    }).catch(err => {
+      console.warn('[Supabase] Init session check:', err);
+    });
+
+    const { data: { subscription } } = onAuthStateChange(async (user) => {
+      if (!isMounted) return;
+      setCurrentUser(user);
+      if (user) {
+        await syncUserDataFromCloud(user.id);
+      } else {
+        setUserCloudResumes([]);
+        setActiveCloudResumeId(null);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription?.unsubscribe();
+    };
+  }, []);
 
   // Workspace Mode (Option 1: Google Docs Sync vs Option 2: In-App Document Canvas)
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('in_app_canvas');
@@ -700,6 +796,8 @@ export const App: React.FC = () => {
     }
   };
 
+  const cloudAutoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleUpdateCustomResumeText = (text: string) => {
     const parsed = resumeParser.parse(text);
     setParsedResume(parsed);
@@ -713,6 +811,31 @@ export const App: React.FC = () => {
     try {
       localStorage.setItem('user_custom_resume', text);
     } catch {}
+
+    // Debounced autosave to Supabase cloud if user is authenticated
+    if (currentUser && activeCloudResumeId) {
+      if (cloudAutoSaveTimerRef.current) {
+        clearTimeout(cloudAutoSaveTimerRef.current);
+      }
+      cloudAutoSaveTimerRef.current = setTimeout(async () => {
+        try {
+          setIsCloudSaving(true);
+          await saveResume(currentUser.id, {
+            id: activeCloudResumeId,
+            title: screenResume?.title || 'My Resume',
+            raw_text: text,
+            content_html: text,
+            target_role: currentJob.title || applicantProfile.targetRole,
+            ats_score: currentAtsScore,
+            parsed_resume: parsed,
+          });
+        } catch (e) {
+          console.warn('[Supabase] Auto-save warning:', e);
+        } finally {
+          setIsCloudSaving(false);
+        }
+      }, 2500);
+    }
   };
 
   const [isSyncingJobs, setIsSyncingJobs] = useState(false);
@@ -765,6 +888,151 @@ export const App: React.FC = () => {
 
   const currentAtsScore = tailorData?.projectedNewScore || tailorData?.atsReport?.overallScore;
 
+  const handleAuthSuccess = async (user: AuthUser) => {
+    setCurrentUser(user);
+    setIsAuthModalOpen(false);
+    setAppliedStatus(`✓ Signed in to Supabase Cloud (${user.email})`);
+    await syncUserDataFromCloud(user.id);
+    setTimeout(() => setAppliedStatus(null), 3500);
+  };
+
+  const handleSaveCurrentResumeToCloud = async (customTitle?: string) => {
+    if (!currentUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    const currentText = screenResume?.fullText || parsedResume?.rawText || '';
+    if (!currentText.trim()) {
+      setAppliedStatus('⚠️ Resume content is empty. Add content first.');
+      setTimeout(() => setAppliedStatus(null), 3000);
+      return;
+    }
+
+    setIsCloudSaving(true);
+    try {
+      const candidateDisplayName = (applicantProfile.firstName || applicantProfile.lastName)
+        ? `${applicantProfile.firstName} ${applicantProfile.lastName}`.trim()
+        : (applicantProfile.fullName || 'Candidate');
+      const resumeTitle = customTitle || screenResume?.title || `${candidateDisplayName} — Resume`;
+
+      const result = await saveResume(currentUser.id, {
+        id: activeCloudResumeId || undefined,
+        title: resumeTitle,
+        raw_text: currentText,
+        content_html: currentText,
+        target_role: currentJob.title || applicantProfile.targetRole || 'Software Engineer',
+        ats_score: currentAtsScore,
+        parsed_resume: parsedResume,
+        is_default: userCloudResumes.length === 0,
+      });
+
+      if (result.data) {
+        setActiveCloudResumeId(result.data.id);
+        const updatedResumes = await fetchUserResumes(currentUser.id);
+        setUserCloudResumes(updatedResumes);
+        setAppliedStatus(`✓ Resume saved to Supabase Cloud ("${result.data.title}")`);
+      } else {
+        throw new Error(result.error || 'Failed to save resume');
+      }
+    } catch (err: any) {
+      console.error('[Supabase] Save resume error:', err);
+      setAppliedStatus(`⚠️ Cloud save error: ${err.message || 'Check connection'}`);
+    } finally {
+      setIsCloudSaving(false);
+      setTimeout(() => setAppliedStatus(null), 3500);
+    }
+  };
+
+  const handleSelectCloudResume = (resume: CloudResume) => {
+    setActiveCloudResumeId(resume.id);
+    const resumeText = resume.content_html || resume.raw_text;
+    setScreenResume({
+      title: resume.title,
+      fullText: resumeText,
+      isGoogleDoc: false,
+    });
+    setParsedResume(resumeParser.parse(resumeText));
+    try {
+      localStorage.setItem('user_custom_resume', resumeText);
+    } catch {}
+    setIsCloudManagerOpen(false);
+    setActiveTab('canvas');
+    setAppliedStatus(`✓ Loaded Cloud Resume: "${resume.title}"`);
+    setTimeout(() => setAppliedStatus(null), 3500);
+  };
+
+  const handleDeleteCloudResume = async (resumeId: string) => {
+    if (!currentUser) return;
+    try {
+      await deleteResume(resumeId);
+      const updated = userCloudResumes.filter(r => r.id !== resumeId);
+      setUserCloudResumes(updated);
+      if (activeCloudResumeId === resumeId) {
+        setActiveCloudResumeId(updated.length > 0 ? updated[0].id : null);
+      }
+    } catch (err: any) {
+      console.error('[Supabase] Delete resume error:', err);
+    }
+  };
+
+  const handleSetDefaultCloudResume = async (resumeId: string) => {
+    if (!currentUser) return;
+    try {
+      await setDefaultResume(currentUser.id, resumeId);
+      const updated = userCloudResumes.map(r => ({
+        ...r,
+        is_default: r.id === resumeId,
+      }));
+      setUserCloudResumes(updated);
+    } catch (err: any) {
+      console.error('[Supabase] Set default resume error:', err);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await supabaseSignOut();
+      setCurrentUser(null);
+      setUserCloudResumes([]);
+      setActiveCloudResumeId(null);
+      setAppliedStatus('✓ Signed out of Supabase Cloud');
+      setTimeout(() => setAppliedStatus(null), 3000);
+    } catch (err) {
+      console.error('[Supabase] Sign out error:', err);
+    }
+  };
+
+  const handleUpdateApplicantProfile = async (updated: ApplicantProfile) => {
+    setApplicantProfile(updated);
+    try {
+      await saveStoredApplicantProfile(updated);
+      if (currentUser) {
+        await upsertUserProfile(currentUser.id, {
+          firstName: updated.firstName,
+          lastName: updated.lastName,
+          email: updated.email || currentUser.email,
+          phone: updated.phone,
+          location: updated.location,
+          targetRole: updated.targetRole,
+          skills: updated.skills,
+          school: updated.school,
+          degree: updated.degree,
+          major: updated.major,
+          gpa: updated.gpa,
+          gradMonthYear: updated.gradMonthYear,
+          workAuthorization: updated.workAuthorization,
+          requiresVisaSponsorship: updated.requiresVisaSponsorship,
+          githubUrl: updated.githubUrl,
+          linkedinUrl: updated.linkedinUrl,
+          portfolioUrl: updated.portfolioUrl,
+        });
+      }
+    } catch (e) {
+      console.error('[App] Failed to save profile update:', e);
+    }
+  };
+
   return (
     <div className={`min-h-screen flex flex-col bg-[#FAFAFA] dark:bg-[#09090B] text-zinc-900 dark:text-zinc-100 transition-colors duration-200 ${isDark ? 'dark' : ''}`}>
       {/* Top Navigation Bar */}
@@ -777,6 +1045,10 @@ export const App: React.FC = () => {
         themeMode={themeMode}
         isDark={isDark}
         onToggleTheme={handleToggleTheme}
+        currentUser={currentUser}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onSignOut={handleSignOut}
+        onOpenCloudManager={() => setIsCloudManagerOpen(true)}
       />
 
       {/* Main Container */}
@@ -863,6 +1135,13 @@ export const App: React.FC = () => {
               isTailorLoading={isLoading}
               targetRole={currentJob.title || 'Senior Software Engineer'}
               atsScore={currentAtsScore}
+              isCloudSynced={!!currentUser}
+              isCloudSaving={isCloudSaving}
+              onSaveToCloud={handleSaveCurrentResumeToCloud}
+              onOpenCloudManager={() => setIsCloudManagerOpen(true)}
+              cloudResumesCount={userCloudResumes.length}
+              currentUser={currentUser}
+              onOpenAuthModal={() => setIsAuthModalOpen(true)}
             />
           </div>
         )}
@@ -892,14 +1171,7 @@ export const App: React.FC = () => {
         {activeTab === 'profile' && (
           <ProfileTab
             profile={applicantProfile}
-            onUpdateProfile={async (updated) => {
-              setApplicantProfile(updated);
-              try {
-                await saveStoredApplicantProfile(updated);
-              } catch (e) {
-                console.error('[App] Failed to save profile update:', e);
-              }
-            }}
+            onUpdateProfile={handleUpdateApplicantProfile}
             onReopenOnboarding={() => setIsOnboardingOpen(true)}
             onNavigateToWorkspace={(mode) => {
               if (mode) {
@@ -914,6 +1186,11 @@ export const App: React.FC = () => {
             }}
             connectedDocTitle={screenResume?.title}
             workspaceMode={workspaceMode}
+            currentUser={currentUser}
+            onOpenAuthModal={() => setIsAuthModalOpen(true)}
+            onSignOut={handleSignOut}
+            cloudResumesCount={userCloudResumes.length}
+            onOpenCloudManager={() => setIsCloudManagerOpen(true)}
           />
         )}
 
@@ -968,6 +1245,33 @@ export const App: React.FC = () => {
             // Land on uncluttered Home page where user can select Option 1 or Option 2
             setActiveTab('home');
           }}
+        />
+      )}
+
+      {/* Supabase Authentication Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onAuthSuccess={handleAuthSuccess}
+      />
+
+      {/* Supabase Cloud Resume Manager Modal */}
+      {currentUser && (
+        <CloudResumeManagerModal
+          isOpen={isCloudManagerOpen}
+          onClose={() => setIsCloudManagerOpen(false)}
+          userId={currentUser.id}
+          resumes={userCloudResumes}
+          activeResumeId={activeCloudResumeId || undefined}
+          onSelectResume={handleSelectCloudResume}
+          onRefreshResumes={async () => {
+            const updated = await fetchUserResumes(currentUser.id);
+            setUserCloudResumes(updated);
+          }}
+          currentCanvasText={screenResume?.fullText || parsedResume?.rawText || ''}
+          currentDocTitle={screenResume?.title}
+          currentRole={currentJob.title || applicantProfile.targetRole}
+          currentScore={currentAtsScore}
         />
       )}
 

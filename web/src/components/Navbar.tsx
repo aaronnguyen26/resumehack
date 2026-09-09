@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Compass, Kanban, Settings, CheckCircle2, Sun, Moon, Sparkles, FileText, User } from 'lucide-react';
+import { Home, Compass, Kanban, Settings, CheckCircle2, Sun, Moon, Sparkles, FileText, User, Cloud, LogOut } from 'lucide-react';
 import { ThemeMode } from '../services/theme.js';
 import { ApplicantProfile } from '../types/index.js';
 
@@ -14,6 +14,10 @@ interface NavbarProps {
   isDark?: boolean;
   onToggleTheme?: () => void;
   applicantProfile?: ApplicantProfile;
+  currentUser?: { id: string; email?: string; firstName?: string; lastName?: string } | null;
+  onOpenAuthModal?: () => void;
+  onSignOut?: () => void;
+  onOpenCloudManager?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -25,6 +29,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   isDark = false,
   onToggleTheme,
   applicantProfile,
+  currentUser,
+  onOpenAuthModal,
+  onSignOut,
+  onOpenCloudManager,
 }) => {
   // Compute user profile initials and display labels dynamically
   const firstName = applicantProfile?.firstName?.trim() || '';
@@ -149,17 +157,29 @@ export const Navbar: React.FC<NavbarProps> = ({
       </nav>
 
       {/* Right: Status, Secondary Actions & User Profile */}
-      <div className="flex items-center gap-3.5">
-        {/* Document connectivity status chip */}
-        <div 
-          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-xs font-medium text-zinc-700 dark:text-zinc-300 max-w-[200px] truncate"
-          title={connectedDocTitle ? `Connected to: ${connectedDocTitle}` : 'Master resume ready'}
-        >
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-          <span className="truncate text-[11px] font-medium">
-            {connectedDocTitle ? connectedDocTitle.replace(' - Google Docs', '') : 'Master Resume'}
-          </span>
-        </div>
+      <div className="flex items-center gap-2.5 sm:gap-3.5">
+        {/* Supabase Cloud Sync / Auth Button */}
+        {currentUser ? (
+          <button
+            type="button"
+            onClick={onOpenCloudManager}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-xs font-mono font-semibold cursor-pointer transition-colors shadow-2xs"
+            title={`Supabase Cloud Active: ${currentUser.email}. Click to manage cloud resumes.`}
+          >
+            <Cloud className="w-3.5 h-3.5" />
+            <span className="text-[11px]">Cloud Synced</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onOpenAuthModal}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 text-xs font-semibold cursor-pointer transition-colors shadow-xs"
+            title="Sign in to save and sync your resume persistently with Supabase"
+          >
+            <Cloud className="w-3.5 h-3.5 text-zinc-400" />
+            <span className="text-[11px]">Sign In / Sync</span>
+          </button>
+        )}
 
         {/* Quick Theme Toggle Button */}
         {onToggleTheme && (
@@ -179,31 +199,45 @@ export const Navbar: React.FC<NavbarProps> = ({
         )}
 
         {/* User Profile Monogram Badge */}
-        <button
-          type="button"
-          onClick={() => setActiveTab('profile')}
-          aria-label="Open User Profile"
-          title="Open User Profile"
-          className={`flex items-center gap-2.5 pl-3 border-l border-zinc-200 dark:border-[#27272A] hover:opacity-85 transition-all cursor-pointer group text-left ${
-            activeTab === 'profile' ? 'opacity-100' : ''
-          }`}
-        >
-          <div className={`w-8 h-8 rounded-lg font-mono text-xs font-semibold flex items-center justify-center border shadow-xs transition-colors ${
-            activeTab === 'profile'
-              ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 border-zinc-900 dark:border-white ring-2 ring-zinc-400/30'
-              : 'bg-zinc-200 dark:bg-[#27272A] text-zinc-800 dark:text-zinc-200 border-zinc-300 dark:border-[#3F3F46] group-hover:border-zinc-400 dark:group-hover:border-zinc-500'
-          }`}>
-            {initials}
-          </div>
-          <div className="hidden xl:flex flex-col text-left">
-            <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 leading-none group-hover:text-zinc-950 dark:group-hover:text-white truncate max-w-[130px]">
-              {displayName}
-            </span>
-            <span className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 leading-tight mt-0.5 truncate max-w-[130px]">
-              {displaySubtitle}
-            </span>
-          </div>
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab('profile')}
+            aria-label="Open User Profile"
+            title="Open User Profile"
+            className={`flex items-center gap-2.5 pl-3 border-l border-zinc-200 dark:border-[#27272A] hover:opacity-85 transition-all cursor-pointer group text-left ${
+              activeTab === 'profile' ? 'opacity-100' : ''
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-lg font-mono text-xs font-semibold flex items-center justify-center border shadow-xs transition-colors ${
+              activeTab === 'profile'
+                ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 border-zinc-900 dark:border-white ring-2 ring-zinc-400/30'
+                : 'bg-zinc-200 dark:bg-[#27272A] text-zinc-800 dark:text-zinc-200 border-zinc-300 dark:border-[#3F3F46] group-hover:border-zinc-400 dark:group-hover:border-zinc-500'
+            }`}>
+              {initials}
+            </div>
+            <div className="hidden xl:flex flex-col text-left">
+              <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 leading-none group-hover:text-zinc-950 dark:group-hover:text-white truncate max-w-[130px]">
+                {displayName}
+              </span>
+              <span className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 leading-tight mt-0.5 truncate max-w-[130px]">
+                {displaySubtitle}
+              </span>
+            </div>
+          </button>
+
+          {currentUser && onSignOut && (
+            <button
+              type="button"
+              onClick={onSignOut}
+              aria-label="Sign Out"
+              title="Sign out of Supabase account"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer ml-1"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );

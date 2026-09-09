@@ -20,7 +20,10 @@ import {
   Sparkles,
   ArrowRight,
   Layers,
-  Cloud
+  Cloud,
+  Database,
+  LogIn,
+  LogOut
 } from 'lucide-react';
 import { ApplicantProfile } from '../types/index.js';
 
@@ -31,6 +34,11 @@ interface ProfileTabProps {
   onNavigateToWorkspace?: (mode?: 'google_docs' | 'in_app_canvas') => void;
   connectedDocTitle?: string;
   workspaceMode?: 'google_docs' | 'in_app_canvas';
+  currentUser?: { id: string; email?: string; firstName?: string; lastName?: string } | null;
+  onOpenAuthModal?: () => void;
+  onSignOut?: () => void;
+  cloudResumesCount?: number;
+  onOpenCloudManager?: () => void;
 }
 
 export const ProfileTab: React.FC<ProfileTabProps> = ({
@@ -40,6 +48,11 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   onNavigateToWorkspace,
   connectedDocTitle,
   workspaceMode = 'in_app_canvas',
+  currentUser,
+  onOpenAuthModal,
+  onSignOut,
+  cloudResumesCount = 0,
+  onOpenCloudManager,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<ApplicantProfile>({ ...profile });
@@ -185,7 +198,88 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         </div>
       </div>
 
-      {/* Editing Form OR Presentation Grid */}
+      {/* Supabase Cloud Account & Resume Persistence */}
+      <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+        <div className="flex items-start sm:items-center gap-4">
+          <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border ${
+            currentUser 
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400' 
+              : 'bg-zinc-100 dark:bg-[#18181B] border-zinc-200 dark:border-[#27272A] text-zinc-600 dark:text-zinc-400'
+          }`}>
+            <Database className="w-5 h-5" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-headline font-bold text-zinc-950 dark:text-zinc-50">
+                {currentUser ? 'Supabase Cloud Account Connected' : 'Guest Mode (Local Storage Only)'}
+              </h3>
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-medium border ${
+                currentUser
+                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-zinc-100 dark:bg-[#18181B] border-zinc-200 dark:border-[#27272A] text-zinc-600 dark:text-zinc-400'
+              }`}>
+                {currentUser ? (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Cloud Synced
+                  </>
+                ) : (
+                  'Unauthenticated'
+                )}
+              </span>
+            </div>
+            <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed max-w-xl">
+              {currentUser ? (
+                <>
+                  Logged in as <strong className="text-zinc-900 dark:text-zinc-200 font-mono">{currentUser.email}</strong>. 
+                  Your profile and resumes ({cloudResumesCount} saved version{cloudResumesCount === 1 ? '' : 's'}) are automatically synced to PostgreSQL database.
+                </>
+              ) : (
+                'Your resumes and profile are currently only saved locally in this browser. Create or log into your Supabase account to sync your resumes persistently across devices and prevent loss.'
+              )}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0 self-stretch sm:self-auto justify-end">
+          {currentUser ? (
+            <>
+              {onOpenCloudManager && (
+                <button
+                  type="button"
+                  onClick={onOpenCloudManager}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-[#18181B] dark:hover:bg-[#27272A] border border-zinc-200 dark:border-[#27272A] text-xs font-mono font-medium text-zinc-900 dark:text-zinc-100 transition-colors"
+                >
+                  <Cloud className="w-3.5 h-3.5 text-zinc-500" />
+                  <span>Manage Resumes ({cloudResumesCount})</span>
+                </button>
+              )}
+              {onSignOut && (
+                <button
+                  type="button"
+                  onClick={onSignOut}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-transparent hover:bg-zinc-100 dark:hover:bg-[#18181B] border border-transparent hover:border-zinc-200 dark:hover:border-[#27272A] text-xs font-mono text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+                  title="Sign out of Supabase"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
+                </button>
+              )}
+            </>
+          ) : (
+            onOpenAuthModal && (
+              <button
+                type="button"
+                onClick={onOpenAuthModal}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-zinc-950 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-950 text-xs font-headline font-semibold transition-colors shadow-xs"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Sign In / Create Account</span>
+              </button>
+            )
+          )}
+        </div>
+      </div>
       {isEditing ? (
         <form onSubmit={handleSave} className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 sm:p-8 space-y-6 shadow-xs">
           <div className="flex items-center justify-between pb-4 border-b border-zinc-100 dark:border-[#1E1E22]">

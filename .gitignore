@@ -18,10 +18,11 @@ build/
 
 # Environment files & Secrets
 .env
-.env*
 .env.local
 .env.*.local
 *.pem
+!.env.example
+!*.env.example
 
 # IDEs
 .vscode/
@@ -29,4 +30,7 @@ build/
 
 # Vercel
 .vercel
+
+# Supabase
+supabase/.temp/
 

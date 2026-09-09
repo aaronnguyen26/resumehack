@@ -480,4 +480,6 @@ export interface ApplicantProfile {
   gradMonthYear: string;
   workAuthorization: 'US_CITIZEN' | 'PERMANENT_RESIDENT' | 'REQUIRES_SPONSORSHIP' | 'F1_OPT' | 'OTHER';
   requiresVisaSponsorship: boolean;
+  targetRole?: string;
+  skills?: string[];
 }
