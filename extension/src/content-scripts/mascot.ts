@@ -1489,7 +1489,7 @@ class HackyMascot {
       this.detectPageContext();
 
       // Open a new tab to the ResumeHack web application instead of opening extension sidepanel
-      const defaultUrl = 'https://resumehack.vercel.app';
+      const defaultUrl = 'https://resumehack-sand.vercel.app';
       if (this.isExtensionValid() && chrome.storage?.local) {
         chrome.storage.local.get(['resumehack_web_app_url'], (res: any) => {
           const baseUrl = res?.resumehack_web_app_url || defaultUrl;
@@ -1511,7 +1511,7 @@ class HackyMascot {
       }
     } catch (e: any) {
       console.debug('[Hacky Mascot] Note on web app tab open:', e);
-      window.open(`https://resumehack.vercel.app?tab=${tab}`, '_blank');
+      window.open(`https://resumehack-sand.vercel.app?tab=${tab}`, '_blank');
     }
   }
 

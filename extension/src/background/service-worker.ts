@@ -331,7 +331,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
     if (message.type === 'OPEN_WEB_APP_TAB' || message.type === 'OPEN_SIDEPANEL') {
       const targetTabType = message.tab || 'match';
-      const webUrl = message.url || `https://resumehack.vercel.app?tab=${targetTabType}`;
+      const webUrl = message.url || `https://resumehack-sand.vercel.app?tab=${targetTabType}`;
 
       chrome.tabs.create({ url: webUrl }, (newTab) => {
         sendResponse({ status: 'opened', target: 'webTab', tabId: newTab?.id, url: webUrl });
