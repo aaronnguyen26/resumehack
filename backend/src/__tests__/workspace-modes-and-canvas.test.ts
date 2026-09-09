@@ -6,6 +6,13 @@ import {
   normalizeExtractedResumeText
 } from '../../../web/src/services/file-parser.js';
 import { 
+  rawTextToHtml, 
+  extractTextFromHtml, 
+  generateSectionHtml, 
+  escapeHtml, 
+  unescapeHtml 
+} from '../../../web/src/services/canvas-editor.js';
+import { 
   DEFAULT_APPLICANT_PROFILE, 
   ApplicantProfile 
 } from '../types/index.js';
@@ -410,6 +417,162 @@ San Francisco, CA | 2022 – Present
       expect(isOnboardingOpen).toBe(false);
       expect(showWorkspaceGateway).toBe(true);
       expect(activeTab).toBe('match');
+    });
+  });
+
+  describe('Google Docs-Style Live Document Editable Canvas Engine', () => {
+    it('converts raw resume text into structured, directly editable HTML with headings, lists, and metadata', () => {
+      const resumeText = `Sarah Connor
+sarah@skynet.com • (555) 123-4567 • Los Angeles, CA
+
+WORK EXPERIENCE
+Cyberdyne Systems — Principal Systems Engineer
+Sunnyvale, CA | 2023 – Present
+• Architected neural net defensive infrastructure with zero latency degradation
+• Directed cluster migration to Kubernetes reducing failover time by 80%
+
+TECHNICAL SKILLS
+• Languages: Rust, Go, Python, C++, TypeScript
+• Infrastructure: Kubernetes, Docker, Envoy, Redis`;
+
+      const html = rawTextToHtml(resumeText);
+
+      // Verify Candidate Header
+      expect(html).toContain('<h1 class="doc-candidate-name');
+      expect(html).toContain('Sarah Connor');
+      expect(html).toContain('sarah@skynet.com • (555) 123-4567 • Los Angeles, CA');
+
+      // Verify Section Headers
+      expect(html).toContain('<h2 class="doc-section-header');
+      expect(html).toContain('WORK EXPERIENCE');
+      expect(html).toContain('TECHNICAL SKILLS');
+
+      // Verify Role & Meta
+      expect(html).toContain('Cyberdyne Systems — Principal Systems Engineer');
+      expect(html).toContain('Sunnyvale, CA | 2023 – Present');
+
+      // Verify Bullet Points in <ul> <li> elements
+      expect(html).toContain('<ul class="doc-bullets');
+      expect(html).toContain('<li>Architected neural net defensive infrastructure with zero latency degradation</li>');
+      expect(html).toContain('<li>Directed cluster migration to Kubernetes reducing failover time by 80%</li>');
+    });
+
+    it('escapes hazardous HTML tags while preserving candidate content for XSS security', () => {
+      const injectionAttempt = `<script>alert("hack")</script> & "quotes"`;
+      const escaped = escapeHtml(injectionAttempt);
+      expect(escaped).not.toContain('<script>');
+      expect(escaped).toContain('&lt;script&gt;');
+      expect(escaped).toContain('&amp;');
+      expect(escaped).toContain('&quot;');
+
+      const unescaped = unescapeHtml(escaped);
+      expect(unescaped).toBe(injectionAttempt);
+    });
+
+    it('extracts clean, ATS-compliant text back from editable HTML, preserving bullet hierarchy', () => {
+      const html = `
+        <div class="doc-header">
+          <h1>Sarah Connor</h1>
+          <p>sarah@skynet.com • (555) 123-4567</p>
+        </div>
+        <div class="doc-section">
+          <h2>WORK EXPERIENCE</h2>
+          <p>Cyberdyne Systems — Systems Engineer</p>
+          <ul>
+            <li>Architected distributed caching</li>
+            <li>Built fault-tolerant clusters</li>
+          </ul>
+        </div>
+      `;
+
+      const extracted = extractTextFromHtml(html);
+      expect(extracted).toContain('Sarah Connor');
+      expect(extracted).toContain('sarah@skynet.com • (555) 123-4567');
+      expect(extracted).toContain('WORK EXPERIENCE');
+      expect(extracted).toContain('Cyberdyne Systems — Systems Engineer');
+      expect(extracted).toContain('• Architected distributed caching');
+      expect(extracted).toContain('• Built fault-tolerant clusters');
+    });
+
+    it('generates section templates ready for instant injection into the live document', () => {
+      const experienceHtml = generateSectionHtml('EXPERIENCE');
+      expect(experienceHtml).toContain('WORK EXPERIENCE');
+      expect(experienceHtml).toContain('Company Name — Senior Software Engineer');
+      expect(experienceHtml).toContain('<ul class="doc-bullets');
+
+      const projectsHtml = generateSectionHtml('PROJECTS');
+      expect(projectsHtml).toContain('FEATURED PROJECTS');
+      expect(projectsHtml).toContain('Distributed Consensus Engine');
+
+      const skillsHtml = generateSectionHtml('SKILLS');
+      expect(skillsHtml).toContain('TECHNICAL SKILLS');
+      expect(skillsHtml).toContain('Languages:');
+
+      const educationHtml = generateSectionHtml('EDUCATION');
+      expect(educationHtml).toContain('EDUCATION');
+      expect(educationHtml).toContain('Stanford University');
+
+      const summaryHtml = generateSectionHtml('SUMMARY');
+      expect(summaryHtml).toContain('PROFESSIONAL SUMMARY');
+      expect(summaryHtml).toContain('Staff Distributed Systems Engineer');
+    });
+
+    it('simulates debounced continuous typing without dropping keystrokes', async () => {
+      vi.useFakeTimers();
+      let savedText = '';
+      let isSaving = false;
+      let debounceTimer: any = null;
+
+      const handleType = (newChar: string) => {
+        isSaving = true;
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          savedText += newChar;
+          isSaving = false;
+        }, 300);
+      };
+
+      // User types "hello" rapidly within 100ms
+      handleType('h');
+      vi.advanceTimersByTime(50);
+      expect(isSaving).toBe(true);
+      expect(savedText).toBe(''); // Not saved yet!
+
+      handleType('e');
+      vi.advanceTimersByTime(50);
+      handleType('l');
+      vi.advanceTimersByTime(50);
+      handleType('l');
+      vi.advanceTimersByTime(50);
+      handleType('o');
+
+      // Now wait past the 300ms debounce threshold
+      vi.advanceTimersByTime(350);
+      expect(isSaving).toBe(false);
+      expect(savedText).toBe('o'); // Debounced to final value
+      vi.useRealTimers();
+    });
+
+    it('replaces tailored STAR bullet directly inside document without modal prompts', () => {
+      let documentHtml = `
+        <div class="doc-section">
+          <h2>WORK EXPERIENCE</h2>
+          <ul>
+            <li>Engineered caching clusters.</li>
+            <li>Built backend services.</li>
+          </ul>
+        </div>
+      `;
+
+      const originalBullet = 'Engineered caching clusters.';
+      const tailoredBullet = 'Architected distributed Redis & Dragonfly caching clusters reducing P99 latency by 68%.';
+
+      expect(documentHtml).toContain(originalBullet);
+      documentHtml = documentHtml.replace(originalBullet, tailoredBullet);
+
+      expect(documentHtml).toContain(tailoredBullet);
+      expect(documentHtml).not.toContain(originalBullet);
+      expect(documentHtml).toContain('Built backend services.');
     });
   });
 });

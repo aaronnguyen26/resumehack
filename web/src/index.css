@@ -204,3 +204,36 @@ html.dark .bg-slate-950\/80 {
   }
 }
 
+/* Live Google Docs Editable Canvas Styling */
+.doc-editable-content {
+  cursor: text;
+  min-height: 960px;
+}
+
+.doc-editable-content:focus {
+  outline: none;
+}
+
+.doc-editable-content *[contenteditable="false"] {
+  cursor: default;
+}
+
+.doc-editable-content ul {
+  list-style-type: disc;
+  padding-left: 1.25rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.doc-editable-content ol {
+  list-style-type: decimal;
+  padding-left: 1.25rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.doc-editable-content li {
+  margin-bottom: 0.2rem;
+}
+
+

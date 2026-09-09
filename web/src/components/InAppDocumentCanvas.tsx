@@ -4,17 +4,13 @@ import {
   Copy, 
   Check, 
   Sparkles, 
-  Minimize2, 
-  Maximize2, 
   FileText, 
   UploadCloud, 
   Edit3, 
   Eye, 
-  AlertTriangle, 
   RotateCcw, 
   Plus, 
   ExternalLink, 
-  Cloud, 
   Trash2, 
   X, 
   Loader2, 
@@ -34,18 +30,19 @@ import {
   ZoomIn, 
   ZoomOut, 
   ShieldCheck, 
-  ArrowUp, 
-  ArrowDown, 
-  Layers, 
   SlidersHorizontal, 
   PanelRightClose, 
   PanelRightOpen,
   CheckCircle2,
-  FileCheck2,
-  FolderOpen
 } from 'lucide-react';
 import { ParsedResume } from '../services/resume-parser.js';
 import { parseUploadedResumeFile } from '../services/file-parser.js';
+import { 
+  rawTextToHtml, 
+  extractTextFromDoc, 
+  generateSectionHtml, 
+  escapeHtml 
+} from '../services/canvas-editor.js';
 import { TailoredBulletDiff, ApplicantProfile, ScrapedJobData } from '../types/index.js';
 
 export interface InAppDocumentCanvasProps {
@@ -95,14 +92,20 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   targetRole = 'Senior Software Engineer',
   atsScore = 92,
 }) => {
+  // ── Document ContentEditable Reference & Sync ────────────────────────────
+  const editorRef = useRef<HTMLDivElement>(null);
+  const isUserTypingRef = useRef<boolean>(false);
+  const lastSyncedTextRef = useRef<string>(rawText);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // ── History / Undo / Redo Stack ──────────────────────────────────────────
   const [history, setHistory] = useState<string[]>([rawText]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
 
   // ── View Modes & Formatting Settings ─────────────────────────────────────
-  const [isRawEditing, setIsRawEditing] = useState(false);
-  const [rawEditText, setRawEditText] = useState(rawText);
-  const [copied, setCopied] = useState(false);
+  const [isRawEditing, setIsRawEditing] = useState<boolean>(false);
+  const [rawEditText, setRawEditText] = useState<string>(rawText);
+  const [copied, setCopied] = useState<boolean>(false);
   const [fontFamily, setFontFamily] = useState<FontFamily>('sans');
   const [fontSize, setFontSize] = useState<FontSize>('10pt');
   const [lineSpacing, setLineSpacing] = useState<LineSpacing>('1.15');
@@ -112,54 +115,105 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(true);
   const [inspectorTab, setInspectorTab] = useState<'tailor' | 'budget' | 'keywords'>('tailor');
 
-  // ── Document Title & Auto-Save Telemetry ──────────────────────────────────
-  const [docTitle, setDocTitle] = useState<string>(documentTitle || 'Master_Resume_2025.pdf');
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  // ── Auto-Save Telemetry ──────────────────────────────────────────────────
+  const [isSaving, setIsSaving] = useState<boolean>(false);
   const [lastSavedTime, setLastSavedTime] = useState<string>('Just now');
+  const [docTitle, setDocTitle] = useState<string>(documentTitle || 'Master_Resume.pdf');
+  const [isEditingTitle, setIsEditingTitle] = useState<boolean>(false);
 
   // ── File Upload / Drag-and-Drop State ────────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isExtractingPdf, setIsExtractingPdf] = useState(false);
-  const [isDragOverSheet, setIsDragOverSheet] = useState(false);
+  const [isExtractingPdf, setIsExtractingPdf] = useState<boolean>(false);
+  const [isDragOverSheet, setIsDragOverSheet] = useState<boolean>(false);
   const [uploadFeedback, setUploadFeedback] = useState<string | null>(null);
 
-  // ── Inline Active Editing Item ───────────────────────────────────────────
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [activeInputText, setActiveInputText] = useState<string>('');
-
-  // Synchronize history when rawText changes externally
+  // Synchronize history when rawText changes externally (e.g. file upload or reset)
   useEffect(() => {
     setRawEditText(rawText);
-    setHistory((prev) => {
-      if (prev[prev.length - 1] !== rawText) {
-        const next = [...prev, rawText];
-        setHistoryIndex(next.length - 1);
-        return next;
-      }
-      return prev;
-    });
-    setLastSavedTime('Just now');
-  }, [rawText]);
+    if (!isUserTypingRef.current && editorRef.current && rawText !== lastSyncedTextRef.current) {
+      editorRef.current.innerHTML = rawTextToHtml(rawText, applicantProfile);
+      lastSyncedTextRef.current = rawText;
+    }
+  }, [rawText, applicantProfile]);
+
+  // Initial load of HTML into contentEditable on mount
+  useEffect(() => {
+    if (editorRef.current && !editorRef.current.innerHTML.trim()) {
+      editorRef.current.innerHTML = rawTextToHtml(rawText, applicantProfile);
+      lastSyncedTextRef.current = rawText;
+    }
+  }, []);
 
   const pushState = useCallback((newText: string) => {
-    const trimmed = newText;
     setHistory((prev) => {
       const sliced = prev.slice(0, historyIndex + 1);
-      if (sliced[sliced.length - 1] === trimmed) return prev;
-      const next = [...sliced, trimmed];
+      if (sliced[sliced.length - 1] === newText) return prev;
+      const next = [...sliced, newText];
       if (next.length > 50) next.shift();
       setHistoryIndex(next.length - 1);
       return next;
     });
-    onUpdateResumeText(trimmed);
     setLastSavedTime('Just now');
-  }, [historyIndex, onUpdateResumeText]);
+  }, [historyIndex]);
 
+  // Handle direct text input inside contentEditable (Google Docs behavior)
+  const handleEditorInput = useCallback(() => {
+    isUserTypingRef.current = true;
+    setIsSaving(true);
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      if (editorRef.current) {
+        const extracted = extractTextFromDoc(editorRef.current);
+        lastSyncedTextRef.current = extracted;
+        onUpdateResumeText(extracted);
+        pushState(extracted);
+        try {
+          localStorage.setItem('user_custom_resume', extracted);
+        } catch {}
+      }
+      setIsSaving(false);
+      setLastSavedTime('Just now');
+      isUserTypingRef.current = false;
+    }, 350);
+  }, [onUpdateResumeText, pushState]);
+
+  // Handle keyboard shortcuts (Tab indent, Shift+Tab outdent)
+  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        document.execCommand('outdent', false);
+      } else {
+        document.execCommand('indent', false);
+      }
+      handleEditorInput();
+    }
+  };
+
+  // Handle pasting clean plain text into the document
+  const handleEditorPaste = (e: React.ClipboardEvent) => {
+    const text = e.clipboardData.getData('text/plain');
+    if (text) {
+      e.preventDefault();
+      document.execCommand('insertText', false, text);
+      handleEditorInput();
+    }
+  };
+
+  // Undo / Redo controls
   const handleUndo = () => {
     if (historyIndex > 0) {
       const targetText = history[historyIndex - 1];
       setHistoryIndex(historyIndex - 1);
+      lastSyncedTextRef.current = targetText;
       onUpdateResumeText(targetText);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = rawTextToHtml(targetText, applicantProfile);
+      }
     }
   };
 
@@ -167,11 +221,15 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     if (historyIndex < history.length - 1) {
       const targetText = history[historyIndex + 1];
       setHistoryIndex(historyIndex + 1);
+      lastSyncedTextRef.current = targetText;
       onUpdateResumeText(targetText);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = rawTextToHtml(targetText, applicantProfile);
+      }
     }
   };
 
-  // Keyboard shortcut listener for Ctrl+Z, Ctrl+Y, Ctrl+B, Ctrl+I
+  // Global keyboard shortcuts for Ctrl+Z, Ctrl+Y
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
@@ -190,25 +248,6 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [historyIndex, history]);
-
-  // ── Candidate Display Name & Contact Info ────────────────────────────────
-  const profileName = applicantProfile?.fullName?.trim() || 
-    `${applicantProfile?.firstName || ''} ${applicantProfile?.lastName || ''}`.trim();
-  const displayName = (parsedResume?.candidateName && parsedResume.candidateName !== 'Your Resume' && parsedResume.candidateName !== 'Alex Chen')
-    ? parsedResume.candidateName
-    : (profileName || 'Alex Chen');
-
-  const profileContactInfo = [
-    applicantProfile?.email || 'alex.chen@stanford.edu',
-    applicantProfile?.phone || '(415) 890-2341',
-    applicantProfile?.location || 'San Francisco, CA',
-    applicantProfile?.linkedinUrl ? applicantProfile.linkedinUrl.replace(/^https?:\/\//, '') : 'linkedin.com/in/alexchen-swe',
-    applicantProfile?.githubUrl ? applicantProfile.githubUrl.replace(/^https?:\/\//, '') : 'github.com/alexchen-dev',
-  ].filter(Boolean) as string[];
-
-  const contactList = parsedResume?.contactInfo && parsedResume.contactInfo.length > 0
-    ? parsedResume.contactInfo
-    : profileContactInfo;
 
   // ── Line Budget Calculation ──────────────────────────────────────────────
   const rawLines = useMemo(() => {
@@ -233,7 +272,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
 
   // Section Breakdown Line Counter
   const sectionBreakdown = useMemo(() => {
-    const paragraphs = rawText.split('\n\n');
+    const paragraphs = rawText.split(/\n\s*\n/);
     return paragraphs.map((p, idx) => {
       const lines = p.split('\n').filter(l => l.trim().length > 0);
       const title = idx === 0 ? 'Header / Contact' : (lines[0] || `Section ${idx}`);
@@ -244,148 +283,87 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     });
   }, [rawText]);
 
-  // ── Actions: Printing & Copying ──────────────────────────────────────────
+  // Actions
   const handlePrint = () => {
     window.print();
   };
 
   const handleCopyPlainText = async () => {
     try {
-      await navigator.clipboard.writeText(rawText);
+      const textToCopy = editorRef.current ? extractTextFromDoc(editorRef.current) : rawText;
+      await navigator.clipboard.writeText(textToCopy);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {}
   };
 
-  // ── Document Manipulation Functions ──────────────────────────────────────
-  const handleSaveBullet = (pIdx: number, lIdx: number, newContent: string) => {
-    const paragraphs = rawText.split('\n\n');
-    if (!paragraphs[pIdx]) return;
-    const lines = paragraphs[pIdx].split('\n');
-    const isBullet = /^[•\-*]\s*/.test(lines[lIdx]);
-    const prefix = isBullet ? (lines[lIdx]?.match(/^[•\-*]\s*/)?.[0] || '• ') : '';
-    lines[lIdx] = `${prefix}${newContent.trim()}`;
-    paragraphs[pIdx] = lines.join('\n');
-    pushState(paragraphs.join('\n\n'));
-    setEditingKey(null);
-  };
-
-  const handleDeleteBullet = (pIdx: number, lIdx: number) => {
-    const paragraphs = rawText.split('\n\n');
-    if (!paragraphs[pIdx]) return;
-    const lines = paragraphs[pIdx].split('\n');
-    lines.splice(lIdx, 1);
-    paragraphs[pIdx] = lines.join('\n');
-    pushState(paragraphs.join('\n\n'));
-    setEditingKey(null);
-  };
-
-  const handleMoveBullet = (pIdx: number, lIdx: number, direction: 'up' | 'down') => {
-    const paragraphs = rawText.split('\n\n');
-    if (!paragraphs[pIdx]) return;
-    const lines = paragraphs[pIdx].split('\n');
-    const targetIdx = direction === 'up' ? lIdx - 1 : lIdx + 1;
-    if (targetIdx < 1 || targetIdx >= lines.length) return;
-    const temp = lines[lIdx];
-    lines[lIdx] = lines[targetIdx];
-    lines[targetIdx] = temp;
-    paragraphs[pIdx] = lines.join('\n');
-    pushState(paragraphs.join('\n\n'));
-  };
-
-  const handleAddBullet = (pIdx: number, afterLineIdx?: number) => {
-    const paragraphs = rawText.split('\n\n');
-    if (!paragraphs[pIdx]) return;
-    const lines = paragraphs[pIdx].split('\n');
-    const newBullet = '• Engineered scalable infrastructure improving cluster throughput by 35%';
-    if (afterLineIdx !== undefined && afterLineIdx >= 0) {
-      lines.splice(afterLineIdx + 1, 0, newBullet);
-    } else {
-      lines.push(newBullet);
+  // Insert section template directly into the live document
+  const handleInsertSectionIntoDoc = (type: 'EXPERIENCE' | 'PROJECTS' | 'SKILLS' | 'EDUCATION' | 'SUMMARY' | 'CUSTOM') => {
+    const sectionHtml = generateSectionHtml(type);
+    if (editorRef.current) {
+      editorRef.current.innerHTML += `\n${sectionHtml}`;
+      handleEditorInput();
+      editorRef.current.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
-    paragraphs[pIdx] = lines.join('\n');
-    pushState(paragraphs.join('\n\n'));
-    const targetLIdx = afterLineIdx !== undefined ? afterLineIdx + 1 : lines.length - 1;
-    setEditingKey(`bullet-${pIdx}-${targetLIdx}`);
-    setActiveInputText('Engineered scalable infrastructure improving cluster throughput by 35%');
   };
 
-  const handleMoveSection = (pIdx: number, direction: 'up' | 'down') => {
-    const paragraphs = rawText.split('\n\n');
-    const targetIdx = direction === 'up' ? pIdx - 1 : pIdx + 1;
-    if (targetIdx < 1 || targetIdx >= paragraphs.length) return;
-    const temp = paragraphs[pIdx];
-    paragraphs[pIdx] = paragraphs[targetIdx];
-    paragraphs[targetIdx] = temp;
-    pushState(paragraphs.join('\n\n'));
-  };
+  // Accept tailored bullet from inspector
+  const handleApplyBulletDiffFromInspector = (diffIdx: number) => {
+    const diff = diffs[diffIdx];
+    if (!diff) return;
 
-  const handleDeleteSection = (pIdx: number) => {
-    const paragraphs = rawText.split('\n\n');
-    paragraphs.splice(pIdx, 1);
-    pushState(paragraphs.join('\n\n'));
-  };
-
-  const handleSaveSectionTitle = (pIdx: number, newTitle: string) => {
-    const paragraphs = rawText.split('\n\n');
-    if (!paragraphs[pIdx]) return;
-    const lines = paragraphs[pIdx].split('\n');
-    lines[0] = newTitle.toUpperCase().trim();
-    paragraphs[pIdx] = lines.join('\n');
-    pushState(paragraphs.join('\n\n'));
-    setEditingKey(null);
-  };
-
-  const handleSaveCandidateName = (newName: string) => {
-    const cleanName = newName.trim();
-    if (!cleanName) return;
-    const paragraphs = rawText.split('\n\n');
-    if (paragraphs.length > 0) {
-      const lines = paragraphs[0].split('\n');
-      lines[0] = cleanName;
-      paragraphs[0] = lines.join('\n');
-      pushState(paragraphs.join('\n\n'));
+    if (onApplyBulletDiff) {
+      onApplyBulletDiff(diffIdx);
     }
-    setEditingKey(null);
-  };
 
-  const handleSaveNonBulletLine = (pIdx: number, lIdx: number, text: string) => {
-    const paragraphs = rawText.split('\n\n');
-    if (!paragraphs[pIdx]) return;
-    const lines = paragraphs[pIdx].split('\n');
-    lines[lIdx] = text.trim();
-    paragraphs[pIdx] = lines.join('\n');
-    pushState(paragraphs.join('\n\n'));
-    setEditingKey(null);
-  };
+    if (editorRef.current && diff.originalText) {
+      const currentHtml = editorRef.current.innerHTML;
+      const targetSearch = escapeHtml(diff.originalText.trim());
+      const targetReplacement = escapeHtml(diff.tailoredText.trim());
 
-  const handleInsertSection = (type: 'EXPERIENCE' | 'EDUCATION' | 'PROJECTS' | 'SKILLS' | 'SUMMARY' | 'CUSTOM') => {
-    let template = '';
-    switch (type) {
-      case 'EXPERIENCE':
-        template = `WORK EXPERIENCE\nStripe — Staff Infrastructure Engineer\nSan Francisco, CA | 2022 – Present\n• Architected distributed multi-region caching layer slashing P99 latency by 45ms across 35k QPS\n• Engineered idempotent ledger replication pipeline with zero transactional inconsistencies`;
-        break;
-      case 'PROJECTS':
-        template = `FEATURED PROJECTS\nDistributed Consensus Engine (Go, Raft, gRPC)\nOpen Source | 2024\n• Authored leader-election consensus protocol achieving 14,000 write ops/sec under network partition\n• Implemented zero-allocation byte buffer pool decreasing garbage collection pauses by 80%`;
-        break;
-      case 'EDUCATION':
-        template = `EDUCATION\nStanford University — M.S. Computer Science\nStanford, CA | 2020 – 2022\n• Concentration in Distributed Systems & Databases • GPA: 3.9 / 4.0`;
-        break;
-      case 'SKILLS':
-        template = `TECHNICAL SKILLS\n• Languages: Go, Rust, Python, TypeScript, SQL, C++, Bash\n• Distributed Systems: Kubernetes, Docker, Kafka, Redis, gRPC, Envoy, Postgres\n• Cloud & Tooling: AWS (EKS, S3, DynamoDB), Terraform, CI/CD GitHub Actions, Linux eBPF`;
-        break;
-      case 'SUMMARY':
-        template = `PROFESSIONAL SUMMARY\nStaff Distributed Systems Engineer with 7+ years architecting high-throughput financial backends, distributed consensus algorithms, and cloud infrastructure processing billions of requests with 99.999% reliability.`;
-        break;
-      default:
-        template = `ADDITIONAL EXPERIENCE\nOrganization — Role\nLocation | 2023 – Present\n• Directed cross-functional engineering initiatives delivering key business outcomes`;
-        break;
+      if (currentHtml.includes(targetSearch)) {
+        editorRef.current.innerHTML = currentHtml.replace(
+          targetSearch,
+          `<span class="bg-emerald-500/20 text-emerald-950 dark:text-emerald-100 transition-colors duration-1000">${targetReplacement}</span>`
+        );
+        handleEditorInput();
+      } else {
+        let currentText = extractTextFromDoc(editorRef.current);
+        if (currentText.includes(diff.originalText)) {
+          currentText = currentText.replace(diff.originalText, diff.tailoredText);
+          editorRef.current.innerHTML = rawTextToHtml(currentText, applicantProfile);
+          handleEditorInput();
+        }
+      }
     }
-    const updated = `${rawText.trim()}\n\n${template}`;
-    pushState(updated);
   };
 
-  // ── PDF File Upload Handlers ─────────────────────────────────────────────
+  // Insert missing keyword from inspector into document
+  const handleInsertKeywordIntoDoc = (keyword: string) => {
+    if (editorRef.current) {
+      const skillsHeader = Array.from(editorRef.current.querySelectorAll('h2')).find(
+        h => /skills/i.test(h.textContent || '')
+      );
+      if (skillsHeader && skillsHeader.parentElement) {
+        const ul = skillsHeader.parentElement.querySelector('ul');
+        if (ul) {
+          const li = document.createElement('li');
+          li.textContent = `Proficient in ${keyword}`;
+          ul.appendChild(li);
+        } else {
+          const p = document.createElement('p');
+          p.className = 'text-xs text-zinc-800 dark:text-zinc-200 my-1';
+          p.textContent = `• Proficient in ${keyword}`;
+          skillsHeader.parentElement.appendChild(p);
+        }
+      } else {
+        editorRef.current.innerHTML += `<p class="text-xs text-zinc-800 dark:text-zinc-200 my-1">• Proficient in ${escapeHtml(keyword)}</p>`;
+      }
+      handleEditorInput();
+    }
+  };
+
+  // PDF File Upload Handler
   const handleCanvasFileUpload = async (file: File) => {
     setIsExtractingPdf(true);
     setUploadFeedback(`Extracting text and layout from ${file.name}…`);
@@ -394,46 +372,56 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
         await onUploadFile(file);
       } else {
         const parsed = await parseUploadedResumeFile(file);
-        pushState(parsed.text);
+        if (editorRef.current) {
+          editorRef.current.innerHTML = rawTextToHtml(parsed.text, applicantProfile);
+          handleEditorInput();
+        }
       }
       setDocTitle(file.name);
       onUpdateDocumentTitle?.(file.name);
       setUploadFeedback(`✓ Successfully extracted "${file.name}" into canvas`);
     } catch (err: any) {
-      setUploadFeedback(`⚠️ Failed to parse file: ${err.message || 'Unknown format'}`);
+      setUploadFeedback(`⚠️ Upload failed: ${err.message || 'Could not parse format'}`);
     } finally {
       setIsExtractingPdf(false);
       setTimeout(() => setUploadFeedback(null), 4000);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const pendingDiffs = diffs.filter(d => d.status === 'pending');
+  const pendingDiffs = useMemo(() => {
+    return diffs.filter(d => d.status === 'pending');
+  }, [diffs]);
+
+  // Toolbar button helper: prevents losing editor focus/selection when clicking ribbon buttons
+  const preventFocusLoss = (e: React.MouseEvent) => {
+    e.preventDefault();
+  };
 
   return (
-    <div className="w-full flex flex-col min-h-[calc(100vh-5rem)] bg-[#F4F4F5] dark:bg-[#09090B] text-zinc-900 dark:text-zinc-100 font-sans select-none transition-colors duration-200">
+    <div className="flex flex-col h-full w-full bg-zinc-50 dark:bg-[#09090B] text-zinc-900 dark:text-zinc-100 transition-colors duration-200 select-none">
       {/* Hidden File Input for PDF Upload */}
       <input
         ref={fileInputRef}
         type="file"
         accept=".pdf,.docx,.txt"
-        onChange={(e) => e.target.files?.[0] && handleCanvasFileUpload(e.target.files[0])}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleCanvasFileUpload(file);
+          e.target.value = '';
+        }}
         className="hidden"
       />
 
-      {/* ── TOP APPLICATION BAR & DOCUMENT HEADER (Sticky) ────────────────── */}
+      {/* ── STICKY TOP HEADER (Breadcrumbs, Status, Primary Actions) ───────── */}
       <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#121215]/95 backdrop-blur-md border-b border-zinc-200 dark:border-[#27272A] px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
-        {/* Left: Breadcrumb, Title & Auto-Save */}
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-900 dark:text-zinc-100 shrink-0 border border-zinc-200 dark:border-[#27272A]">
+        {/* Left: Breadcrumbs & Document Title */}
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 flex items-center justify-center font-bold text-xs shadow-xs">
             <FileText className="w-4 h-4" />
           </div>
 
-          <div className="flex flex-col min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 uppercase tracking-wider hidden sm:inline">
-                Workspaces &gt;
-              </span>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-1.5">
               {isEditingTitle ? (
                 <input
                   type="text"
@@ -450,39 +438,50 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
                       onUpdateDocumentTitle?.(docTitle);
                     }
                   }}
-                  className="font-bold text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 px-2 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 focus:outline-none"
+                  className="text-sm font-headline font-bold text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded border border-zinc-300 dark:border-zinc-600 focus:outline-none"
                 />
               ) : (
-                <div 
+                <button
+                  type="button"
                   onClick={() => setIsEditingTitle(true)}
-                  className="group flex items-center gap-1.5 cursor-pointer"
+                  className="group/title flex items-center gap-1.5 text-sm font-headline font-bold text-zinc-950 dark:text-zinc-50 hover:opacity-80 transition-opacity"
                   title="Click to rename document"
                 >
-                  <span className="font-bold text-xs text-zinc-950 dark:text-zinc-50 truncate max-w-[200px] sm:max-w-[300px]">
-                    {docTitle}
-                  </span>
-                  <Edit3 className="w-3 h-3 text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
+                  <span className="truncate max-w-[240px] sm:max-w-xs">{docTitle}</span>
+                  <Edit3 className="w-3 h-3 text-zinc-400 group-hover/title:text-zinc-700 dark:group-hover/title:text-zinc-200 opacity-0 group-hover/title:opacity-100 transition-opacity" />
+                </button>
               )}
-
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-semibold flex items-center gap-1">
-                {isGoogleDocMode && <Cloud className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />}
-                <span>{isGoogleDocMode ? 'Google Doc' : 'In-App Canvas'}</span>
+              <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-zinc-500 font-semibold">
+                {isGoogleDocMode ? 'G-Docs Live' : 'Canvas Studio'}
               </span>
             </div>
 
-            <div className="flex items-center gap-2 text-[10px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5">
-              <span className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>Auto-saved to browser storage • {lastSavedTime}</span>
-              </span>
+            <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
+              <span>{rawLines.length} lines detected</span>
+              <span>•</span>
+              <span>{rawText.length} chars</span>
             </div>
           </div>
         </div>
 
-        {/* Center: Undo / Redo & 1-Page Line Budget Badge */}
-        <div className="hidden lg:flex items-center gap-3">
-          {/* History Controls */}
+        {/* Center: Live Google Docs Auto-Save Status Pill & Undo/Redo */}
+        <div className="flex items-center gap-3">
+          {/* Live Auto-Save Pill */}
+          <div className="flex items-center gap-2 px-2.5 py-1 bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-lg text-xs font-mono">
+            {isSaving ? (
+              <>
+                <Loader2 className="w-3 h-3 text-zinc-400 animate-spin" />
+                <span className="text-zinc-500">Saving changes…</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                <span className="text-zinc-700 dark:text-zinc-300 font-semibold">All changes saved</span>
+              </>
+            )}
+          </div>
+
+          {/* Undo / Redo */}
           <div className="flex items-center bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-lg p-0.5">
             <button
               type="button"
@@ -636,6 +635,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
           <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5">
             <button
               type="button"
+              onMouseDown={preventFocusLoss}
               onClick={() => {
                 const sizes: FontSize[] = ['9.5pt', '10pt', '10.5pt', '11pt', '12pt'];
                 const idx = sizes.indexOf(fontSize);
@@ -651,6 +651,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
             </span>
             <button
               type="button"
+              onMouseDown={preventFocusLoss}
               onClick={() => {
                 const sizes: FontSize[] = ['9.5pt', '10pt', '10.5pt', '11pt', '12pt'];
                 const idx = sizes.indexOf(fontSize);
@@ -665,39 +666,123 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
 
           <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-1 hidden sm:block"></div>
 
-          {/* Formatting Buttons */}
+          {/* Direct Rich Text Formatting Buttons (Google Docs Native Commands) */}
           <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5">
             <button
               type="button"
+              onMouseDown={preventFocusLoss}
               onClick={() => {
-                // If text is being edited, wrap in **
-                if (editingKey) {
-                  setActiveInputText(`**${activeInputText}**`);
-                }
+                document.execCommand('bold', false);
+                handleEditorInput();
               }}
-              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-              title="Bold Text (Ctrl+B)"
+              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 active:scale-95 transition-transform"
+              title="Bold Selected Text (Ctrl+B)"
             >
               <Bold className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
+              onMouseDown={preventFocusLoss}
               onClick={() => {
-                if (editingKey) {
-                  setActiveInputText(`*${activeInputText}*`);
-                }
+                document.execCommand('italic', false);
+                handleEditorInput();
               }}
-              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-              title="Italic Text (Ctrl+I)"
+              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 active:scale-95 transition-transform"
+              title="Italic Selected Text (Ctrl+I)"
             >
               <Italic className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
-              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-              title="Underline Text"
+              onMouseDown={preventFocusLoss}
+              onClick={() => {
+                document.execCommand('underline', false);
+                handleEditorInput();
+              }}
+              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 active:scale-95 transition-transform"
+              title="Underline Selected Text (Ctrl+U)"
             >
               <Underline className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={preventFocusLoss}
+              onClick={() => {
+                document.execCommand('strikeThrough', false);
+                handleEditorInput();
+              }}
+              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 active:scale-95 transition-transform"
+              title="Strikethrough Selected Text"
+            >
+              <Strikethrough className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* List Formatting */}
+          <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5">
+            <button
+              type="button"
+              onMouseDown={preventFocusLoss}
+              onClick={() => {
+                document.execCommand('insertUnorderedList', false);
+                handleEditorInput();
+              }}
+              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 active:scale-95 transition-transform"
+              title="Bulleted List (•)"
+            >
+              <List className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={preventFocusLoss}
+              onClick={() => {
+                document.execCommand('insertOrderedList', false);
+                handleEditorInput();
+              }}
+              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 active:scale-95 transition-transform"
+              title="Numbered List"
+            >
+              <ListOrdered className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Alignment */}
+          <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5 hidden sm:flex">
+            <button
+              type="button"
+              onMouseDown={preventFocusLoss}
+              onClick={() => {
+                document.execCommand('justifyLeft', false);
+                handleEditorInput();
+              }}
+              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+              title="Align Left"
+            >
+              <AlignLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={preventFocusLoss}
+              onClick={() => {
+                document.execCommand('justifyCenter', false);
+                handleEditorInput();
+              }}
+              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+              title="Align Center"
+            >
+              <AlignCenter className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={preventFocusLoss}
+              onClick={() => {
+                document.execCommand('justifyRight', false);
+                handleEditorInput();
+              }}
+              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+              title="Align Right"
+            >
+              <AlignRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -744,45 +829,45 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
               <ChevronDown className="w-3 h-3 text-zinc-400" />
             </button>
 
-            <div className="absolute left-0 top-full mt-1 w-44 bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl shadow-lg p-1.5 hidden group-hover/insert:block z-50 animate-in fade-in duration-150">
+            <div className="absolute left-0 top-full mt-1 w-48 bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl shadow-lg p-1.5 hidden group-hover/insert:block z-50 animate-in fade-in duration-150">
               <button
                 type="button"
-                onClick={() => handleInsertSection('EXPERIENCE')}
+                onClick={() => handleInsertSectionIntoDoc('EXPERIENCE')}
                 className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
               >
                 + Work Experience
               </button>
               <button
                 type="button"
-                onClick={() => handleInsertSection('PROJECTS')}
+                onClick={() => handleInsertSectionIntoDoc('PROJECTS')}
                 className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
               >
                 + Featured Projects
               </button>
               <button
                 type="button"
-                onClick={() => handleInsertSection('SKILLS')}
+                onClick={() => handleInsertSectionIntoDoc('SKILLS')}
                 className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
               >
                 + Technical Skills
               </button>
               <button
                 type="button"
-                onClick={() => handleInsertSection('EDUCATION')}
+                onClick={() => handleInsertSectionIntoDoc('EDUCATION')}
                 className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
               >
                 + Education
               </button>
               <button
                 type="button"
-                onClick={() => handleInsertSection('SUMMARY')}
+                onClick={() => handleInsertSectionIntoDoc('SUMMARY')}
                 className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
               >
-                + Summary Statement
+                + Professional Summary
               </button>
               <button
                 type="button"
-                onClick={() => handleInsertSection('CUSTOM')}
+                onClick={() => handleInsertSectionIntoDoc('CUSTOM')}
                 className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
               >
                 + Custom Section
@@ -868,7 +953,11 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      onUpdateResumeText(rawEditText);
                       pushState(rawEditText);
+                      if (editorRef.current) {
+                        editorRef.current.innerHTML = rawTextToHtml(rawEditText, applicantProfile);
+                      }
                       setIsRawEditing(false);
                     }}
                     className="px-3.5 py-1 bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 font-bold rounded-md shadow-xs"
@@ -885,7 +974,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
               />
             </div>
           ) : (
-            /* Physical US Letter / A4 Document Sheet */
+            /* Physical US Letter / A4 Document Sheet with Google Docs Live Editing */
             <div 
               style={{
                 transform: zoom !== 100 ? `scale(${zoom / 100})` : undefined,
@@ -922,395 +1011,21 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
                 <div className="absolute inset-4 sm:inset-6 pointer-events-none border border-dashed border-zinc-200/60 dark:border-zinc-800/60 rounded-lg"></div>
               )}
 
-              {/* ── DOCUMENT HEADER (Candidate Name & Contact Details) ─────── */}
-              <div className="text-center pb-4 border-b border-zinc-200 dark:border-zinc-800/80 space-y-2 relative">
-                {editingKey === 'candidate-name' ? (
-                  <div className="flex items-center justify-center gap-2 max-w-md mx-auto">
-                    <input
-                      type="text"
-                      autoFocus
-                      value={activeInputText}
-                      onChange={(e) => setActiveInputText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSaveCandidateName(activeInputText);
-                        if (e.key === 'Escape') setEditingKey(null);
-                      }}
-                      className="px-3 py-1.5 text-center text-2xl font-bold rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 flex-1"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleSaveCandidateName(activeInputText)}
-                      className="px-3 py-1.5 bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 rounded-lg text-xs font-bold shadow-xs cursor-pointer"
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingKey(null)}
-                      className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="group/name inline-flex items-center justify-center gap-2 cursor-pointer">
-                    <h1
-                      onClick={() => {
-                        setEditingKey('candidate-name');
-                        setActiveInputText(displayName);
-                      }}
-                      className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-950 dark:text-white font-headline hover:opacity-85 transition-opacity"
-                      title="Click to edit candidate name"
-                    >
-                      {displayName}
-                    </h1>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingKey('candidate-name');
-                        setActiveInputText(displayName);
-                      }}
-                      className="opacity-0 group-hover/name:opacity-100 p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-opacity"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-
-                {/* Contact Pill Row */}
-                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
-                  {contactList.map((info, idx) => (
-                    <span key={idx} className="flex items-center gap-2">
-                      {idx > 0 && <span className="text-zinc-300 dark:text-zinc-600 select-none">•</span>}
-                      <span className="hover:text-zinc-900 dark:hover:text-zinc-200 cursor-text">
-                        {info}
-                      </span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* ── RESUME SECTIONS & BULLET POINT EDITOR ─────────────────── */}
-              <div className={`mt-5 space-y-5 ${
-                lineSpacing === '1.0' ? 'leading-tight space-y-3' : lineSpacing === '1.25' ? 'leading-relaxed space-y-6' : 'leading-snug space-y-4'
-              } ${
-                fontSize === '9.5pt' ? 'text-[11.5px]' : fontSize === '10.5pt' ? 'text-[12.5px]' : fontSize === '11pt' ? 'text-[13px]' : fontSize === '12pt' ? 'text-sm' : 'text-xs'
-              }`}>
-                {rawText.split('\n\n').map((paragraph, pIdx) => {
-                  const lines = paragraph.split('\n');
-                  const firstLine = lines[0]?.trim();
-                  const isSectionHeader = /^(summary|professional summary|work experience|experience|projects|featured projects|education|technical skills|skills|leadership|awards|certifications)/i.test(firstLine);
-
-                  if (isSectionHeader) {
-                    return (
-                      <div key={pIdx} className="group/section space-y-2 relative">
-                        {/* Section Header with Hover Tools */}
-                        {editingKey === `section-${pIdx}` ? (
-                          <div className="flex items-center gap-2 pb-1 border-b border-zinc-200 dark:border-zinc-800">
-                            <input
-                              type="text"
-                              autoFocus
-                              value={activeInputText}
-                              onChange={(e) => setActiveInputText(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSaveSectionTitle(pIdx, activeInputText);
-                                if (e.key === 'Escape') setEditingKey(null);
-                              }}
-                              className="px-2 py-1 text-xs font-mono font-bold tracking-wider uppercase border border-zinc-300 dark:border-zinc-600 rounded bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 flex-1"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleSaveSectionTitle(pIdx, activeInputText)}
-                              className="px-2.5 py-1 bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 rounded text-[11px] font-bold"
-                            >
-                              Save
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditingKey(null)}
-                              className="p-1 text-zinc-400 hover:text-zinc-600"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-1">
-                            <div className="flex items-center gap-2">
-                              <h2 className="text-xs font-mono font-bold tracking-wider uppercase text-zinc-900 dark:text-zinc-200">
-                                {firstLine}
-                              </h2>
-                              <span className="text-[10px] font-mono text-zinc-400">
-                                {lines.slice(1).length} items
-                              </span>
-                            </div>
-
-                            {/* Section Controls (Move Up, Move Down, Rename, Delete) */}
-                            <div className="opacity-0 group-hover/section:opacity-100 flex items-center gap-1 transition-opacity">
-                              <button
-                                type="button"
-                                onClick={() => handleMoveSection(pIdx, 'up')}
-                                disabled={pIdx <= 1}
-                                className="p-1 text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 disabled:opacity-20"
-                                title="Move section up"
-                              >
-                                <ArrowUp className="w-3 h-3" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleMoveSection(pIdx, 'down')}
-                                className="p-1 text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200"
-                                title="Move section down"
-                              >
-                                <ArrowDown className="w-3 h-3" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingKey(`section-${pIdx}`);
-                                  setActiveInputText(firstLine);
-                                }}
-                                className="p-1 text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200"
-                                title="Rename section heading"
-                              >
-                                <Edit3 className="w-3 h-3" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteSection(pIdx)}
-                                className="p-1 text-zinc-400 hover:text-rose-500"
-                                title="Delete entire section"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Section Lines & Bullets */}
-                        <div className="space-y-1.5 pl-1">
-                          {lines.slice(1).map((line, lIdx) => {
-                            const actualLineIdx = lIdx + 1;
-                            const isBullet = line.trim().startsWith('•') || line.trim().startsWith('-');
-                            const cleanLine = line.replace(/^[•\-*]\s*/, '').trim();
-
-                            // Check if matching pending diff
-                            const matchedDiffIdx = diffs.findIndex(
-                              (d) => d.originalText.trim().toLowerCase() === cleanLine.toLowerCase()
-                            );
-                            const matchedDiff = matchedDiffIdx !== -1 ? diffs[matchedDiffIdx] : null;
-
-                            if (matchedDiff && matchedDiff.status === 'pending') {
-                              return (
-                                <div key={lIdx} className="my-2 p-3 rounded-xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/30 space-y-1.5 animate-in fade-in">
-                                  <div className="flex items-center justify-between text-[11px]">
-                                    <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
-                                      <Sparkles className="w-3.5 h-3.5" />
-                                      <span>STAR AI Suggestion for {currentJob?.company || 'Target Role'}</span>
-                                    </span>
-                                    {onApplyBulletDiff && (
-                                      <button
-                                        type="button"
-                                        onClick={() => onApplyBulletDiff(matchedDiffIdx)}
-                                        className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] cursor-pointer shadow-xs"
-                                      >
-                                        Accept Suggestion
-                                      </button>
-                                    )}
-                                  </div>
-                                  <div className="line-through text-zinc-400 text-[11px]">
-                                    {matchedDiff.originalText}
-                                  </div>
-                                  <div className="font-medium text-zinc-900 dark:text-zinc-100">
-                                    • {matchedDiff.tailoredText}
-                                  </div>
-                                  {matchedDiff.rationale && (
-                                    <div className="text-[10px] text-zinc-500 dark:text-zinc-400 italic">
-                                      Impact: {matchedDiff.rationale}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            }
-
-                            // Active Inline Bullet Editor
-                            const isEditingThis = editingKey === `bullet-${pIdx}-${actualLineIdx}`;
-                            if (isEditingThis) {
-                              return (
-                                <div key={lIdx} className="my-1.5 p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 space-y-2">
-                                  <textarea
-                                    autoFocus
-                                    rows={3}
-                                    value={activeInputText}
-                                    onChange={(e) => setActiveInputText(e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                                        handleSaveBullet(pIdx, actualLineIdx, activeInputText);
-                                      }
-                                      if (e.key === 'Escape') setEditingKey(null);
-                                    }}
-                                    className="w-full text-xs font-sans p-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-zinc-500 resize-y"
-                                  />
-                                  <div className="flex items-center justify-between text-[11px]">
-                                    <span className="text-zinc-400 font-mono text-[10px]">
-                                      Ctrl+Enter to save • Esc to cancel
-                                    </span>
-                                    <div className="flex gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => setEditingKey(null)}
-                                        className="px-2.5 py-1 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded text-xs"
-                                      >
-                                        Cancel
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleSaveBullet(pIdx, actualLineIdx, activeInputText)}
-                                        className="px-3 py-1 bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 font-bold rounded text-xs shadow-xs"
-                                      >
-                                        Save Bullet
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            }
-
-                            // Normal Bullet Row
-                            return (
-                              <div
-                                key={lIdx}
-                                className={`group/bullet relative flex items-start gap-2 rounded-md px-1.5 py-0.5 -mx-1.5 hover:bg-zinc-50 dark:hover:bg-zinc-900/60 transition-colors ${
-                                  isBullet ? '' : 'font-semibold text-zinc-900 dark:text-zinc-100'
-                                }`}
-                              >
-                                {isBullet && <span className="text-zinc-400 select-none shrink-0">•</span>}
-                                <span
-                                  onClick={() => {
-                                    setEditingKey(`bullet-${pIdx}-${actualLineIdx}`);
-                                    setActiveInputText(isBullet ? cleanLine : line);
-                                  }}
-                                  className={`flex-1 cursor-text hover:text-zinc-950 dark:hover:text-white transition-colors ${
-                                    isBullet ? '' : 'font-semibold text-zinc-900 dark:text-zinc-100'
-                                  }`}
-                                  title="Click to edit directly in canvas"
-                                >
-                                  {isBullet ? cleanLine : line}
-                                </span>
-
-                                {/* Hover Control Actions */}
-                                <div className="opacity-0 group-hover/bullet:opacity-100 flex items-center gap-0.5 shrink-0 ml-2 transition-opacity">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleMoveBullet(pIdx, actualLineIdx, 'up')}
-                                    disabled={lIdx === 0}
-                                    className="p-1 text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 disabled:opacity-20 rounded"
-                                    title="Move bullet up"
-                                  >
-                                    <ArrowUp className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleMoveBullet(pIdx, actualLineIdx, 'down')}
-                                    disabled={lIdx === lines.slice(1).length - 1}
-                                    className="p-1 text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 disabled:opacity-20 rounded"
-                                    title="Move bullet down"
-                                  >
-                                    <ArrowDown className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setEditingKey(`bullet-${pIdx}-${actualLineIdx}`);
-                                      setActiveInputText(isBullet ? cleanLine : line);
-                                    }}
-                                    className="p-1 text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 rounded"
-                                    title="Edit bullet"
-                                  >
-                                    <Edit3 className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteBullet(pIdx, actualLineIdx)}
-                                    className="p-1 text-zinc-400 hover:text-rose-500 rounded"
-                                    title="Delete bullet (saves 1 line)"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                          {/* + Add Bullet Button under Section */}
-                          <div className="pt-1">
-                            <button
-                              type="button"
-                              onClick={() => handleAddBullet(pIdx)}
-                              className="inline-flex items-center gap-1.5 text-[11px] font-mono text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 px-2 py-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>Add Bullet to {firstLine}</span>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  // Non-section-header paragraph (e.g. Intro or custom notes)
-                  return (
-                    <div key={pIdx} className="space-y-1">
-                      {lines.map((line, lIdx) => {
-                        const isEditingThis = editingKey === `custom-line-${pIdx}-${lIdx}`;
-                        if (isEditingThis) {
-                          return (
-                            <div key={lIdx} className="my-1.5 p-2 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 flex items-center gap-2">
-                              <input
-                                type="text"
-                                autoFocus
-                                value={activeInputText}
-                                onChange={(e) => setActiveInputText(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleSaveNonBulletLine(pIdx, lIdx, activeInputText);
-                                  if (e.key === 'Escape') setEditingKey(null);
-                                }}
-                                className="flex-1 text-xs font-sans px-2 py-1 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded text-zinc-900 dark:text-zinc-100 focus:outline-none"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleSaveNonBulletLine(pIdx, lIdx, activeInputText)}
-                                className="px-2.5 py-1 bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 text-xs font-bold rounded shadow-xs"
-                              >
-                                Save
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setEditingKey(null)}
-                                className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          );
-                        }
-                        return (
-                          <div
-                            key={lIdx}
-                            onClick={() => {
-                              setEditingKey(`custom-line-${pIdx}-${lIdx}`);
-                              setActiveInputText(line);
-                            }}
-                            className="text-zinc-800 dark:text-zinc-200 cursor-text hover:bg-zinc-50 dark:hover:bg-zinc-900/60 rounded px-1.5 py-0.5 -mx-1.5 transition-colors"
-                            title="Click to edit line"
-                          >
-                            {line}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </div>
+              {/* ── GOOGLE DOCS-STYLE DIRECT CLICK-TO-EDIT DOCUMENT CONTENT ── */}
+              <div
+                ref={editorRef}
+                contentEditable={true}
+                suppressContentEditableWarning={true}
+                spellCheck={true}
+                onInput={handleEditorInput}
+                onKeyDown={handleEditorKeyDown}
+                onPaste={handleEditorPaste}
+                className="doc-editable-content w-full h-full min-h-[960px] focus:outline-none cursor-text selection:bg-zinc-200 dark:selection:bg-zinc-700"
+                style={{
+                  lineHeight: lineSpacing === '1.0' ? '1.25' : lineSpacing === '1.25' ? '1.6' : '1.4',
+                  fontSize: fontSize === '9.5pt' ? '12px' : fontSize === '10.5pt' ? '13px' : fontSize === '11pt' ? '14px' : fontSize === '12pt' ? '15px' : '12.5px',
+                }}
+              />
 
               {/* ── VISUAL 1-PAGE CUTOFF LINE (Safe vs Overflow Guard) ─────── */}
               <div className="mt-12 pt-4 border-t-2 border-dashed border-zinc-300 dark:border-zinc-700/80 relative select-none">
@@ -1346,7 +1061,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
               <button
                 type="button"
                 onClick={() => setIsInspectorOpen(false)}
-                className="p-1 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                className="p-1 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
                 title="Collapse Inspector"
               >
                 <PanelRightClose className="w-4 h-4" />
@@ -1358,7 +1073,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
               <button
                 type="button"
                 onClick={() => setInspectorTab('tailor')}
-                className={`flex-1 py-2 text-center border-b-2 transition-colors ${
+                className={`flex-1 py-2 text-center border-b-2 transition-colors cursor-pointer ${
                   inspectorTab === 'tailor'
                     ? 'border-zinc-900 dark:border-white text-zinc-900 dark:text-white font-bold'
                     : 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300'
@@ -1369,7 +1084,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
               <button
                 type="button"
                 onClick={() => setInspectorTab('budget')}
-                className={`flex-1 py-2 text-center border-b-2 transition-colors ${
+                className={`flex-1 py-2 text-center border-b-2 transition-colors cursor-pointer ${
                   inspectorTab === 'budget'
                     ? 'border-zinc-900 dark:border-white text-zinc-900 dark:text-white font-bold'
                     : 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300'
@@ -1380,7 +1095,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
               <button
                 type="button"
                 onClick={() => setInspectorTab('keywords')}
-                className={`flex-1 py-2 text-center border-b-2 transition-colors ${
+                className={`flex-1 py-2 text-center border-b-2 transition-colors cursor-pointer ${
                   inspectorTab === 'keywords'
                     ? 'border-zinc-900 dark:border-white text-zinc-900 dark:text-white font-bold'
                     : 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300'
@@ -1416,8 +1131,21 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
                       {pendingDiffs.length > 0 && onApplyAllDiffs && (
                         <button
                           type="button"
-                          onClick={onApplyAllDiffs}
-                          className="text-emerald-600 dark:text-emerald-400 font-bold hover:underline"
+                          onClick={() => {
+                            onApplyAllDiffs();
+                            if (editorRef.current) {
+                              diffs.forEach(d => {
+                                if (d.originalText && editorRef.current) {
+                                  editorRef.current.innerHTML = editorRef.current.innerHTML.replace(
+                                    escapeHtml(d.originalText.trim()),
+                                    escapeHtml(d.tailoredText.trim())
+                                  );
+                                }
+                              });
+                              handleEditorInput();
+                            }
+                          }}
+                          className="text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer"
                         >
                           Apply All
                         </button>
@@ -1441,15 +1169,13 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
                           <div className="font-medium text-zinc-900 dark:text-zinc-100">
                             • {diff.tailoredText}
                           </div>
-                          {onApplyBulletDiff && (
-                            <button
-                              type="button"
-                              onClick={() => onApplyBulletDiff(dIdx)}
-                              className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs"
-                            >
-                              Apply to Document
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleApplyBulletDiffFromInspector(dIdx)}
+                            className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors shadow-xs cursor-pointer"
+                          >
+                            Apply to Document
+                          </button>
                         </div>
                       ))
                     )}
@@ -1478,7 +1204,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
                       {pageBudgetPercentage <= 100
                         ? `Optimal line distribution. Your resume fits cleanly onto 1 standard US Letter page with ${linesRemaining} lines of safety buffer.`
-                        : `Your document currently spills onto Page 2 by ${Math.abs(linesRemaining)} lines. Enable compact margins (0.5") or remove redundant bullet points.`}
+                        : `Your document currently spills onto Page 2 by ${Math.abs(linesRemaining)} lines. Enable compact margins (0.5") or edit bullet points to fit.`}
                     </p>
                   </div>
 
@@ -1535,10 +1261,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
                           </span>
                           <button
                             type="button"
-                            onClick={() => {
-                              const updated = `${rawText.trim()}\n• Added proficiency in ${item.word}`;
-                              pushState(updated);
-                            }}
+                            onClick={() => handleInsertKeywordIntoDoc(item.word)}
                             className="px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-[10px] font-mono cursor-pointer"
                           >
                             + Insert
