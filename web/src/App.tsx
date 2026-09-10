@@ -290,51 +290,69 @@ export const App: React.FC = () => {
 
     getStoredApplications().then(apps => setApplications(apps));
 
-    // Load workspace mode preference
-    getStoredWorkspaceMode().then(mode => {
-      if (mode) setWorkspaceMode(mode);
-    });
+    // Coordinate workspace mode, settings, and actual saved resume loading
+    Promise.all([
+      getStoredWorkspaceMode(),
+      getStoredSettings(),
+      getStoredApplicantProfile(),
+      getGoogleAccessToken()
+    ]).then(async ([savedMode, settings, profile, token]) => {
+      if (profile) setApplicantProfile(profile);
 
-    // Load applicant profile
-    getStoredApplicantProfile().then((profile) => {
-      setApplicantProfile(profile);
-    });
+      let savedResume = '';
+      try {
+        savedResume = localStorage.getItem('user_custom_resume') || '';
+      } catch {}
 
-    // Check saved masterDocId from settings if Option 1 was previously connected
-    getStoredSettings().then((settings) => {
-      if (settings.masterDocId) {
-        getGoogleAccessToken().then((token) => {
-          if (token) {
-            googleDocs.getDocumentAndExtractBullets(settings.masterDocId, token).then((doc) => {
-              setScreenResume({
-                title: doc.title || 'Master Resume (Google Doc)',
-                fullText: doc.fullText,
-                isGoogleDoc: true,
-                docId: settings.masterDocId,
-                url: `https://docs.google.com/document/d/${settings.masterDocId}/edit`,
-              });
-              setParsedResume(resumeParser.parse(doc.fullText));
-            }).catch(() => {});
-          } else {
-            setScreenResume({
-              title: 'Master Resume (Google Doc)',
-              fullText: googleDocs.getMockMasterResume(applicantProfile).fullText,
-              isGoogleDoc: true,
-              docId: settings.masterDocId,
-              url: `https://docs.google.com/document/d/${settings.masterDocId}/edit`,
-            });
-          }
+      const mode = savedMode || (savedResume ? 'in_app_canvas' : 'in_app_canvas');
+      setWorkspaceMode(mode);
+
+      // If user is in Google Docs mode and has a connected document and valid token, sync it
+      if (mode === 'google_docs' && settings.masterDocId && token) {
+        try {
+          const doc = await googleDocs.getDocumentAndExtractBullets(settings.masterDocId, token);
+          setScreenResume({
+            title: doc.title || 'Master Resume (Google Doc)',
+            fullText: doc.fullText,
+            isGoogleDoc: true,
+            docId: settings.masterDocId,
+            url: `https://docs.google.com/document/d/${settings.masterDocId}/edit`,
+          });
+          setParsedResume(resumeParser.parse(doc.fullText));
+          return;
+        } catch (err) {
+          console.warn('[App] Could not fetch Google Doc on mount:', err);
+        }
+      }
+
+      // If candidate has an actual saved custom resume (from previous upload or edit), ALWAYS prioritize it!
+      if (savedResume && savedResume.trim()) {
+        const parsed = resumeParser.parse(savedResume);
+        const candidateName = parsed.candidateName && parsed.candidateName !== 'Your Resume' && parsed.candidateName !== 'Alex Chen'
+          ? `${parsed.candidateName} Resume`
+          : 'My Master Resume';
+        setScreenResume({
+          title: candidateName,
+          fullText: savedResume,
+          isGoogleDoc: false,
+        });
+        setParsedResume(parsed);
+        return;
+      }
+
+      // If in Google Docs mode with a masterDocId but without token, show placeholder only if no custom resume
+      if (mode === 'google_docs' && settings.masterDocId) {
+        setScreenResume({
+          title: 'Master Resume (Google Doc)',
+          fullText: googleDocs.getMockMasterResume(profile).fullText,
+          isGoogleDoc: true,
+          docId: settings.masterDocId,
+          url: `https://docs.google.com/document/d/${settings.masterDocId}/edit`,
         });
       }
     });
 
-    // Check if user has saved resume or jobs in localStorage
     try {
-      const savedResume = localStorage.getItem('user_custom_resume');
-      if (savedResume) {
-        setScreenResume({ title: 'My Saved Resume', fullText: savedResume, isGoogleDoc: false });
-        setParsedResume(resumeParser.parse(savedResume));
-      }
       const savedJobs = localStorage.getItem('resumehack_github_jobs');
       if (savedJobs) {
         const parsed = JSON.parse(savedJobs);
@@ -347,21 +365,21 @@ export const App: React.FC = () => {
           setJobs(Array.from(map.values()).map((j: JobPosting) => enrichJobDetails(j)));
         }
       }
-
-      // Query Supabase verified job postings asynchronously
-      fetchVerifiedJobPostings().then(cloudJobs => {
-        if (cloudJobs && cloudJobs.length > 0) {
-          setJobs(prev => {
-            const map = new Map<string, JobPosting>();
-            for (const c of cloudJobs) map.set(c.id, c);
-            for (const p of prev) {
-              if (!map.has(p.id)) map.set(p.id, p);
-            }
-            return Array.from(map.values()).map(j => enrichJobDetails(j));
-          });
-        }
-      }).catch(() => {});
     } catch {}
+
+    // Query Supabase verified job postings asynchronously
+    fetchVerifiedJobPostings().then(cloudJobs => {
+      if (cloudJobs && cloudJobs.length > 0) {
+        setJobs(prev => {
+          const map = new Map<string, JobPosting>();
+          for (const c of cloudJobs) map.set(c.id, c);
+          for (const p of prev) {
+            if (!map.has(p.id)) map.set(p.id, p);
+          }
+          return Array.from(map.values()).map(j => enrichJobDetails(j));
+        });
+      }
+    }).catch(() => {});
   }, []);
 
   const handleSelectOption1GoogleDocs = async (docId?: string, docTitle?: string, docUrl?: string) => {
@@ -441,7 +459,7 @@ export const App: React.FC = () => {
     setTimeout(() => setAppliedStatus(null), 3500);
   };
 
-  const handleUploadResumeFile = async (file: File) => {
+  const handleUploadResumeFile = async (file: File): Promise<string> => {
     setIsLoading(true);
     setAppliedStatus(`Parsing and extracting resume from ${file.name}…`);
     try {
@@ -469,9 +487,11 @@ export const App: React.FC = () => {
 
       setActiveTab('canvas');
       setAppliedStatus(`✓ Extracted and loaded "${file.name}" into In-App Canvas!`);
+      return parsedFile.text;
     } catch (err: any) {
       console.error('[App] Failed to parse uploaded resume file:', err);
       setAppliedStatus(`⚠️ Error reading resume file: ${err.message || 'Could not parse format'}`);
+      throw err;
     } finally {
       setIsLoading(false);
       setTimeout(() => setAppliedStatus(null), 4500);
@@ -833,16 +853,34 @@ export const App: React.FC = () => {
       return;
     }
 
+    // In-App Document Canvas or local custom resume
+    // Check if the user already has an actual resume in canvas state or in localStorage
+    const actualResumeText = screenResume?.fullText || localStorage.getItem('user_custom_resume') || '';
+    if (actualResumeText.trim()) {
+      const parsed = resumeParser.parse(actualResumeText);
+      setParsedResume(parsed);
+      setScreenResume(prev => ({
+        title: prev?.title || (parsed.candidateName && parsed.candidateName !== 'Your Resume' && parsed.candidateName !== 'Alex Chen' ? `${parsed.candidateName} Resume` : 'My Master Resume'),
+        fullText: actualResumeText,
+        isGoogleDoc: false,
+      }));
+      try {
+        localStorage.setItem('user_custom_resume', actualResumeText);
+      } catch {}
+      setAppliedStatus(`✓ Re-synced actual resume (${parsed.bullets.length} bullets, ${parsed.sections.length} sections)`);
+      setTimeout(() => setAppliedStatus(null), 3000);
+      return;
+    }
+
+    // Only if candidate has literally no resume text whatsoever:
     const mock = googleDocs.getMockMasterResume(applicantProfile);
     setScreenResume({ 
       title: mock.title, 
       fullText: mock.fullText, 
-      isGoogleDoc: true,
-      docId: 'mock-master-resume-doc-id',
-      url: 'https://docs.google.com/document/d/mock-master-resume-doc-id/edit',
+      isGoogleDoc: false,
     });
     setParsedResume(resumeParser.parse(mock.fullText));
-    setAppliedStatus('✓ Loaded Master Resume');
+    setAppliedStatus('✓ Loaded Master Resume template');
     setTimeout(() => setAppliedStatus(null), 3000);
   };
 

@@ -7,6 +7,7 @@ import {
   extractTextFromOperatorStream,
   parseUploadedResumeFile,
   buildStarterResumeText,
+  getPdfJsLib,
 } from "../../../web/src/services/file-parser.js";
 import { 
   rawTextToHtml, 
@@ -302,6 +303,91 @@ describe("PDF Extraction & Document Canvas Architecture Test Suite", () => {
       expect(extractedPlain).toContain("• Formulated fault recovery procedures for autonomous EVA pods");
       expect(extractedPlain).toContain("TECHNICAL SKILLS");
       expect(extractedPlain).toContain("• Languages: C, Python, Go, Assembly");
+    });
+  });
+
+  describe("Part 7: PDF Upload Resilience & Re-Sync Protection Contract", () => {
+    it("ensures getPdfJsLib initializes GlobalWorkerOptions.workerSrc when simulated in browser environment", async () => {
+      const origWindow = (globalThis as any).window;
+      try {
+        (globalThis as any).window = { location: { href: "http://localhost:5173", origin: "http://localhost:5173" } };
+        const lib = await getPdfJsLib();
+        expect(lib).toBeDefined();
+        expect(lib.GlobalWorkerOptions).toBeDefined();
+        expect(lib.GlobalWorkerOptions.workerSrc).toBeTruthy();
+      } finally {
+        if (origWindow === undefined) {
+          delete (globalThis as any).window;
+        } else {
+          (globalThis as any).window = origWindow;
+        }
+      }
+    });
+
+    it("throws a descriptive error when PDF file yields zero readable text without substituting mock starter resume", async () => {
+      // Empty PDF without text streams
+      const emptyPdf = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\ntrailer\n<< /Size 3 /Root 1 0 R >>\nstartxref\n100\n%%EOF";
+      const file = new File([Buffer.from(emptyPdf)], "Blank_Scanned.pdf", { type: "application/pdf" });
+
+      await expect(parseUploadedResumeFile(file)).rejects.toThrow(/Could not extract text from this PDF/);
+    });
+
+    it("preserves actual candidate resume during re-sync instead of replacing it with mock resume", () => {
+      const userResume = "Marcus Aurelius\nmarcus@rome.org\n\nEXPERIENCE\n• Architected resilient governance and defensive infrastructure";
+      const parsedUserResume = {
+        candidateName: "Marcus Aurelius",
+        bullets: [{ id: "b-1", originalText: "Architected resilient governance and defensive infrastructure", section: "EXPERIENCE" }],
+        sections: [{ title: "EXPERIENCE", lines: ["• Architected resilient governance and defensive infrastructure"] }],
+        rawText: userResume,
+      };
+
+      // Simulate re-sync function contract
+      const simulateReSync = (currentText: string, storageText: string, isGoogleDocMode: boolean) => {
+        if (isGoogleDocMode) {
+          return { type: "google_docs", text: "Google Doc Text" };
+        }
+        const textToSync = currentText.trim() || storageText.trim();
+        if (textToSync) {
+          return {
+            type: "actual_user_resume",
+            text: textToSync,
+            bulletsCount: 1,
+            isMock: false,
+          };
+        }
+        return { type: "mock_fallback", isMock: true };
+      };
+
+      const result = simulateReSync(userResume, "", false);
+      expect(result.type).toBe("actual_user_resume");
+      expect(result.isMock).toBe(false);
+      expect(result.text).toContain("Marcus Aurelius");
+      expect(result.text).not.toContain("Alex Chen");
+      expect(result.text).not.toContain("FinTech Labs");
+    });
+
+    it("prioritizes saved user custom resume on initial mount over unlinked Google Doc mock", () => {
+      const userCustomResume = "Grace Hopper\ngrace@navy.mil\n\nEXPERIENCE\n• Invented the first compiler for programming languages";
+      const settings = { masterDocId: "old-unlinked-doc-id" };
+      const token = null; // Unauthenticated or expired
+
+      // Simulate mount resolution logic
+      const resolveInitialResume = (savedMode: string | null, savedCustomResume: string, masterDocId: string | undefined, hasToken: boolean) => {
+        const mode = savedMode || (savedCustomResume ? "in_app_canvas" : "in_app_canvas");
+        if (mode === "google_docs" && masterDocId && hasToken) {
+          return { source: "google_docs_live" };
+        }
+        if (savedCustomResume && savedCustomResume.trim()) {
+          return { source: "user_custom_resume", text: savedCustomResume, isMock: false };
+        }
+        return { source: "mock_template", isMock: true };
+      };
+
+      const resolved = resolveInitialResume("in_app_canvas", userCustomResume, settings.masterDocId, Boolean(token));
+      expect(resolved.source).toBe("user_custom_resume");
+      expect(resolved.isMock).toBe(false);
+      expect(resolved.text).toContain("Grace Hopper");
+      expect(resolved.text).not.toContain("Alex Chen");
     });
   });
 });

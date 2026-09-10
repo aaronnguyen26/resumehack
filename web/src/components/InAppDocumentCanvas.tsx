@@ -60,7 +60,7 @@ export interface InAppDocumentCanvasProps {
   docUrl?: string;
   onSyncGoogleDoc?: () => void;
   onPushToGoogleDoc?: () => void;
-  onUploadFile?: (file: File) => Promise<void>;
+  onUploadFile?: (file: File) => Promise<string | void>;
   documentTitle?: string;
   onUpdateDocumentTitle?: (title: string) => void;
   currentJob?: ScrapedJobData;
@@ -435,17 +435,26 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     setUploadFeedback(`Extracting text and layout from ${file.name}…`);
     try {
       isUserTypingRef.current = false;
+      let extractedText = '';
       if (onUploadFile) {
-        await onUploadFile(file);
-      } else {
-        const parsed = await parseUploadedResumeFile(file);
-        if (editorRef.current) {
-          editorRef.current.innerHTML = rawTextToHtml(parsed.text, applicantProfile);
-          lastSyncedTextRef.current = parsed.text;
-          setHistory([parsed.text]);
-          setHistoryIndex(0);
-          onUpdateResumeText(parsed.text);
+        const res: unknown = await onUploadFile(file);
+        if (typeof res === 'string' && res.trim()) {
+          extractedText = res.trim();
         }
+      }
+      if (!extractedText) {
+        const parsed = await parseUploadedResumeFile(file);
+        extractedText = parsed.text;
+      }
+      if (extractedText && editorRef.current) {
+        editorRef.current.innerHTML = rawTextToHtml(extractedText, applicantProfile);
+        lastSyncedTextRef.current = extractedText;
+        setHistory([extractedText]);
+        setHistoryIndex(0);
+        onUpdateResumeText(extractedText);
+        try {
+          localStorage.setItem('user_custom_resume', extractedText);
+        } catch {}
       }
       setDocTitle(file.name);
       onUpdateDocumentTitle?.(file.name);
@@ -665,11 +674,21 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
           {onSyncGoogleDoc && (
             <button
               type="button"
-              onClick={onSyncGoogleDoc}
+              onClick={() => {
+                if (editorRef.current) {
+                  const currentText = extractTextFromDoc(editorRef.current);
+                  if (currentText.trim()) {
+                    onUpdateResumeText(currentText);
+                    try { localStorage.setItem('user_custom_resume', currentText); } catch {}
+                  }
+                }
+                onSyncGoogleDoc();
+              }}
               className="px-2.5 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title={isGoogleDocMode ? 'Re-sync latest text from Google Docs' : 'Re-parse document and synchronize ATS analysis'}
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Re-sync</span>
+              <span className="hidden sm:inline">{isGoogleDocMode ? 'Re-sync Docs' : 'Re-sync'}</span>
             </button>
           )}
 

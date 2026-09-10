@@ -18,7 +18,7 @@ import { ScrapedJobData } from '../types/index.js';
 
 interface HomePageProps {
   onOpenCanvas: () => void;
-  onUploadResumeFile?: (file: File) => Promise<void>;
+  onUploadResumeFile?: (file: File) => Promise<string | void>;
   onNavigateToDiscovery: () => void;
   onNavigateToTracker: () => void;
   onSelectRoleTarget?: (job: ScrapedJobData) => void;
