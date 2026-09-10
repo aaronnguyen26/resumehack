@@ -56,6 +56,47 @@ export interface RawPdfItem {
   fontName?: string;
 }
 
+export const KNOWN_SECTION_HEADERS = [
+  'WORK EXPERIENCE',
+  'PROFESSIONAL EXPERIENCE',
+  'RELEVANT EXPERIENCE',
+  'EMPLOYMENT HISTORY',
+  'EMPLOYMENT',
+  'EXPERIENCE',
+  'WORK HISTORY',
+  'FEATURED PROJECTS',
+  'TECHNICAL PROJECTS',
+  'PERSONAL PROJECTS',
+  'PROJECTS',
+  'TECHNICAL SKILLS',
+  'CORE COMPETENCIES',
+  'SKILLS & EXPERTISE',
+  'AREAS OF EXPERTISE',
+  'SKILLS & INTERESTS',
+  'SKILLS',
+  'EDUCATION & CREDENTIALS',
+  'EDUCATION',
+  'ACADEMIC BACKGROUND',
+  'CERTIFICATIONS',
+  'LICENSES & CERTIFICATIONS',
+  'CERTIFICATES',
+  'HONORS & AWARDS',
+  'AWARDS',
+  'PUBLICATIONS',
+  'PATENTS',
+  'LEADERSHIP',
+  'ACTIVITIES',
+  'EXTRACURRICULAR ACTIVITIES',
+  'EXTRACURRICULAR',
+  'COMMUNITY INVOLVEMENT',
+  'VOLUNTEERING',
+  'VOLUNTEER EXPERIENCE',
+  'SUMMARY',
+  'PROFESSIONAL SUMMARY',
+  'EXECUTIVE SUMMARY',
+  'PROFILE',
+];
+
 /**
  * Converts raw PDF.js items into normalized PositionedTextItem models with typography flags.
  */
@@ -75,8 +116,12 @@ export function normalizePdfItems(rawItems: RawPdfItem[]): PositionedTextItem[] 
     const width = raw.width || 0;
     const fontName = raw.fontName || '';
 
-    const isBold = /bold|black|heavy|medium|semibold|bld/i.test(fontName);
-    const isItalic = /italic|oblique/i.test(fontName);
+    const isBold = (raw as any).isBold !== undefined
+      ? Boolean((raw as any).isBold)
+      : /bold|black|heavy|medium|semibold|bld/i.test(fontName);
+    const isItalic = (raw as any).isItalic !== undefined
+      ? Boolean((raw as any).isItalic)
+      : /italic|oblique/i.test(fontName);
 
     items.push({
       text,
@@ -314,15 +359,15 @@ export function detectPdfLayout(
   let monoCount = 0;
   for (const it of items) {
     const fn = (it.fontName || '').toLowerCase();
-    if (/times|georgia|garamond|serif|cambria|palatino|baskerville|minion/i.test(fn)) {
+    if (/times|georgia|garamond|serif|cambria|palatino|baskerville|minion|roman|charter|pt serif|merriweather/i.test(fn)) {
       serifCount++;
-    } else if (/courier|mono|consolas|menlo/i.test(fn)) {
+    } else if (/courier|mono|consolas|menlo|source code|fira code/i.test(fn)) {
       monoCount++;
     }
   }
-  if (serifCount > items.length * 0.25) {
+  if (serifCount > 0 && serifCount >= monoCount && (serifCount >= items.length * 0.12 || serifCount >= 4)) {
     detectedFontFamily = 'serif';
-  } else if (monoCount > items.length * 0.25) {
+  } else if (monoCount > items.length * 0.2) {
     detectedFontFamily = 'mono';
   }
 
@@ -457,8 +502,11 @@ export function buildHighFidelityPdfHtml(
         const prevWidth = prev.width > 0 ? prev.width : prev.text.length * ((prev.fontSize || 10) * 0.52);
         const gap = it.x - (prev.x + prevWidth);
 
-        // Wide gap indicates two-ended split (e.g. title on left, date on right)
-        if (gap >= 24 && it.x >= pageWidth * 0.45) {
+        const isDateOrLoc = /\b(19\d{2}|20\d{2}|Present|Current|Online|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|CA|NY|Vietnam|City|Freshman)\b/i.test(it.text);
+        const isSplitGap = (gap >= 20 && it.x >= pageWidth * 0.40) || (gap >= 12 && isDateOrLoc && it.x >= pageWidth * 0.35);
+
+        // Wide gap or explicit date/location item indicates two-ended split
+        if (isSplitGap) {
           segments.push({
             text: currentSegText.trim(),
             x: segStartX,
@@ -475,6 +523,10 @@ export function buildHighFidelityPdfHtml(
           segFontSize = it.fontSize || 10.5;
           segIsBold = Boolean(it.isBold);
           segIsItalic = Boolean(it.isItalic);
+        } else if (prev.text.length === 1 && it.text.length === 1 && gap < Math.max(3.2, (it.fontSize || 10) * 0.45)) {
+          // Intra-word character tracking / kerning: append without extra space
+          currentSegText += it.text;
+          segWidth += gap + (it.width || it.text.length * ((it.fontSize || 10) * 0.52));
         } else if (gap > Math.max(1.8, (it.fontSize || 10) * 0.18)) {
           currentSegText += ' ' + it.text;
           segWidth += gap + (it.width || it.text.length * ((it.fontSize || 10) * 0.52));
@@ -495,6 +547,15 @@ export function buildHighFidelityPdfHtml(
         isBold: segIsBold,
         isItalic: segIsItalic,
       });
+    }
+
+    // Normalize any spaced section headers e.g. "E D U C A T I O N" -> "EDUCATION"
+    for (const seg of segments) {
+      const stripped = seg.text.replace(/\s+/g, '').toUpperCase();
+      const matched = KNOWN_SECTION_HEADERS.find(h => h.replace(/\s+/g, '').toUpperCase() === stripped);
+      if (matched && seg.text.includes(' ') && stripped.length > 3) {
+        seg.text = matched;
+      }
     }
 
     const minX = Math.min(...group.map(it => it.x));
@@ -548,10 +609,21 @@ export function buildHighFidelityPdfHtml(
     return lines;
   };
 
-  // Identify top candidate header region (Y >= maxY - 55, excluding section titles)
+  // Identify top candidate header region: items above the first section header
+  const isHeaderExcluded = (text: string) => /^(WORK\s+EXPERIENCE|EXPERIENCE|EDUCATION|SKILLS|TECHNICAL\s+SKILLS|PROJECTS|SUMMARY|PUBLICATIONS|CERTIFICATIONS|LEADERSHIP|RELEVANT\s+EXPERIENCE)$/i.test(text.trim().replace(/[:\-–—]+$/, ''));
+  
+  let firstSecHeaderY: number | null = null;
+  for (const it of items) {
+    if (isHeaderExcluded(it.text)) {
+      if (firstSecHeaderY === null || it.y > firstSecHeaderY) {
+        firstSecHeaderY = it.y;
+      }
+    }
+  }
+
   const maxY = Math.max(...items.map(it => it.y));
-  const isHeaderExcluded = (text: string) => /^(WORK\s+EXPERIENCE|EXPERIENCE|EDUCATION|SKILLS|TECHNICAL\s+SKILLS|PROJECTS|SUMMARY|PUBLICATIONS|CERTIFICATIONS)$/i.test(text.trim().replace(/[:\-–—]+$/, ''));
-  const headerItems = items.filter(it => it.y >= maxY - 55 && !isHeaderExcluded(it.text));
+  const headerThreshold = firstSecHeaderY !== null ? firstSecHeaderY : (maxY - 80);
+  const headerItems = items.filter(it => it.y > headerThreshold && !isHeaderExcluded(it.text));
   const bodyItems = items.filter(it => !headerItems.includes(it));
 
   const topLines = clusterItemsIntoVisualLines(headerItems.length > 0 ? headerItems : items.slice(0, 2));
@@ -562,9 +634,9 @@ export function buildHighFidelityPdfHtml(
     }
   }
 
-  const candidateName = nameLine?.segments[0]?.text || nameLine?.rawText || 'Candidate';
+  const candidateName = nameLine?.segments.map(s => s.text).join(' ') || nameLine?.rawText || 'Candidate';
   const headerContactLines = topLines.filter(l => l !== nameLine);
-  const contactText = headerContactLines.map(l => l.rawText).join(' • ');
+  const contactText = headerContactLines.map(l => l.segments.map(s => s.text).join(' • ')).join(' • ');
 
   // Helper for section headers
   const isSectionHeader = (line: VisualLine): boolean => {
@@ -574,7 +646,7 @@ export function buildHighFidelityPdfHtml(
     if (txt.includes('@') || /linkedin\.com|github\.com|http/i.test(txt)) return false;
 
     const upper = txt.replace(/[:\-–—]+$/, '').trim().toUpperCase();
-    if (/^(WORK\s+EXPERIENCE|EXPERIENCE|EMPLOYMENT\s+HISTORY|PROFESSIONAL\s+EXPERIENCE|PROJECTS|FEATURED\s+PROJECTS|TECHNICAL\s+PROJECTS|EDUCATION|ACADEMIC\s+BACKGROUND|TECHNICAL\s+SKILLS|SKILLS|CORE\s+COMPETENCIES|CERTIFICATIONS|PUBLICATIONS|AWARDS|HONORS|VOLUNTEERING|LEADERSHIP|SUMMARY|PROFESSIONAL\s+SUMMARY)$/i.test(upper)) {
+    if (/^(WORK\s+EXPERIENCE|EXPERIENCE|EMPLOYMENT\s+HISTORY|PROFESSIONAL\s+EXPERIENCE|PROJECTS|FEATURED\s+PROJECTS|TECHNICAL\s+PROJECTS|EDUCATION|ACADEMIC\s+BACKGROUND|TECHNICAL\s+SKILLS|SKILLS|CORE\s+COMPETENCIES|CERTIFICATIONS|PUBLICATIONS|AWARDS|HONORS|VOLUNTEERING|LEADERSHIP|SUMMARY|PROFESSIONAL\s+SUMMARY|RELEVANT\s+EXPERIENCE|SKILLS\s+&\s+INTERESTS)$/i.test(upper)) {
       return true;
     }
 
@@ -589,14 +661,14 @@ export function buildHighFidelityPdfHtml(
   const formatSectionHeaderTag = (title: string): string => {
     switch (layout.sectionDivider) {
       case 'accent':
-        return `<h2 class="doc-section-header font-mono font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 border-l-2 border-zinc-900 dark:border-zinc-100 pl-2 mt-4 mb-2">${escapeHtml(title)}</h2>`;
+        return `<h2 class="doc-section-header font-bold text-xs uppercase text-zinc-950 dark:text-white border-l-2 border-zinc-950 dark:border-zinc-100 pl-2 mt-4 mb-2">${escapeHtml(title)}</h2>`;
       case 'minimal':
-        return `<h2 class="doc-section-header font-mono font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 mt-4 mb-2">${escapeHtml(title)}</h2>`;
+        return `<h2 class="doc-section-header font-bold text-xs uppercase text-zinc-950 dark:text-white mt-4 mb-2">${escapeHtml(title)}</h2>`;
       case 'banner':
-        return `<h2 class="doc-section-header font-mono font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800/80 px-2 py-0.5 rounded mt-4 mb-2">${escapeHtml(title)}</h2>`;
+        return `<h2 class="doc-section-header font-bold text-xs uppercase text-zinc-950 dark:text-white bg-zinc-100 dark:bg-zinc-800/80 px-2 py-0.5 rounded mt-4 mb-2">${escapeHtml(title)}</h2>`;
       case 'line':
       default:
-        return `<h2 class="doc-section-header font-mono font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 border-b border-zinc-200 dark:border-zinc-800 pb-1 mt-4 mb-2">${escapeHtml(title)}</h2>`;
+        return `<h2 class="doc-section-header font-bold text-xs uppercase text-zinc-950 dark:text-white border-b-[1.5px] border-zinc-950 dark:border-zinc-200 pb-0.5 mt-4 mb-2">${escapeHtml(title)}</h2>`;
     }
   };
 
@@ -686,20 +758,31 @@ export function buildHighFidelityPdfHtml(
         if (l.segments.length >= 2) {
           const titlePart = l.segments[0].text;
           const metaPart = l.segments.slice(1).map(s => s.text).join(' | ');
+          const titleIsBold = l.segments[0].isBold || l.isBold;
+          const titleIsItalic = l.segments[0].isItalic || (!titleIsBold && l.isItalic);
+          const titleWeightClass = titleIsBold ? 'font-bold' : titleIsItalic ? 'italic' : 'font-semibold';
 
           secHtml += `\n  <div class="doc-entry-header flex justify-between items-baseline gap-2 mt-2 mb-0.5">
-    <span class="doc-job-title font-bold text-xs text-zinc-900 dark:text-zinc-100">${escapeHtml(titlePart)}</span>
-    <span class="doc-job-meta text-xs font-mono text-zinc-500 dark:text-zinc-400 whitespace-nowrap">${escapeHtml(metaPart)}</span>
+    <span class="doc-job-title ${titleWeightClass} text-xs text-zinc-950 dark:text-zinc-50">${escapeHtml(titlePart)}</span>
+    <span class="doc-job-meta text-xs text-zinc-800 dark:text-zinc-200 whitespace-nowrap text-right font-medium">${escapeHtml(metaPart)}</span>
   </div>`;
           textLines.push(`${titlePart}   |   ${metaPart}`);
+        } else if (l.isItalic) {
+          secHtml += `\n  <p class="doc-job-subtitle text-xs text-zinc-800 dark:text-zinc-200 italic my-0.5">${escapeHtml(lineText)}</p>`;
+          textLines.push(lineText);
         } else if (l.isBold || (l.fontSize > layout.fontScale.bodyFontSize && lineText.length < 80)) {
-          secHtml += `\n  <p class="doc-job-title font-bold text-xs text-zinc-900 dark:text-zinc-100 mt-2 mb-0.5">${escapeHtml(lineText)}</p>`;
+          secHtml += `\n  <p class="doc-job-title font-bold text-xs text-zinc-950 dark:text-zinc-50 mt-2 mb-0.5">${escapeHtml(lineText)}</p>`;
           textLines.push(lineText);
         } else if (/\b(19\d{2}|20\d{2}|Present)\b/i.test(lineText) && lineText.length < 60) {
-          secHtml += `\n  <p class="doc-job-meta text-xs text-zinc-500 dark:text-zinc-400 italic mb-1.5">${escapeHtml(lineText)}</p>`;
+          secHtml += `\n  <p class="doc-job-meta text-xs text-zinc-800 dark:text-zinc-200 text-right font-medium mb-1">${escapeHtml(lineText)}</p>`;
           textLines.push(lineText);
         } else {
-          secHtml += `\n  <p class="doc-text text-xs text-zinc-800 dark:text-zinc-200 my-1 leading-relaxed">${escapeHtml(lineText)}</p>`;
+          const categoryMatch = lineText.match(/^([A-Za-z0-9\s&/-]+):(\s+.+)$/);
+          if (categoryMatch && /skills|interests|technologies|languages/i.test(sec.header)) {
+            secHtml += `\n  <p class="doc-text text-xs text-zinc-800 dark:text-zinc-200 my-0.5 leading-relaxed"><strong>${escapeHtml(categoryMatch[1])}:</strong>${escapeHtml(categoryMatch[2])}</p>`;
+          } else {
+            secHtml += `\n  <p class="doc-text text-xs text-zinc-800 dark:text-zinc-200 my-1 leading-relaxed">${escapeHtml(lineText)}</p>`;
+          }
           textLines.push(lineText);
         }
       }
@@ -717,20 +800,18 @@ export function buildHighFidelityPdfHtml(
   };
 
   // Build Document Header
-  const hasHeaderBorder = layout.sectionDivider !== 'minimal';
-  const borderClass = hasHeaderBorder ? ' border-b border-zinc-200 dark:border-zinc-800' : '';
   const headerClass = layout.headerAlignment === 'center'
-    ? `doc-header text-center pb-3 mb-4${borderClass}`
+    ? `doc-header text-center pb-2 mb-3`
     : layout.headerAlignment === 'split'
-    ? `doc-header flex flex-col sm:flex-row sm:items-end justify-between pb-3 mb-4${borderClass} gap-2`
-    : `doc-header text-left pb-3 mb-4${borderClass}`;
+    ? `doc-header flex flex-col sm:flex-row sm:items-end justify-between pb-2 mb-3 gap-2`
+    : `doc-header text-left pb-2 mb-3`;
 
   const headerHtml = `
     <div class="${headerClass}">
       <div>
-        <h1 class="doc-candidate-name font-headline font-bold text-2xl sm:text-3xl tracking-tight text-zinc-950 dark:text-white pb-1">${escapeHtml(candidateName)}</h1>
+        <h1 class="doc-candidate-name font-bold text-2xl sm:text-3xl tracking-tight text-zinc-950 dark:text-white pb-1">${escapeHtml(candidateName)}</h1>
       </div>
-      ${contactText ? `<p class="doc-contact-info text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">${escapeHtml(contactText)}</p>` : ''}
+      ${contactText ? `<p class="doc-contact-info text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">${escapeHtml(contactText)}</p>` : ''}
     </div>
   `.trim();
 

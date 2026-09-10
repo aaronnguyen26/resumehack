@@ -113,6 +113,7 @@ export const App: React.FC = () => {
     isGoogleDoc?: boolean; 
     url?: string;
     docId?: string;
+    customHtml?: string;
   } | null>(null);
   const [parsedResume, setParsedResume] = useState<ParsedResume | null>(null);
 
@@ -331,10 +332,12 @@ export const App: React.FC = () => {
         const candidateName = parsed.candidateName && parsed.candidateName !== 'Your Resume' && parsed.candidateName !== 'Alex Chen'
           ? `${parsed.candidateName} Resume`
           : 'My Master Resume';
+        const savedCustomHtml = localStorage.getItem('user_custom_resume_html') || undefined;
         setScreenResume({
           title: candidateName,
           fullText: savedResume,
           isGoogleDoc: false,
+          customHtml: savedCustomHtml,
         });
         setParsedResume(parsed);
         return;
@@ -479,6 +482,7 @@ export const App: React.FC = () => {
         title: docTitle,
         fullText: parsedFile.text,
         isGoogleDoc: false,
+        customHtml: parsedFile.html,
       });
 
       try {
@@ -1319,6 +1323,7 @@ export const App: React.FC = () => {
             <InAppDocumentCanvas
               parsedResume={parsedResume}
               rawText={screenResume?.fullText || parsedResume?.rawText || googleDocs.getMockMasterResume(applicantProfile).fullText}
+              customHtml={screenResume?.customHtml || (typeof window !== 'undefined' ? localStorage.getItem('user_custom_resume_html') || undefined : undefined)}
               diffs={tailorData?.bulletDiffs || []}
               onUpdateResumeText={handleUpdateCustomResumeText}
               onApplyBulletDiff={(diffIndex, variantText) => {

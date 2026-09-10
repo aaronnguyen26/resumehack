@@ -223,21 +223,18 @@ export function rawTextToHtml(
     const contactLines = headerLines.slice(1);
     const contactInfo = contactLines.join(' • ');
 
-    const hasHeaderBorder = sectionDivider !== 'minimal';
-    const borderClass = hasHeaderBorder ? ' border-b border-zinc-200 dark:border-zinc-800' : '';
-
     const headerClass = headerAlignment === 'center'
-      ? `doc-header text-center pb-3 mb-4${borderClass}`
+      ? `doc-header text-center pb-2 mb-3`
       : headerAlignment === 'split'
-      ? `doc-header flex flex-col sm:flex-row sm:items-end justify-between pb-3 mb-4${borderClass} gap-2`
-      : `doc-header text-left pb-3 mb-4${borderClass}`;
+      ? `doc-header flex flex-col sm:flex-row sm:items-end justify-between pb-2 mb-3 gap-2`
+      : `doc-header text-left pb-2 mb-3`;
 
     htmlParts.push(`
       <div class="${headerClass}">
         <div>
-          <h1 class="doc-candidate-name font-headline font-bold text-2xl sm:text-3xl tracking-tight text-zinc-950 dark:text-white pb-1">${escapeHtml(candidateName)}</h1>
+          <h1 class="doc-candidate-name font-bold text-2xl sm:text-3xl tracking-tight text-zinc-950 dark:text-white pb-1">${escapeHtml(candidateName)}</h1>
         </div>
-        ${contactInfo ? `<p class="doc-contact-info text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">${escapeHtml(contactInfo)}</p>` : ''}
+        ${contactInfo ? `<p class="doc-contact-info text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">${escapeHtml(contactInfo)}</p>` : ''}
       </div>
     `.trim());
   }
@@ -246,14 +243,14 @@ export function rawTextToHtml(
   const formatSectionHeaderTag = (title: string): string => {
     switch (sectionDivider) {
       case 'accent':
-        return `<h2 class="doc-section-header font-mono font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 border-l-2 border-zinc-900 dark:border-zinc-100 pl-2 mt-4 mb-2">${escapeHtml(title)}</h2>`;
+        return `<h2 class="doc-section-header font-bold text-xs uppercase text-zinc-950 dark:text-white border-l-2 border-zinc-950 dark:border-zinc-100 pl-2 mt-4 mb-2">${escapeHtml(title)}</h2>`;
       case 'minimal':
-        return `<h2 class="doc-section-header font-mono font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 mt-4 mb-2">${escapeHtml(title)}</h2>`;
+        return `<h2 class="doc-section-header font-bold text-xs uppercase text-zinc-950 dark:text-white mt-4 mb-2">${escapeHtml(title)}</h2>`;
       case 'banner':
-        return `<h2 class="doc-section-header font-mono font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800/80 px-2 py-0.5 rounded mt-4 mb-2">${escapeHtml(title)}</h2>`;
+        return `<h2 class="doc-section-header font-bold text-xs uppercase text-zinc-950 dark:text-white bg-zinc-100 dark:bg-zinc-800/80 px-2 py-0.5 rounded mt-4 mb-2">${escapeHtml(title)}</h2>`;
       case 'line':
       default:
-        return `<h2 class="doc-section-header font-mono font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 border-b border-zinc-200 dark:border-zinc-800 pb-1 mt-4 mb-2">${escapeHtml(title)}</h2>`;
+        return `<h2 class="doc-section-header font-bold text-xs uppercase text-zinc-950 dark:text-white border-b-[1.5px] border-zinc-950 dark:border-zinc-200 pb-0.5 mt-4 mb-2">${escapeHtml(title)}</h2>`;
     }
   };
 
@@ -296,7 +293,7 @@ export function rawTextToHtml(
 
         if (isBulletLine(line)) {
           currentBulletGroup.push(cleanBulletLine(line));
-        } else if (/skills|technologies|competencies/i.test(sectionHeader) && line.includes(':')) {
+        } else if (/skills|technologies|competencies|languages|interests/i.test(sectionHeader) && line.includes(':')) {
           flushBullets();
           const colonIdx = line.indexOf(':');
           const category = line.substring(0, colonIdx).trim();
@@ -305,28 +302,55 @@ export function rawTextToHtml(
           sectionHtml += `<li><strong>${escapeHtml(category)}:</strong> ${escapeHtml(items)}</li>`;
           sectionHtml += `</ul>`;
         } else {
-          flushBullets();
-
+          // Detect split row (e.g. title on left, date/location on right)
           const hasSplitMarker = line.includes('   |   ');
           const hasPipe = line.includes(' | ') && !isBulletLine(line);
           const hasCompanyTitleSep = line.includes(' — ') || line.includes(' - ');
-          const isSplitRow = hasSplitMarker || (hasPipe && hasCompanyTitleSep);
+          
+          // Regex to detect lines ending with dates, date ranges, or known location patterns
+          const dateEndingMatch = line.match(/^(.*?)\s{2,}(((?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?\d{4}(?:\s*[-–—]\s*(?:(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?\d{4}|Present|Current))?)|Online|Freshman)$/i);
+          const locationDateEndingMatch = line.match(/^(.*?)\s{2,}(([A-Z][a-zA-Z\s]+,\s*(?:[A-Z]{2}|Vietnam|USA|US|UK|Canada|VN))\s*(?:&|and)?\s*([A-Z][a-zA-Z\s]+,\s*[A-Z]{2})?)$/i);
+          const isTwoEndedSplit = hasSplitMarker || (hasPipe && hasCompanyTitleSep) || Boolean(dateEndingMatch) || Boolean(locationDateEndingMatch);
 
-          if (isSplitRow) {
-            const parts = line.includes('   |   ') ? line.split('   |   ') : line.split(/\s*\|\s*/);
-            const titlePart = parts[0].trim();
-            const metaPart = parts.slice(1).join(' | ').trim();
+          const isJobTitleOrMeta = isJobMetaLine(line) || isTwoEndedSplit || hasCompanyTitleSep;
+
+          // Bullet continuation check: if we are in a bullet list and the line is not a new job title, meta, or date
+          if (currentBulletGroup.length > 0 && !isJobTitleOrMeta) {
+            currentBulletGroup[currentBulletGroup.length - 1] += ' ' + line;
+            continue;
+          }
+
+          flushBullets();
+
+          if (isTwoEndedSplit) {
+            let titlePart = '';
+            let metaPart = '';
+            if (line.includes('   |   ')) {
+              const parts = line.split('   |   ');
+              titlePart = parts[0].trim();
+              metaPart = parts.slice(1).join(' | ').trim();
+            } else if (hasPipe && hasCompanyTitleSep) {
+              const parts = line.split(/\s*\|\s*/);
+              titlePart = parts[0].trim();
+              metaPart = parts.slice(1).join(' | ').trim();
+            } else if (dateEndingMatch) {
+              titlePart = dateEndingMatch[1].trim();
+              metaPart = dateEndingMatch[2].trim();
+            } else if (locationDateEndingMatch) {
+              titlePart = locationDateEndingMatch[1].trim();
+              metaPart = locationDateEndingMatch[2].trim();
+            }
 
             sectionHtml += `
               <div class="doc-entry-header flex justify-between items-baseline gap-2 mt-2 mb-0.5">
-                <span class="doc-job-title font-bold text-xs text-zinc-900 dark:text-zinc-100">${escapeHtml(titlePart)}</span>
-                <span class="doc-job-meta text-xs font-mono text-zinc-500 dark:text-zinc-400 whitespace-nowrap">${escapeHtml(metaPart)}</span>
+                <span class="doc-job-title font-bold text-xs text-zinc-950 dark:text-zinc-50">${escapeHtml(titlePart)}</span>
+                <span class="doc-job-meta text-xs text-zinc-800 dark:text-zinc-200 whitespace-nowrap text-right font-medium">${escapeHtml(metaPart)}</span>
               </div>
             `.trim();
           } else if (isJobMetaLine(line)) {
-            sectionHtml += `<p class="doc-job-meta text-xs text-zinc-500 dark:text-zinc-400 italic mb-1.5">${escapeHtml(line)}</p>`;
+            sectionHtml += `<p class="doc-job-meta text-xs text-zinc-800 dark:text-zinc-200 italic mb-1">${escapeHtml(line)}</p>`;
           } else if (line.length <= 90 && !line.endsWith('.')) {
-            sectionHtml += `<p class="doc-job-title font-bold text-xs text-zinc-900 dark:text-zinc-100 mt-2 mb-0.5">${escapeHtml(line)}</p>`;
+            sectionHtml += `<p class="doc-job-title font-bold text-xs text-zinc-950 dark:text-zinc-50 mt-2 mb-0.5">${escapeHtml(line)}</p>`;
           } else {
             sectionHtml += `<p class="doc-text text-xs text-zinc-800 dark:text-zinc-200 my-1 leading-relaxed">${escapeHtml(line)}</p>`;
           }

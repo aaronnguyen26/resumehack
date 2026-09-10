@@ -24,8 +24,12 @@ import {
   AlignLeft, 
   AlignCenter, 
   AlignRight, 
+  AlignJustify,
   List, 
   ListOrdered, 
+  IndentDecrease,
+  IndentIncrease,
+  RemoveFormatting,
   ChevronDown, 
   ZoomIn, 
   ZoomOut, 
@@ -54,6 +58,7 @@ import { HackyAiAtsPanel } from './HackyAiAtsPanel.js';
 export interface InAppDocumentCanvasProps {
   parsedResume: ParsedResume | null;
   rawText: string;
+  customHtml?: string;
   diffs?: TailoredBulletDiff[];
   onUpdateResumeText: (text: string) => void;
   onApplyBulletDiff?: (diffIndex: number, variantText?: string) => void;
@@ -85,13 +90,14 @@ export interface InAppDocumentCanvasProps {
 
 type FontFamily = 'sans' | 'serif' | 'mono';
 type FontSize = '9.5pt' | '10pt' | '10.5pt' | '11pt' | '12pt';
-type LineSpacing = '1.0' | '1.15' | '1.25';
+type LineSpacing = '1.0' | '1.15' | '1.25' | '1.5';
 type MarginSize = 'compact' | 'standard' | 'relaxed';
 type ZoomLevel = 85 | 100 | 115;
 
 export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   parsedResume,
   rawText,
+  customHtml,
   diffs = [],
   onUpdateResumeText,
   onApplyBulletDiff,
@@ -141,6 +147,43 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   const [zoom, setZoom] = useState<ZoomLevel>(100);
   const [showGuides, setShowGuides] = useState<boolean>(true);
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(true);
+
+  // ── Google Docs Active Formatting State ───────────────────────────────────
+  const [activeFormats, setActiveFormats] = useState({
+    bold: false,
+    italic: false,
+    underline: false,
+    strike: false,
+    alignLeft: false,
+    alignCenter: false,
+    alignRight: false,
+    alignJustify: false,
+    unorderedList: false,
+    orderedList: false,
+  });
+
+  const checkActiveFormats = useCallback(() => {
+    if (typeof document === 'undefined') return;
+    try {
+      setActiveFormats({
+        bold: Boolean(document.queryCommandState('bold')),
+        italic: Boolean(document.queryCommandState('italic')),
+        underline: Boolean(document.queryCommandState('underline')),
+        strike: Boolean(document.queryCommandState('strikeThrough')),
+        alignLeft: Boolean(document.queryCommandState('justifyLeft')),
+        alignCenter: Boolean(document.queryCommandState('justifyCenter')),
+        alignRight: Boolean(document.queryCommandState('justifyRight')),
+        alignJustify: Boolean(document.queryCommandState('justifyFull')),
+        unorderedList: Boolean(document.queryCommandState('insertUnorderedList')),
+        orderedList: Boolean(document.queryCommandState('insertOrderedList')),
+      });
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('selectionchange', checkActiveFormats);
+    return () => document.removeEventListener('selectionchange', checkActiveFormats);
+  }, [checkActiveFormats]);
 
   // ── Layout Preservation & Visual Architecture State ───────────────────────
   const [layoutOptions, setLayoutOptions] = useState<ResumeLayoutOptions>(() => {
@@ -201,34 +244,40 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   const [isDragOverSheet, setIsDragOverSheet] = useState<boolean>(false);
   const [uploadFeedback, setUploadFeedback] = useState<string | null>(null);
 
-  // ── Side-by-Side Original PDF vs High-Fidelity Canvas View ───────────────
-  const [uploadedPdfUrl, setUploadedPdfUrl] = useState<string | null>(null);
-  const [isSideBySide, setIsSideBySide] = useState<boolean>(false);
-
+  // Synchronize when customHtml changes
   useEffect(() => {
-    return () => {
-      if (uploadedPdfUrl && uploadedPdfUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(uploadedPdfUrl);
-      }
-    };
-  }, [uploadedPdfUrl]);
+    if (customHtml && editorRef.current && editorRef.current.innerHTML !== customHtml) {
+      editorRef.current.innerHTML = customHtml;
+      const extracted = extractTextFromDoc(editorRef.current) || rawText;
+      lastSyncedTextRef.current = extracted;
+    }
+  }, [customHtml, rawText]);
 
   // Synchronize history when rawText changes externally (e.g. file upload or reset)
   useEffect(() => {
     setRawEditText(rawText);
-    if (editorRef.current && rawText !== lastSyncedTextRef.current) {
-      // If editorRef already contains high-fidelity HTML matching rawText, avoid clobbering it
-      const currentDocText = extractTextFromDoc(editorRef.current);
-      if (currentDocText && currentDocText.trim() === rawText.trim()) {
+    if (editorRef.current && rawText !== lastSyncedTextRef.current && !isUserTypingRef.current) {
+      // If customHtml is actively loaded and editor contains it, avoid clobbering
+      if (customHtml && editorRef.current.innerHTML === customHtml) {
         lastSyncedTextRef.current = rawText;
         return;
+      }
+      // If editorRef already contains rendered high-fidelity sections matching the user resume, avoid clobbering
+      const currentDocText = extractTextFromDoc(editorRef.current);
+      if (currentDocText) {
+        const cleanDoc = currentDocText.replace(/\s+/g, ' ').trim();
+        const cleanRaw = rawText.replace(/\s+/g, ' ').trim();
+        if (cleanDoc === cleanRaw || (cleanDoc.length > 80 && Math.abs(cleanDoc.length - cleanRaw.length) < 40)) {
+          lastSyncedTextRef.current = rawText;
+          return;
+        }
       }
       editorRef.current.innerHTML = rawTextToHtml(rawText, applicantProfile, layoutOptions);
       lastSyncedTextRef.current = rawText;
       setHistory([rawText]);
       setHistoryIndex(0);
     }
-  }, [rawText, applicantProfile, layoutOptions]);
+  }, [rawText, customHtml, applicantProfile, layoutOptions]);
 
   // Synchronize documentTitle prop into local state when external title changes
   useEffect(() => {
@@ -240,6 +289,11 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   // Initial load of HTML into contentEditable on mount
   useEffect(() => {
     if (editorRef.current && !editorRef.current.innerHTML.trim()) {
+      if (customHtml && customHtml.trim()) {
+        editorRef.current.innerHTML = customHtml;
+        lastSyncedTextRef.current = extractTextFromDoc(editorRef.current) || rawText;
+        return;
+      }
       try {
         const savedHtml = localStorage.getItem('user_custom_resume_html');
         if (savedHtml && savedHtml.trim()) {
@@ -251,7 +305,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
       editorRef.current.innerHTML = rawTextToHtml(rawText, applicantProfile, layoutOptions);
       lastSyncedTextRef.current = rawText;
     }
-  }, [applicantProfile, layoutOptions, rawText]);
+  }, [applicantProfile, layoutOptions, rawText, customHtml]);
 
   const pushState = useCallback((newText: string) => {
     setHistory((prev) => {
@@ -371,6 +425,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     if (marginSize === 'relaxed') base -= 6;
     if (lineSpacing === '1.0') base += 4;
     if (lineSpacing === '1.25') base -= 4;
+    if (lineSpacing === '1.5') base -= 8;
     if (fontSize === '9.5pt') base += 4;
     if (fontSize === '11pt' || fontSize === '12pt') base -= 4;
     return base;
@@ -520,17 +575,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
       detectedLayout = parsed.layout;
       const highFidelityHtml = parsed.html;
 
-      // Enable Side-by-Side visual comparison with the original PDF
-      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-        try {
-          if (uploadedPdfUrl && uploadedPdfUrl.startsWith('blob:')) {
-            URL.revokeObjectURL(uploadedPdfUrl);
-          }
-          const blobUrl = URL.createObjectURL(file);
-          setUploadedPdfUrl(blobUrl);
-          setIsSideBySide(true);
-        } catch {}
-      }
+      // File text and high-fidelity HTML extracted
 
       if (onUploadFile) {
         try {
@@ -624,7 +669,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
         const file = e.dataTransfer.files?.[0];
         if (file) handleCanvasFileUpload(file);
       }}
-      className={`resume-canvas-print relative w-full max-w-[816px] min-h-[1056px] bg-white dark:bg-[#151518] text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-800/90 rounded-xl shadow-xl font-sans transition-all duration-200 ${
+      className={`resume-canvas-print relative w-full max-w-[816px] min-h-[1056px] bg-white dark:bg-[#151518] text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-800/90 rounded-xl shadow-xl transition-all duration-200 ${
         marginSize === 'compact' ? 'p-6 sm:p-10' : marginSize === 'relaxed' ? 'p-10 sm:p-16' : 'p-8 sm:p-12'
       } ${
         fontFamily === 'serif' ? 'font-serif' : fontFamily === 'mono' ? 'font-mono' : 'font-sans'
@@ -655,7 +700,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
         onPaste={handleEditorPaste}
         className="doc-editable-content w-full h-full min-h-[960px] focus:outline-none cursor-text selection:bg-zinc-200 dark:selection:bg-zinc-700"
         style={{
-          lineHeight: lineSpacing === '1.0' ? '1.25' : lineSpacing === '1.25' ? '1.6' : '1.4',
+          lineHeight: lineSpacing === '1.0' ? '1.25' : lineSpacing === '1.25' ? '1.6' : lineSpacing === '1.5' ? '1.8' : '1.4',
           fontSize: fontSize === '9.5pt' ? '12px' : fontSize === '10.5pt' ? '13px' : fontSize === '11pt' ? '14px' : fontSize === '12pt' ? '15px' : '12.5px',
         }}
       />
@@ -957,571 +1002,573 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
         </div>
       </header>
 
-      {/* ── WYSIWYG FORMATTING RIBBON / TOOLBAR (Sticky below Header) ─────── */}
-      <nav aria-label="Document Formatting Controls" className="sticky top-[53px] z-30 bg-white/95 dark:bg-[#151518]/95 backdrop-blur-md border-b border-zinc-200 dark:border-[#27272A] px-4 sm:px-6 py-1.5 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
-        {/* Typography & Styling Controls */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {/* Font Family Selector */}
-          <div className="flex items-center">
-            <select
-              value={fontFamily}
-              onChange={(e) => setFontFamily(e.target.value as FontFamily)}
-              className="h-7 px-2 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none cursor-pointer"
-              title="Font Family"
-            >
-              <option value="sans">Sans (Inter / Jakarta)</option>
-              <option value="serif">Serif (Times / Garamond)</option>
-              <option value="mono">Mono (JetBrains)</option>
-            </select>
-          </div>
-
-          {/* Font Size Selector */}
-          <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5">
-            <button
-              type="button"
-              onMouseDown={preventFocusLoss}
-              onClick={() => {
-                const sizes: FontSize[] = ['9.5pt', '10pt', '10.5pt', '11pt', '12pt'];
-                const idx = sizes.indexOf(fontSize);
-                if (idx > 0) setFontSize(sizes[idx - 1]);
-              }}
-              className="px-1.5 py-0.5 text-[11px] font-bold text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-              title="Decrease Font Size"
-            >
-              A-
-            </button>
-            <span className="text-[11px] font-mono font-semibold px-1 text-zinc-800 dark:text-zinc-200">
-              {fontSize}
-            </span>
-            <button
-              type="button"
-              onMouseDown={preventFocusLoss}
-              onClick={() => {
-                const sizes: FontSize[] = ['9.5pt', '10pt', '10.5pt', '11pt', '12pt'];
-                const idx = sizes.indexOf(fontSize);
-                if (idx < sizes.length - 1) setFontSize(sizes[idx + 1]);
-              }}
-              className="px-1.5 py-0.5 text-[11px] font-bold text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-              title="Increase Font Size"
-            >
-              A+
-            </button>
-          </div>
-
-          <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-1 hidden sm:block"></div>
-
-          {/* Direct Rich Text Formatting Buttons (Google Docs Native Commands) */}
-          <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5">
-            <button
-              type="button"
-              onMouseDown={preventFocusLoss}
-              onClick={() => {
-                document.execCommand('bold', false);
-                handleEditorInput();
-              }}
-              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 active:scale-95 transition-transform"
-              title="Bold Selected Text (Ctrl+B)"
-            >
-              <Bold className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={preventFocusLoss}
-              onClick={() => {
-                document.execCommand('italic', false);
-                handleEditorInput();
-              }}
-              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 active:scale-95 transition-transform"
-              title="Italic Selected Text (Ctrl+I)"
-            >
-              <Italic className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={preventFocusLoss}
-              onClick={() => {
-                document.execCommand('underline', false);
-                handleEditorInput();
-              }}
-              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 active:scale-95 transition-transform"
-              title="Underline Selected Text (Ctrl+U)"
-            >
-              <Underline className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={preventFocusLoss}
-              onClick={() => {
-                document.execCommand('strikeThrough', false);
-                handleEditorInput();
-              }}
-              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 active:scale-95 transition-transform"
-              title="Strikethrough Selected Text"
-            >
-              <Strikethrough className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* List Formatting */}
-          <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5">
-            <button
-              type="button"
-              onMouseDown={preventFocusLoss}
-              onClick={() => {
-                document.execCommand('insertUnorderedList', false);
-                handleEditorInput();
-              }}
-              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 active:scale-95 transition-transform"
-              title="Bulleted List (•)"
-            >
-              <List className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={preventFocusLoss}
-              onClick={() => {
-                document.execCommand('insertOrderedList', false);
-                handleEditorInput();
-              }}
-              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 active:scale-95 transition-transform"
-              title="Numbered List"
-            >
-              <ListOrdered className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Alignment */}
-          <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5 hidden sm:flex">
-            <button
-              type="button"
-              onMouseDown={preventFocusLoss}
-              onClick={() => {
-                document.execCommand('justifyLeft', false);
-                handleEditorInput();
-              }}
-              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-              title="Align Left"
-            >
-              <AlignLeft className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={preventFocusLoss}
-              onClick={() => {
-                document.execCommand('justifyCenter', false);
-                handleEditorInput();
-              }}
-              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-              title="Align Center"
-            >
-              <AlignCenter className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={preventFocusLoss}
-              onClick={() => {
-                document.execCommand('justifyRight', false);
-                handleEditorInput();
-              }}
-              className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-              title="Align Right"
-            >
-              <AlignRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-1 hidden sm:block"></div>
-
-          {/* Line Spacing Selector */}
-          <div className="flex items-center">
-            <select
-              value={lineSpacing}
-              onChange={(e) => setLineSpacing(e.target.value as LineSpacing)}
-              className="h-7 px-2 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none cursor-pointer"
-              title="Line Spacing (Budget Adjuster)"
-            >
-              <option value="1.0">1.0x (Tight / 56L)</option>
-              <option value="1.15">1.15x (Standard / 50L)</option>
-              <option value="1.25">1.25x (Relaxed / 44L)</option>
-            </select>
-          </div>
-
-          {/* Margins Selector */}
-          <div className="flex items-center">
-            <select
-              value={marginSize}
-              onChange={(e) => setMarginSize(e.target.value as MarginSize)}
-              className="h-7 px-2 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none cursor-pointer"
-              title="Page Margins"
-            >
-              <option value="compact">0.5" Compact Margins</option>
-              <option value="standard">0.75" Standard Margins</option>
-              <option value="relaxed">1.0" Wide Margins</option>
-            </select>
-          </div>
-
-          <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-1 hidden sm:block"></div>
-
-          {/* Visual Layout & Architecture Preset */}
-          <div className="flex items-center">
-            <select
-              value={layoutOptions.preset || 'classic'}
-              onChange={(e) => handleUpdateLayout({ preset: e.target.value as any })}
-              className="h-7 px-2 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none cursor-pointer"
-              title="Resume Visual Design & Architecture Preset"
-            >
-              <option value="classic">Layout: Classic Tech (Split Dates)</option>
-              <option value="modern">Layout: Modern Executive (Centered)</option>
-              <option value="two_column">Layout: Two-Column (Sidebar)</option>
-              <option value="minimal">Layout: Minimalist (Clean)</option>
-            </select>
-          </div>
-
-          {/* Columns Toggle (1-Col vs 2-Col) */}
-          <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5 hidden sm:flex">
-            <button
-              type="button"
-              onMouseDown={preventFocusLoss}
-              onClick={() => handleUpdateLayout({ columnLayout: 'single' })}
-              className={`px-1.5 py-0.5 text-[10px] font-bold rounded transition-colors ${
-                (layoutOptions.columnLayout || 'single') === 'single'
-                  ? 'bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-2xs'
-                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
-              }`}
-              title="Single Column Layout"
-            >
-              1-Col
-            </button>
-            <button
-              type="button"
-              onMouseDown={preventFocusLoss}
-              onClick={() => handleUpdateLayout({ columnLayout: 'two_column' })}
-              className={`px-1.5 py-0.5 text-[10px] font-bold rounded transition-colors ${
-                layoutOptions.columnLayout === 'two_column'
-                  ? 'bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-2xs'
-                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
-              }`}
-              title="Two-Column Sidebar Layout"
-            >
-              2-Col
-            </button>
-          </div>
-
-          {/* Header Alignment Toggle */}
-          <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5 hidden md:flex">
-            <button
-              type="button"
-              onMouseDown={preventFocusLoss}
-              onClick={() => handleUpdateLayout({ headerAlignment: 'left' })}
-              className={`px-1.5 py-0.5 text-[10px] font-bold rounded transition-colors ${
-                (layoutOptions.headerAlignment || 'left') === 'left'
-                  ? 'bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-2xs'
-                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
-              }`}
-              title="Left-Aligned Header"
-            >
-              Left
-            </button>
-            <button
-              type="button"
-              onMouseDown={preventFocusLoss}
-              onClick={() => handleUpdateLayout({ headerAlignment: 'center' })}
-              className={`px-1.5 py-0.5 text-[10px] font-bold rounded transition-colors ${
-                layoutOptions.headerAlignment === 'center'
-                  ? 'bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-2xs'
-                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
-              }`}
-              title="Centered Header"
-            >
-              Center
-            </button>
-          </div>
-
-          <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-1 hidden sm:block"></div>
-
-          {/* Insert Section Quick Dropdown */}
-          <div className="relative group/insert">
-            <button
-              type="button"
-              className="h-7 px-2.5 rounded-md bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>+ Insert Section</span>
-              <ChevronDown className="w-3 h-3 text-zinc-400" />
-            </button>
-
-            <div className="absolute left-0 top-full mt-1 w-48 bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl shadow-lg p-1.5 hidden group-hover/insert:block z-50 animate-in fade-in duration-150">
-              <button
-                type="button"
-                onClick={() => handleInsertSectionIntoDoc('EXPERIENCE')}
-                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
-              >
-                + Work Experience
-              </button>
-              <button
-                type="button"
-                onClick={() => handleInsertSectionIntoDoc('PROJECTS')}
-                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
-              >
-                + Featured Projects
-              </button>
-              <button
-                type="button"
-                onClick={() => handleInsertSectionIntoDoc('SKILLS')}
-                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
-              >
-                + Technical Skills
-              </button>
-              <button
-                type="button"
-                onClick={() => handleInsertSectionIntoDoc('EDUCATION')}
-                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
-              >
-                + Education
-              </button>
-              <button
-                type="button"
-                onClick={() => handleInsertSectionIntoDoc('SUMMARY')}
-                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
-              >
-                + Professional Summary
-              </button>
-              <button
-                type="button"
-                onClick={() => handleInsertSectionIntoDoc('CUSTOM')}
-                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
-              >
-                + Custom Section
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* View & Zoom Controls */}
-        <div className="flex items-center gap-2">
-          {/* Side-by-Side Comparison Toggle */}
-          {uploadedPdfUrl && (
-            <button
-              type="button"
-              onClick={() => setIsSideBySide(!isSideBySide)}
-              className={`h-7 px-2.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                isSideBySide
-                  ? 'bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-xs'
-                  : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700'
-              }`}
-              title="Compare Original PDF and Editable Canvas side-by-side"
-            >
-              <Columns className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Side-by-Side</span>
-              <span className="text-[10px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-mono">
-                {isSideBySide ? 'ON' : 'OFF'}
-              </span>
-            </button>
-          )}
-
-          {/* Guidelines Toggle */}
-          <button
-            type="button"
-            onClick={() => setShowGuides(!showGuides)}
-            className={`h-7 px-2 rounded-md text-xs font-mono flex items-center gap-1 transition-colors ${
-              showGuides 
-                ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-bold' 
-                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'
-            }`}
-            title="Toggle print margin guideline boundaries"
+      {/* ── MAIN WORKSPACE VIEWPORT (Left Canvas Column + Right Inspector) ─────── */}
+      <div className="flex-1 flex flex-col lg:flex-row items-stretch justify-start relative overflow-hidden min-h-0">
+        {/* ── LEFT DOCUMENT CANVAS WORKSPACE (Toolbar + Paper Stage) ───────── */}
+        <div className="flex-1 flex flex-col min-w-0 bg-zinc-100/70 dark:bg-[#0c0c0e] relative h-full">
+          {/* ── GOOGLE DOCS-STYLE FORMATTING TOOLBAR (Strictly Scoped to Document Canvas) ── */}
+          <nav 
+            aria-label="Document Formatting Controls" 
+            className="sticky top-0 z-20 bg-white/95 dark:bg-[#151518]/95 backdrop-blur-md border-b border-zinc-200 dark:border-[#27272A] px-3 sm:px-4 py-1.5 flex items-center justify-between gap-1.5 shadow-2xs overflow-x-auto select-none"
           >
-            <span>Margins Guide</span>
-          </button>
+            {/* Left Controls: Google Docs standard components */}
+            <div className="flex items-center gap-1 sm:gap-1.5 flex-nowrap shrink-0">
+              {/* Undo / Redo / Print */}
+              <div className="flex items-center bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5">
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={handleUndo}
+                  disabled={historyIndex <= 0}
+                  className="p-1 rounded text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Undo (Ctrl+Z)"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={handleRedo}
+                  disabled={historyIndex >= history.length - 1}
+                  className="p-1 rounded text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Redo (Ctrl+Y)"
+                >
+                  <Redo2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={handlePrint}
+                  className="p-1 rounded text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white transition-colors"
+                  title="Print / Export ATS PDF (Ctrl+P)"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                </button>
+              </div>
 
-          {/* Zoom Stepper */}
-          <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5">
-            <button
-              type="button"
-              onClick={() => setZoom((z) => (z === 115 ? 100 : 85))}
-              className="p-1 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-              title="Zoom Out"
-            >
-              <ZoomOut className="w-3 h-3" />
-            </button>
-            <span className="text-[10px] font-mono px-1 text-zinc-700 dark:text-zinc-300">
-              {zoom}%
-            </span>
-            <button
-              type="button"
-              onClick={() => setZoom((z) => (z === 85 ? 100 : 115))}
-              className="p-1 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-              title="Zoom In"
-            >
-              <ZoomIn className="w-3 h-3" />
-            </button>
-          </div>
-        </div>
-      </nav>
+              <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5 shrink-0" />
 
-      {/* Extraction Feedback Banner */}
-      {uploadFeedback && (
-        <div className="px-6 py-2 bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-mono flex items-center justify-between animate-in fade-in duration-200">
-          <span className="flex items-center gap-2">
-            <FileUp className="w-4 h-4 text-emerald-400" />
-            <span>{uploadFeedback}</span>
-          </span>
-          <button type="button" onClick={() => setUploadFeedback(null)}>
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
+              {/* Font Family Selector */}
+              <div className="flex items-center">
+                <select
+                  value={fontFamily}
+                  onChange={(e) => setFontFamily(e.target.value as FontFamily)}
+                  className="h-7 px-2 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none cursor-pointer"
+                  title="Font Family"
+                >
+                  <option value="serif">Serif (Times / Garamond)</option>
+                  <option value="sans">Sans (Arial / Inter)</option>
+                  <option value="mono">Mono (Courier / JetBrains)</option>
+                </select>
+              </div>
 
-      {/* ── MAIN WORKSPACE VIEWPORT (Center Canvas + Right Inspector) ─────── */}
-      <div className="flex-1 flex flex-col md:flex-row items-stretch justify-center relative overflow-x-hidden">
-        {/* ── CENTER DOCUMENT WORKBENCH (Paper Stage) ────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-5 md:p-6 lg:p-8 flex flex-col items-center justify-start bg-zinc-100/70 dark:bg-[#0c0c0e] relative min-h-[850px]">
-          {isRawEditing ? (
-            /* Raw Monospace Text Editor Mode */
-            <div className="w-full max-w-3xl bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400">
-                <span className="font-mono">Direct plain text / Markdown editor:</span>
-                <div className="flex gap-2">
+              {/* Font Size Stepper */}
+              <div className="flex items-center bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5">
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    const sizes: FontSize[] = ['9.5pt', '10pt', '10.5pt', '11pt', '12pt'];
+                    const idx = sizes.indexOf(fontSize);
+                    if (idx > 0) setFontSize(sizes[idx - 1]);
+                  }}
+                  className="px-1.5 py-0.5 text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white rounded hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                  title="Decrease Font Size"
+                >
+                  -
+                </button>
+                <span className="text-[11px] font-mono font-semibold px-1 text-zinc-800 dark:text-zinc-200 min-w-[34px] text-center">
+                  {fontSize}
+                </span>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    const sizes: FontSize[] = ['9.5pt', '10pt', '10.5pt', '11pt', '12pt'];
+                    const idx = sizes.indexOf(fontSize);
+                    if (idx < sizes.length - 1) setFontSize(sizes[idx + 1]);
+                  }}
+                  className="px-1.5 py-0.5 text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white rounded hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                  title="Increase Font Size"
+                >
+                  +
+                </button>
+              </div>
+
+              <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5 shrink-0" />
+
+              {/* Text Styling: Bold, Italic, Underline, Strikethrough with Google Docs active formatting states */}
+              <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5">
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    document.execCommand('bold', false);
+                    handleEditorInput();
+                    checkActiveFormats();
+                  }}
+                  className={`p-1 rounded transition-colors ${
+                    activeFormats.bold
+                      ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-bold shadow-2xs'
+                      : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                  }`}
+                  title="Bold (Ctrl+B)"
+                >
+                  <Bold className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    document.execCommand('italic', false);
+                    handleEditorInput();
+                    checkActiveFormats();
+                  }}
+                  className={`p-1 rounded transition-colors ${
+                    activeFormats.italic
+                      ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-bold shadow-2xs'
+                      : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                  }`}
+                  title="Italic (Ctrl+I)"
+                >
+                  <Italic className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    document.execCommand('underline', false);
+                    handleEditorInput();
+                    checkActiveFormats();
+                  }}
+                  className={`p-1 rounded transition-colors ${
+                    activeFormats.underline
+                      ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-bold shadow-2xs'
+                      : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                  }`}
+                  title="Underline (Ctrl+U)"
+                >
+                  <Underline className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    document.execCommand('strikeThrough', false);
+                    handleEditorInput();
+                    checkActiveFormats();
+                  }}
+                  className={`p-1 rounded transition-colors ${
+                    activeFormats.strike
+                      ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-bold shadow-2xs'
+                      : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                  }`}
+                  title="Strikethrough"
+                >
+                  <Strikethrough className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5 shrink-0 hidden sm:block" />
+
+              {/* Alignment: Left, Center, Right, Justify with active states */}
+              <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5 hidden sm:flex">
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    document.execCommand('justifyLeft', false);
+                    handleEditorInput();
+                    checkActiveFormats();
+                  }}
+                  className={`p-1 rounded transition-colors ${
+                    activeFormats.alignLeft
+                      ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 shadow-2xs'
+                      : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                  }`}
+                  title="Align Left (Ctrl+Shift+L)"
+                >
+                  <AlignLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    document.execCommand('justifyCenter', false);
+                    handleEditorInput();
+                    checkActiveFormats();
+                  }}
+                  className={`p-1 rounded transition-colors ${
+                    activeFormats.alignCenter
+                      ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 shadow-2xs'
+                      : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                  }`}
+                  title="Align Center (Ctrl+Shift+E)"
+                >
+                  <AlignCenter className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    document.execCommand('justifyRight', false);
+                    handleEditorInput();
+                    checkActiveFormats();
+                  }}
+                  className={`p-1 rounded transition-colors ${
+                    activeFormats.alignRight
+                      ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 shadow-2xs'
+                      : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                  }`}
+                  title="Align Right (Ctrl+Shift+R)"
+                >
+                  <AlignRight className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    document.execCommand('justifyFull', false);
+                    handleEditorInput();
+                    checkActiveFormats();
+                  }}
+                  className={`p-1 rounded transition-colors ${
+                    activeFormats.alignJustify
+                      ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 shadow-2xs'
+                      : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                  }`}
+                  title="Justify (Ctrl+Shift+J)"
+                >
+                  <AlignJustify className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5 shrink-0 hidden md:block" />
+
+              {/* Line Spacing */}
+              <div className="flex items-center hidden md:flex">
+                <select
+                  value={lineSpacing}
+                  onChange={(e) => setLineSpacing(e.target.value as LineSpacing)}
+                  className="h-7 px-2 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none cursor-pointer"
+                  title="Line Spacing (Single, 1.15, 1.25, 1.5)"
+                >
+                  <option value="1.0">1.0 (Single)</option>
+                  <option value="1.15">1.15 (Standard)</option>
+                  <option value="1.25">1.25 (Relaxed)</option>
+                  <option value="1.5">1.5 (Wide)</option>
+                </select>
+              </div>
+
+              <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5 shrink-0 hidden sm:block" />
+
+              {/* Lists, Indents, and Clear Formatting */}
+              <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5 hidden sm:flex">
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    document.execCommand('insertUnorderedList', false);
+                    handleEditorInput();
+                    checkActiveFormats();
+                  }}
+                  className={`p-1 rounded transition-colors ${
+                    activeFormats.unorderedList
+                      ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 shadow-2xs'
+                      : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                  }`}
+                  title="Bulleted List (•)"
+                >
+                  <List className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    document.execCommand('insertOrderedList', false);
+                    handleEditorInput();
+                    checkActiveFormats();
+                  }}
+                  className={`p-1 rounded transition-colors ${
+                    activeFormats.orderedList
+                      ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 shadow-2xs'
+                      : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                  }`}
+                  title="Numbered List"
+                >
+                  <ListOrdered className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    document.execCommand('outdent', false);
+                    handleEditorInput();
+                    checkActiveFormats();
+                  }}
+                  className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                  title="Decrease Indent (Shift+Tab)"
+                >
+                  <IndentDecrease className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    document.execCommand('indent', false);
+                    handleEditorInput();
+                    checkActiveFormats();
+                  }}
+                  className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                  title="Increase Indent (Tab)"
+                >
+                  <IndentIncrease className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    document.execCommand('removeFormat', false);
+                    handleEditorInput();
+                    checkActiveFormats();
+                  }}
+                  className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                  title="Clear Formatting"
+                >
+                  <RemoveFormatting className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5 shrink-0 hidden lg:block" />
+
+              {/* Margins Selector */}
+              <div className="flex items-center hidden lg:flex">
+                <select
+                  value={marginSize}
+                  onChange={(e) => setMarginSize(e.target.value as MarginSize)}
+                  className="h-7 px-2 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none cursor-pointer"
+                  title="Page Margins"
+                >
+                  <option value="compact">0.5" Compact</option>
+                  <option value="standard">0.75" Standard</option>
+                  <option value="relaxed">1.0" Wide</option>
+                </select>
+              </div>
+
+              {/* Visual Layout Preset */}
+              <div className="flex items-center hidden xl:flex">
+                <select
+                  value={layoutOptions.preset || 'classic'}
+                  onChange={(e) => handleUpdateLayout({ preset: e.target.value as any })}
+                  className="h-7 px-2 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none cursor-pointer"
+                  title="Resume Visual Design & Architecture Preset"
+                >
+                  <option value="classic">Layout: Classic Tech (Split Dates)</option>
+                  <option value="modern">Layout: Modern Executive (Centered)</option>
+                  <option value="two_column">Layout: Two-Column (Sidebar)</option>
+                  <option value="minimal">Layout: Minimalist (Clean)</option>
+                </select>
+              </div>
+
+              {/* Insert Section Quick Dropdown */}
+              <div className="relative group/insert hidden sm:block">
+                <button
+                  type="button"
+                  className="h-7 px-2.5 rounded-md bg-zinc-100 dark:bg-zinc-800/90 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Insert Section</span>
+                  <ChevronDown className="w-3 h-3 text-zinc-400" />
+                </button>
+
+                <div className="absolute left-0 top-full mt-1 w-48 bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl shadow-lg p-1.5 hidden group-hover/insert:block z-50 animate-in fade-in duration-150">
                   <button
                     type="button"
-                    onClick={() => {
-                      setRawEditText(rawText);
-                      setIsRawEditing(false);
-                    }}
-                    className="px-3 py-1 rounded-md text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    onClick={() => handleInsertSectionIntoDoc('EXPERIENCE')}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
                   >
-                    Cancel
+                    + Work Experience
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      onUpdateResumeText(rawEditText);
-                      pushState(rawEditText);
-                      if (editorRef.current) {
-                        editorRef.current.innerHTML = rawTextToHtml(rawEditText, applicantProfile, layoutOptions);
-                      }
-                      setIsRawEditing(false);
-                    }}
-                    className="px-3.5 py-1 bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 font-bold rounded-md shadow-xs"
+                    onClick={() => handleInsertSectionIntoDoc('PROJECTS')}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
                   >
-                    Save & View Sheet
+                    + Featured Projects
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertSectionIntoDoc('SKILLS')}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
+                  >
+                    + Technical Skills
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertSectionIntoDoc('EDUCATION')}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
+                  >
+                    + Education
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertSectionIntoDoc('SUMMARY')}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
+                  >
+                    + Professional Summary
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertSectionIntoDoc('CUSTOM')}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium"
+                  >
+                    + Custom Section
                   </button>
                 </div>
               </div>
-              <textarea
-                rows={28}
-                value={rawEditText}
-                onChange={(e) => setRawEditText(e.target.value)}
-                className="w-full font-mono text-xs p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-zinc-400 leading-relaxed"
-              />
             </div>
-          ) : isSideBySide && uploadedPdfUrl ? (
-            /* Dual Split Stage: Original Uploaded PDF (Left) vs High-Fidelity Editable Canvas (Right) */
-            <div className="w-full max-w-[1720px] mx-auto grid grid-cols-1 xl:grid-cols-2 gap-6 items-start pb-12">
-              {/* Left Pane: Original Uploaded PDF (Visual Ground Truth) */}
-              <div className="flex flex-col bg-white dark:bg-[#151518] rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xl overflow-hidden sticky top-2">
-                <div className="flex items-center justify-between px-4 py-2.5 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
-                    <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">Original Uploaded PDF</span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
-                      Visual Ground Truth
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={uploadedPdfUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[11px] text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100 flex items-center gap-1 font-mono"
-                      title="Open PDF in new browser tab"
-                    >
-                      <span>Open Tab</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
+
+            {/* Right Controls: Margins Guide & Zoom */}
+            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowGuides(!showGuides)}
+                className={`h-7 px-2 rounded-md text-xs font-mono flex items-center gap-1 transition-colors ${
+                  showGuides 
+                    ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-bold' 
+                    : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                }`}
+                title="Toggle print margin guideline boundaries"
+              >
+                <span>Margins Guide</span>
+              </button>
+
+              <div className="flex items-center bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => (z === 115 ? 100 : 85))}
+                  className="p-1 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
+                  title="Zoom Out"
+                >
+                  <ZoomOut className="w-3 h-3" />
+                </button>
+                <span className="text-[10px] font-mono px-1 text-zinc-700 dark:text-zinc-300 min-w-[32px] text-center">
+                  {zoom}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => (z === 85 ? 100 : 115))}
+                  className="p-1 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
+                  title="Zoom In"
+                >
+                  <ZoomIn className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          </nav>
+
+          {/* Extraction Feedback Banner */}
+          {uploadFeedback && (
+            <div className="px-6 py-2 bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-mono flex items-center justify-between animate-in fade-in duration-200">
+              <span className="flex items-center gap-2">
+                <FileUp className="w-4 h-4 text-emerald-400" />
+                <span>{uploadFeedback}</span>
+              </span>
+              <button type="button" onClick={() => setUploadFeedback(null)}>
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Paper Stage Container */}
+          <div className="flex-1 overflow-y-auto p-3 sm:p-5 md:p-6 lg:p-8 flex flex-col items-center justify-start relative min-h-[850px]">
+            {isRawEditing ? (
+              /* Raw Monospace Text Editor Mode */
+              <div className="w-full max-w-3xl bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400">
+                  <span className="font-mono">Direct plain text / Markdown editor:</span>
+                  <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setIsSideBySide(false)}
-                      className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 p-1 cursor-pointer"
-                      title="Close Side-by-Side View"
+                      onClick={() => {
+                        setRawEditText(rawText);
+                        setIsRawEditing(false);
+                      }}
+                      className="px-3 py-1 rounded-md text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdateResumeText(rawEditText);
+                        pushState(rawEditText);
+                        if (editorRef.current) {
+                          editorRef.current.innerHTML = rawTextToHtml(rawEditText, applicantProfile, layoutOptions);
+                        }
+                        setIsRawEditing(false);
+                      }}
+                      className="px-3.5 py-1 bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 font-bold rounded-md shadow-xs"
+                    >
+                      Save & View Sheet
                     </button>
                   </div>
                 </div>
-                <div className="w-full h-[1056px] bg-zinc-200 dark:bg-zinc-900 flex items-center justify-center">
-                  <iframe
-                    src={`${uploadedPdfUrl}#toolbar=0&navpanes=0`}
-                    title="Original PDF Document"
-                    className="w-full h-full border-0"
-                  />
-                </div>
+                <textarea
+                  rows={28}
+                  value={rawEditText}
+                  onChange={(e) => setRawEditText(e.target.value)}
+                  className="w-full font-mono text-xs p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-zinc-400 leading-relaxed"
+                />
               </div>
-
-              {/* Right Pane: High-Fidelity Editable Canvas (Copy & Paste Layout Replica) */}
-              <div className="flex flex-col items-center w-full">
-                <div className="w-full max-w-[816px] flex items-center justify-between px-4 py-2.5 mb-2 bg-white dark:bg-[#151518] rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-2xs">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-emerald-500" />
-                    <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
-                      High-Fidelity Editable Canvas
-                    </span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold">
-                      Copy & Paste Layout Replica
-                    </span>
-                  </div>
-                  <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
-                    {lineCount} lines • {pageBudgetPercentage <= 100 ? '1-Page Fit' : 'Overflow'}
-                  </span>
-                </div>
-
-                {documentSheetNode}
-              </div>
-            </div>
-          ) : (
-            documentSheetNode
-          )}
+            ) : (
+              documentSheetNode
+            )}
+          </div>
         </div>
 
         {/* ── RIGHT HACKY AI ATS ARCHITECTURE INSPECTOR (Collapsible) ────────── */}
         {isInspectorOpen && (
-          <HackyAiAtsPanel
-            resumeText={rawEditText || rawText}
-            applicantProfile={applicantProfile}
-            currentJob={currentJob}
-            onUpdateCurrentJob={onUpdateCurrentJob}
-            onTriggerTailor={onTriggerTailor}
-            tailorData={tailorData}
-            isTailorLoading={isTailorLoading}
-            targetRole={targetRole}
-            diffs={diffs}
-            onApplyBulletDiff={(dIdx, variantText) => {
-              handleApplyBulletDiffFromInspector(dIdx, variantText);
-            }}
-            onApplyAllDiffs={() => {
-              if (onApplyAllDiffs) {
-                onApplyAllDiffs();
-                if (editorRef.current) {
-                  diffs.forEach(d => {
-                    if (d.originalText && editorRef.current) {
-                      editorRef.current.innerHTML = editorRef.current.innerHTML.replace(
-                        escapeHtml(d.originalText.trim()),
-                        escapeHtml(d.tailoredText.trim())
-                      );
-                    }
-                  });
-                  handleEditorInput();
+          <aside aria-label="Hacky AI ATS Inspector" className="w-full lg:w-[380px] shrink-0 border-t lg:border-t-0 lg:border-l border-zinc-200 dark:border-[#27272A] bg-white dark:bg-[#121215] flex flex-col overflow-y-auto">
+            <HackyAiAtsPanel
+              resumeText={rawEditText || rawText}
+              applicantProfile={applicantProfile}
+              currentJob={currentJob}
+              onUpdateCurrentJob={onUpdateCurrentJob}
+              onTriggerTailor={onTriggerTailor}
+              tailorData={tailorData}
+              isTailorLoading={isTailorLoading}
+              targetRole={targetRole}
+              diffs={diffs}
+              onApplyBulletDiff={(dIdx, variantText) => {
+                handleApplyBulletDiffFromInspector(dIdx, variantText);
+              }}
+              onApplyAllDiffs={() => {
+                if (onApplyAllDiffs) {
+                  onApplyAllDiffs();
+                  if (editorRef.current) {
+                    diffs.forEach(d => {
+                      if (d.originalText && editorRef.current) {
+                        editorRef.current.innerHTML = editorRef.current.innerHTML.replace(
+                          escapeHtml(d.originalText.trim()),
+                          escapeHtml(d.tailoredText.trim())
+                        );
+                      }
+                    });
+                    handleEditorInput();
+                  }
                 }
-              }
-            }}
-            onInsertKeyword={handleInsertKeywordIntoDoc}
-            onInsertBullet={handleInsertBulletIntoDoc}
-            onClose={() => setIsInspectorOpen(false)}
-            lineCount={lineCount}
-            maxRecommendedLines={maxRecommendedLines}
-            pageBudgetPercentage={pageBudgetPercentage}
-            linesRemaining={linesRemaining}
-            sectionBreakdown={sectionBreakdown}
-          />
+              }}
+              onInsertKeyword={handleInsertKeywordIntoDoc}
+              onInsertBullet={handleInsertBulletIntoDoc}
+              onClose={() => setIsInspectorOpen(false)}
+              lineCount={lineCount}
+              maxRecommendedLines={maxRecommendedLines}
+              pageBudgetPercentage={pageBudgetPercentage}
+              linesRemaining={linesRemaining}
+              sectionBreakdown={sectionBreakdown}
+            />
+          </aside>
         )}
       </div>
     </div>

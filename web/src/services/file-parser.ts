@@ -568,7 +568,22 @@ export async function extractPdfWithLayout(buffer: ArrayBuffer): Promise<{ text:
         disableCombineTextItems: false,
       });
 
-      const formattedResult = formatLayoutAwarePdfItems(textContent.items as any[]);
+      // Enrich items with true font family and styles from textContent.styles
+      const styles = (textContent as any).styles || {};
+      const enrichedItems = (textContent.items as any[]).map((it: any) => {
+        const style = styles[it.fontName];
+        const resolvedFont = style?.fontFamily || it.fontName || '';
+        const isItalic = style?.fontFamily ? /italic|oblique/i.test(style.fontFamily) || /italic|oblique/i.test(it.fontName || '') : undefined;
+        const isBold = style?.fontFamily ? /bold|black|heavy|medium|semibold|bld/i.test(style.fontFamily) || /bold|black|heavy|medium|semibold|bld/i.test(it.fontName || '') : undefined;
+        return {
+          ...it,
+          fontName: resolvedFont,
+          ...(isItalic !== undefined ? { isItalic } : {}),
+          ...(isBold !== undefined ? { isBold } : {}),
+        };
+      });
+
+      const formattedResult = formatLayoutAwarePdfItems(enrichedItems);
       if (!detectedLayout) {
         detectedLayout = formattedResult.layout;
       }

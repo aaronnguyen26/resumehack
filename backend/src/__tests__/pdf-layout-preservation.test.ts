@@ -194,17 +194,17 @@ describe("PDF Layout Preservation & Design Engine Test Suite", () => {
 
     it("renders line divider with bottom border by default", () => {
       const html = rawTextToHtml(resumeText, undefined, { sectionDivider: "line" });
-      expect(html).toContain("border-b border-zinc-200 dark:border-zinc-800");
+      expect(html).toContain("border-b-[1.5px] border-zinc-950 dark:border-zinc-200 pb-0.5");
     });
 
     it("renders accent divider with left border pill", () => {
       const html = rawTextToHtml(resumeText, undefined, { sectionDivider: "accent" });
-      expect(html).toContain("border-l-2 border-zinc-900 dark:border-zinc-100 pl-2");
+      expect(html).toContain("border-l-2 border-zinc-950 dark:border-zinc-100 pl-2");
     });
 
     it("renders minimal divider without border lines", () => {
       const html = rawTextToHtml(resumeText, undefined, { sectionDivider: "minimal" });
-      expect(html).not.toContain("border-b border-zinc-200");
+      expect(html).not.toContain("border-b");
       expect(html).not.toContain("border-l-2");
     });
 
