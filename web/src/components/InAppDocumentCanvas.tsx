@@ -1284,6 +1284,33 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     handleEditorInput();
   };
 
+  // In-Canvas Hover Highlighting for AI Recommendations
+  const handleHoverBulletText = (originalText: string | null) => {
+    if (!editorRef.current) return;
+    const prevHighlights = editorRef.current.querySelectorAll('.hacky-rec-hover-highlight');
+    prevHighlights.forEach(el => {
+      el.classList.remove('hacky-rec-hover-highlight', 'ring-2', 'ring-emerald-500/60', 'bg-emerald-500/10', 'rounded');
+    });
+    if (!originalText) return;
+    const cleanOriginal = originalText.replace(/^[•\-\*\u2022\u2023\u25E6\u2043\u2219▪▸⁃\s]+/, '').trim();
+    if (cleanOriginal.length < 15) return;
+
+    // Search across list items, paragraphs, and custom bullet elements
+    const elements = Array.from(editorRef.current.querySelectorAll('li, p, div.doc-bullet, div'));
+    for (const el of elements) {
+      const text = (el.textContent || '').trim();
+      if (
+        text.includes(cleanOriginal) ||
+        cleanOriginal.includes(text) ||
+        (cleanOriginal.length > 25 && text.includes(cleanOriginal.slice(0, 25)))
+      ) {
+        el.classList.add('hacky-rec-hover-highlight', 'ring-2', 'ring-emerald-500/60', 'bg-emerald-500/10', 'rounded');
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        break;
+      }
+    }
+  };
+
   // PDF File Upload Handler with Layout Preservation
   const handleCanvasFileUpload = async (file: File) => {
     setIsExtractingPdf(true);
@@ -3017,6 +3044,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
               onInsertKeyword={handleInsertKeywordIntoDoc}
               onInsertBullet={handleInsertBulletIntoDoc}
               onReplaceBulletText={handleReplaceBulletText}
+              onHoverBulletText={handleHoverBulletText}
               onClose={() => setIsInspectorOpen(false)}
               lineCount={lineCount}
               maxRecommendedLines={maxRecommendedLines}

@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   extractCandidateBullets,
   classifyBulletDomain,
+  detectRaggedWidow,
+  tightenBulletText,
+  detectRepetitiveVerbs,
   generatePersonalizedFallbackRecommendations,
   GeminiRecommendationService,
   getStoredGeminiApiKey,
@@ -427,6 +430,63 @@ Theoretical Computer Science
       const check = await testGeminiApiKey('');
       expect(check.valid).toBe(false);
       expect(check.error).toContain('cannot be empty');
+    });
+  });
+
+  describe('Part 8: Ragged Widow Line Budgeting & Repetitive Verb Detection', () => {
+    it('accurately identifies ragged widow lines that spill 1-3 words onto a second line', () => {
+      const tightLine = 'Built responsive React dashboard with TypeScript.';
+      const raggedLine = 'Engineered automated data ingestion microservice with PostgreSQL and Redis caching for analytics.';
+      
+      expect(detectRaggedWidow(tightLine)).toBe(false);
+      expect(detectRaggedWidow(raggedLine)).toBe(true);
+    });
+
+    it('tightens verbose bullet phrasing to reclaim single-line canvas budget', () => {
+      const verboseBullet = 'Worked in order to be responsible for the development of web portals utilizing multiple different tools.';
+      const tightened = tightenBulletText(verboseBullet);
+
+      expect(tightened.length).toBeLessThan(verboseBullet.length - 10);
+      expect(tightened).not.toContain('in order to');
+      expect(tightened).not.toContain('responsible for the development of');
+      expect(tightened).not.toContain('utilizing');
+    });
+
+    it('detects repetitive action verbs across extracted candidate bullets', () => {
+      const repetitiveResume = `
+WORK EXPERIENCE
+Software Engineer — Tech Co
+• Built internal analytics dashboard for engineering teams
+• Built real-time message stream processor with Kafka
+• Built automated CI/CD pipeline using GitHub Actions
+`;
+      const bullets = extractCandidateBullets(repetitiveResume);
+      const rep = detectRepetitiveVerbs(bullets);
+
+      expect(rep).toBeDefined();
+      expect(rep?.verb).toBe('built');
+      expect(rep?.count).toBe(3);
+    });
+
+    it('generates line budget and verb variation recommendations in fallback engine', () => {
+      const resumeWithRaggedAndRepetition = `
+WORK EXPERIENCE
+Full Stack Engineer — NextGen
+• Built internal analytics dashboard for engineering teams
+• Built real-time customer event stream processing queue with Kafka in order to deliver messages to client apps.
+`;
+      const result = generatePersonalizedFallbackRecommendations(resumeWithRaggedAndRepetition);
+
+      // Should contain verb repetition recommendation
+      const repRec = result.recommendations.find(r => r.title.includes('Action Verb Repetition'));
+      expect(repRec).toBeDefined();
+      expect(repRec?.improvedText).toMatch(/Architected|Engineered|Spearheaded/);
+
+      // Should contain brevity line budget recommendation
+      const brevityRec = result.recommendations.find(r => r.category === 'brevity_line_budget');
+      expect(brevityRec).toBeDefined();
+      expect(brevityRec?.title).toContain('Ragged Widow');
+      expect(brevityRec?.improvedText).not.toContain('in order to');
     });
   });
 });

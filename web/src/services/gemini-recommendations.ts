@@ -25,7 +25,7 @@ export type RecommendationDomain =
 
 export interface GeminiPersonalizedRecommendation {
   id: string;
-  category: 'star_quantification' | 'systems_depth' | 'production_scale' | 'missing_skills' | 'project_elevation' | 'action_verbs';
+  category: 'star_quantification' | 'systems_depth' | 'production_scale' | 'missing_skills' | 'project_elevation' | 'action_verbs' | 'brevity_line_budget';
   title: string;
   priority: 'critical' | 'high' | 'medium';
   impactPts: number;
@@ -81,7 +81,7 @@ export const GEMINI_RECOMMENDATIONS_SCHEMA = {
           id: { type: 'string', description: 'Unique identifier for the recommendation' },
           category: {
             type: 'string',
-            enum: ['star_quantification', 'systems_depth', 'production_scale', 'missing_skills', 'project_elevation', 'action_verbs'],
+            enum: ['star_quantification', 'systems_depth', 'production_scale', 'missing_skills', 'project_elevation', 'action_verbs', 'brevity_line_budget'],
           },
           domain: {
             type: 'string',
@@ -237,6 +237,58 @@ export function classifyBulletDomain(text: string): RecommendationDomain {
   }
 
   return 'general';
+}
+
+// ── Line Budget & Ragged Widow Detection ────────────────────────────────────
+
+export function detectRaggedWidow(text: string): boolean {
+  const clean = text.trim();
+  const len = clean.length;
+  // A standard 10pt resume line with 0.5"-0.75" margins fits roughly 80-92 characters.
+  // Lines that are 95-118 chars wrap onto line 2 with just 1-3 words (ragged widow).
+  // Lines that are 180-210 chars wrap onto line 3 with just 1-3 words.
+  return (len >= 95 && len <= 118) || (len >= 180 && len <= 210);
+}
+
+export function tightenBulletText(text: string): string {
+  let tightened = text
+    .replace(/\b(?:in order to|with the goal of)\b/gi, 'to')
+    .replace(/\b(?:responsible for (?:the )?development of|tasked with developing)\b/gi, 'developed')
+    .replace(/\b(?:assisted with the implementation of|helped implement)\b/gi, 'implemented')
+    .replace(/\b(?:utilizing|leveraging)\b/gi, 'using')
+    .replace(/\b(?:utilized|leveraged)\b/gi, 'used')
+    .replace(/\b(?:various|multiple different)\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  // If still slightly over single-line budget, streamline connectors
+  if (tightened.length > 90) {
+    tightened = tightened
+      .replace(/, including the integration of /i, ' via ')
+      .replace(/, resulting in /i, '—yielding ')
+      .replace(/through the use of /i, 'using ')
+      .trim();
+  }
+  return tightened;
+}
+
+// ── Action Verb Repetition Detection ────────────────────────────────────────
+
+export function detectRepetitiveVerbs(bullets: ExtractedCandidateBullet[]): { verb: string; count: number; bullets: ExtractedCandidateBullet[] } | null {
+  const verbMap: Record<string, ExtractedCandidateBullet[]> = {};
+  for (const b of bullets) {
+    const v = b.leadWord.toLowerCase();
+    if (v.length > 2) {
+      if (!verbMap[v]) verbMap[v] = [];
+      verbMap[v].push(b);
+    }
+  }
+  for (const [verb, list] of Object.entries(verbMap)) {
+    if (list.length >= 2) {
+      return { verb, count: list.length, bullets: list };
+    }
+  }
+  return null;
 }
 
 // ── Strict Section-Isolated AST Parsing ─────────────────────────────────────
@@ -455,6 +507,37 @@ export function generatePersonalizedFallbackRecommendations(
     });
   }
 
+  // 1B. Repetitive lead verbs -> Alternate with diverse high-velocity action verbs
+  const repVerb = detectRepetitiveVerbs(extracted);
+  if (repVerb && repVerb.bullets.length >= 2) {
+    const secondBullet = repVerb.bullets[1];
+    const variedLeadVerb =
+      secondBullet.domain === 'frontend' ? 'Architected responsive'
+      : secondBullet.domain === 'backend' ? 'Engineered scalable'
+      : secondBullet.domain === 'devops' ? 'Orchestrated automated'
+      : secondBullet.domain === 'data_ai' ? 'Synthesized and deployed'
+      : secondBullet.domain === 'mobile' ? 'Engineered high-performance'
+      : 'Spearheaded';
+
+    const clean = secondBullet.cleanText.replace(new RegExp(`^${repVerb.verb}\\b`, 'i'), variedLeadVerb);
+
+    items.push({
+      id: 'rec-fallback-rep-verb-' + Math.abs(hashCode(secondBullet.cleanText)),
+      category: 'action_verbs',
+      title: `Eliminate Action Verb Repetition ("${secondBullet.leadWord}")`,
+      priority: 'high',
+      impactPts: 12,
+      sectionHint: secondBullet.section,
+      domain: secondBullet.domain,
+      originalText: secondBullet.cleanText,
+      improvedText: `• ${clean}.`,
+      critique: `You started ${repVerb.count} separate bullets with "${secondBullet.leadWord}". Tech recruiters and hiring rubrics penalize repetitive phrasing. Diversifying with distinct executive verbs demonstrates broader technical versatility.`,
+      reasoning: 'Varying power verbs (Architected, Engineered, Spearheaded, Orchestrated) demonstrates versatility across architecture, delivery, and optimization.',
+      suggestedActionLabel: 'Replace in Resume',
+      antiHallucinationVerified: true,
+    });
+  }
+
   // 2. Unquantified bullets -> Google X-Y-Z formula upgrades matched to candidate domain
   const unquantified = extracted.filter(b => !b.hasMetric && !b.hasWeakVerb);
   if (unquantified.length > 0) {
@@ -549,6 +632,29 @@ export function generatePersonalizedFallbackRecommendations(
       suggestedActionLabel: 'Replace in Resume',
       antiHallucinationVerified: true,
     });
+  }
+
+  // 3B. Ragged Widow & Line Budget Optimization
+  const raggedCandidate = extracted.find(b => detectRaggedWidow(b.cleanText));
+  if (raggedCandidate) {
+    const tightened = tightenBulletText(raggedCandidate.cleanText);
+    if (tightened.length < raggedCandidate.cleanText.length - 4) {
+      items.push({
+        id: 'rec-fallback-ragged-' + Math.abs(hashCode(raggedCandidate.cleanText)),
+        category: 'brevity_line_budget',
+        title: 'Eliminate Ragged Widow (Tighten to Clean 1-Line Budget)',
+        priority: 'high',
+        impactPts: 10,
+        sectionHint: raggedCandidate.section,
+        domain: raggedCandidate.domain,
+        originalText: raggedCandidate.cleanText,
+        improvedText: `• ${tightened}.`,
+        critique: 'This bullet wraps onto an extra line with just 1 to 3 trailing words (a "ragged widow"), wasting valuable vertical canvas space on a 1-page resume. Tightening word economy preserves line budget without losing technical depth.',
+        reasoning: 'Crisp single-line bullets maximize reader dwell time and prevent inadvertent second-page overflow.',
+        suggestedActionLabel: 'Tighten Line Budget',
+        antiHallucinationVerified: true,
+      });
+    }
   }
 
   // 4. Target Job Description Skill Gap Matching
@@ -697,7 +803,8 @@ STRICT PERSONALIZATION & ANTI-HALLUCINATION RULES:
    - Use strong executive action verbs (Architected, Engineered, Spearheaded, Orchestrated) instead of passive verbs ('worked on', 'helped', 'responsible for').
 5. In 'critique', provide an incisive diagnostic explaining why the original bullet is weak or fails ATS/interviewer screens.
 6. In 'reasoning', explain why the elevated rewrite directly improves interview callback rates.
-7. If a Job Description is provided, identify missing critical skills and weave them naturally into relevant experience bullets.`;
+7. If a Job Description is provided, identify missing critical skills and weave them naturally into relevant experience bullets.
+8. BREVITY & LINE BUDGETING: Identify bullets that spill onto a second or third line by only 1-3 words ('ragged widows') and offer tightened rewrites under category 'brevity_line_budget' that fit cleanly onto a single line without losing impact.`;
 
     const userPrompt = `Target Role: ${targetRole}
 ${jobDescription ? `\nTarget Job Description:\n${jobDescription.slice(0, 3000)}\n` : ''}

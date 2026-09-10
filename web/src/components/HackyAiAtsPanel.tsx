@@ -64,6 +64,7 @@ export interface HackyAiAtsPanelProps {
   onInsertKeyword: (keyword: string) => void;
   onInsertBullet?: (bulletText: string, sectionHint?: string) => void;
   onReplaceBulletText?: (originalText: string, newText: string) => void;
+  onHoverBulletText?: (originalText: string | null) => void;
   onClose?: () => void;
   lineCount: number;
   maxRecommendedLines: number;
@@ -104,6 +105,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
   onInsertKeyword,
   onInsertBullet,
   onReplaceBulletText,
+  onHoverBulletText,
   onClose,
   lineCount,
   maxRecommendedLines,
@@ -117,6 +119,8 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
   const [customJobTitle, setCustomJobTitle] = useState(currentJob?.title || targetRole);
   const [customJobCompany, setCustomJobCompany] = useState(currentJob?.company || 'Target Tech Co');
   const [appliedItemIds, setAppliedItemIds] = useState<Record<string, boolean>>({});
+  const [customizedTexts, setCustomizedTexts] = useState<Record<string, string>>({});
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
 
   // ── Gemini Recommendation Pipeline State ─────────────────────────────────
   const [geminiApiKey, setGeminiApiKey] = useState<string>(() => getStoredGeminiApiKey());
@@ -292,12 +296,31 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
   };
 
   const handleApplyBulletRecommendation = (rec: GeminiPersonalizedRecommendation) => {
+    const textToApply = customizedTexts[rec.id] || rec.improvedText;
     if (onReplaceBulletText && rec.originalText) {
-      onReplaceBulletText(rec.originalText, rec.improvedText);
+      onReplaceBulletText(rec.originalText, textToApply);
     } else if (onInsertBullet) {
-      onInsertBullet(rec.improvedText, rec.sectionHint);
+      onInsertBullet(textToApply, rec.sectionHint);
     }
     setAppliedItemIds(prev => ({ ...prev, [rec.id]: true }));
+  };
+
+  const handleApplyAllRecommendations = () => {
+    const unapplied = filteredRecommendations.filter(r => !appliedItemIds[r.id]);
+    if (unapplied.length === 0) return;
+
+    for (const rec of unapplied) {
+      const textToApply = customizedTexts[rec.id] || rec.improvedText;
+      if (onReplaceBulletText && rec.originalText) {
+        onReplaceBulletText(rec.originalText, textToApply);
+      } else if (onInsertBullet) {
+        onInsertBullet(textToApply, rec.sectionHint);
+      }
+    }
+
+    const updated = { ...appliedItemIds };
+    unapplied.forEach(r => { updated[r.id] = true; });
+    setAppliedItemIds(updated);
   };
 
   // Combined recommendations (Gemini + missing keywords from rubric + layout budget warning)
@@ -595,9 +618,10 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
               {[
                 { id: 'all', label: `All (${allRecommendations.length})` },
                 { id: 'star_quantification', label: 'STAR & Metrics' },
-                { id: 'systems_depth', label: 'Systems Depth' },
                 { id: 'action_verbs', label: 'Action Verbs' },
+                { id: 'systems_depth', label: 'Systems Depth' },
                 { id: 'missing_skills', label: 'Missing Skills' },
+                { id: 'brevity_line_budget', label: 'Line Budget' },
                 { id: 'production_scale', label: 'Production' },
               ].map(pill => (
                 <button
@@ -633,13 +657,32 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                 <span className="text-[10px] font-mono text-zinc-400">STAR & ATS Aligned</span>
               </div>
 
+              {/* Batch 1-Click Action for All Verified Recommendations */}
+              {filteredRecommendations.filter(r => !appliedItemIds[r.id]).length > 1 && (
+                <button
+                  type="button"
+                  onClick={handleApplyAllRecommendations}
+                  className="w-full py-2.5 px-3 text-xs font-mono font-bold rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>
+                    Apply All {filteredRecommendations.filter(r => !appliedItemIds[r.id]).length} Enhancements (+
+                    {filteredRecommendations.filter(r => !appliedItemIds[r.id]).reduce((sum, r) => sum + r.impactPts, 0)} pts)
+                  </span>
+                </button>
+              )}
+
               {filteredRecommendations.map((rec) => {
                 const isApplied = appliedItemIds[rec.id];
+                const isEditingThis = editingCardId === rec.id;
+                const activeImprovedText = customizedTexts[rec.id] !== undefined ? customizedTexts[rec.id] : rec.improvedText;
 
                 return (
                   <div 
                     key={rec.id}
-                    className="p-3.5 rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] space-y-3 shadow-xs transition-all duration-200"
+                    onMouseEnter={() => onHoverBulletText?.(rec.originalText)}
+                    onMouseLeave={() => onHoverBulletText?.(null)}
+                    className="p-3.5 rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] hover:border-zinc-300 dark:hover:border-zinc-700 space-y-3 shadow-xs transition-all duration-200"
                   >
                     {/* Header Row */}
                     <div className="flex items-start justify-between gap-2">
@@ -697,14 +740,40 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
 
                       {/* After: Elevated Hacky AI Rewrite */}
                       {rec.improvedText && (
-                        <div className="p-2.5 rounded-lg bg-emerald-500/5 dark:bg-emerald-500/5 border border-emerald-500/20 space-y-1">
-                          <div className="text-[10px] font-mono uppercase font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                            <Sparkles className="w-3 h-3 text-emerald-500" />
-                            <span>Suggested Hacky AI Enhancement:</span>
+                        <div className="p-2.5 rounded-lg bg-emerald-500/5 dark:bg-emerald-500/5 border border-emerald-500/20 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="text-[10px] font-mono uppercase font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                              <Sparkles className="w-3 h-3 text-emerald-500" />
+                              <span>Suggested Hacky AI Enhancement:</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setEditingCardId(isEditingThis ? null : rec.id)}
+                              className="text-[10px] font-mono text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 flex items-center gap-1 cursor-pointer transition-colors"
+                              title="Fine-tune metrics or phrasing before applying"
+                            >
+                              <SlidersHorizontal className="w-2.5 h-2.5 text-zinc-400" />
+                              <span>{isEditingThis ? 'Done' : 'Fine-tune'}</span>
+                            </button>
                           </div>
-                          <div className="text-[11px] text-zinc-950 dark:text-zinc-50 font-medium leading-snug">
-                            {rec.improvedText}
-                          </div>
+
+                          {isEditingThis ? (
+                            <div className="space-y-1 animate-in fade-in duration-100">
+                              <textarea
+                                value={activeImprovedText}
+                                onChange={(e) => setCustomizedTexts(prev => ({ ...prev, [rec.id]: e.target.value }))}
+                                rows={2}
+                                className="w-full px-2.5 py-1.5 text-xs font-mono rounded-md bg-white dark:bg-[#121215] border border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                              />
+                              <span className="text-[9px] font-mono text-emerald-600 dark:text-emerald-400">
+                                ✎ Custom metric/wording will be applied to document
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-zinc-950 dark:text-zinc-50 font-medium leading-snug">
+                              {activeImprovedText}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -761,7 +830,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                         ) : (
                           <>
                             <Plus className="w-3.5 h-3.5" />
-                            <span>{rec.suggestedActionLabel || 'Replace in Resume'}</span>
+                            <span>{customizedTexts[rec.id] ? 'Replace with Custom Bullet' : (rec.suggestedActionLabel || 'Replace in Resume')}</span>
                           </>
                         )}
                       </button>
