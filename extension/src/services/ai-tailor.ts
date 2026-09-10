@@ -942,7 +942,7 @@ APPLICATION QUESTION TO ANSWER:
 Draft a direct, factual 2-3 sentence response grounded in the candidate's verified experience:`;
 
   if (provider === 'gemini' && apiKey) {
-    const model = aiSettings?.model || 'gemini-2.0-flash';
+    const model = aiSettings?.model || 'gemini-3.5-flash-lite';
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     try {
       const response = await fetch(endpoint, {

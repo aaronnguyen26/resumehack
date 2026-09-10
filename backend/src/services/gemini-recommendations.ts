@@ -2,30 +2,36 @@
  * GeminiRecommendationService — Deeply Personalized AI Resume Recommendation Engine
  *
  * Provides high-impact, personalized recommendations for resume improvement:
- *   - Powered by Google Gemini (gemini-2.0-flash, gemini-1.5-flash, gemini-1.5-pro)
+ *   - Powered by Google Gemini (gemini-3.5-flash-lite default, with cascading resilience)
  *   - Strict Section-Isolated AST Parsing (Education/Certifications protected; never corrupted)
  *   - Domain-Calibrated Elevation (Frontend, Backend, Mobile, DevOps, AI/Data, Academic/Research)
  *   - Zero-Hallucination Guardrails (Preserves candidate truth & exact domain)
  *   - Target JD Keyword Gap Radar (Contextual hard skill integration)
  *   - Supplies 1-click Before -> After bullet rewrites ready for in-doc replacement
- *   - Seamless API key management (localStorage, Chrome storage, environment)
- *   - Intelligent heuristic fallback engine that diagnoses real bullets when offline or no key is set
  */
+
+export type RecommendationCategory =
+  | 'star_quantification'
+  | 'systems_depth'
+  | 'production_scale'
+  | 'missing_skills'
+  | 'project_elevation'
+  | 'action_verbs'
+  | 'brevity_line_budget';
 
 export type RecommendationDomain =
   | 'frontend'
   | 'backend'
-  | 'fullstack'
   | 'mobile'
-  | 'devops'
-  | 'data_ai'
+  | 'devops_cloud'
+  | 'ai_data'
   | 'research_academic'
-  | 'leadership'
-  | 'general';
+  | 'general_software';
 
 export interface GeminiPersonalizedRecommendation {
   id: string;
-  category: 'star_quantification' | 'systems_depth' | 'production_scale' | 'missing_skills' | 'project_elevation' | 'action_verbs' | 'brevity_line_budget';
+  category: RecommendationCategory;
+  domain: RecommendationDomain;
   title: string;
   priority: 'critical' | 'high' | 'medium';
   impactPts: number;
@@ -34,8 +40,6 @@ export interface GeminiPersonalizedRecommendation {
   improvedText: string;
   critique: string;
   reasoning: string;
-  domain?: RecommendationDomain;
-  suggestedKeywords?: string[];
   suggestedActionLabel?: string;
   isResolved?: boolean;
   antiHallucinationVerified?: boolean;
@@ -59,9 +63,14 @@ export interface GeminiRecommendationResult {
   error?: string;
 }
 
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+
 export const GEMINI_RECOMMENDATION_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.6-flash-lite',
   'gemini-2.0-flash',
   'gemini-1.5-flash',
+  'gemini-2.0-flash-lite',
   'gemini-1.5-pro',
 ];
 
@@ -113,6 +122,7 @@ export const GEMINI_RECOMMENDATIONS_SCHEMA = {
 
 export const STORAGE_KEY_GEMINI_KEY = 'resumehack_gemini_api_key';
 let inMemoryKey = '';
+let inMemoryModel = '';
 
 export function getStoredGeminiApiKey(): string {
   try {
@@ -138,9 +148,47 @@ export function getStoredGeminiApiKey(): string {
   return '';
 }
 
-export function setStoredGeminiApiKey(key: string): void {
+const STORAGE_KEY_GEMINI_MODEL = 'resumehack_gemini_model';
+
+export function getStoredGeminiModel(): string {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem(STORAGE_KEY_GEMINI_MODEL);
+      if (stored && stored.trim()) return stored.trim();
+
+      const settings = localStorage.getItem('resumehack_ai_settings');
+      if (settings) {
+        const parsed = JSON.parse(settings);
+        if (parsed.model && parsed.model.trim()) return parsed.model.trim();
+      }
+    }
+  } catch { /* ignore */ }
+
+  if (inMemoryModel) return inMemoryModel;
+  return DEFAULT_GEMINI_MODEL;
+}
+
+export function setStoredGeminiModel(model: string): void {
+  const trimmed = model.trim() || DEFAULT_GEMINI_MODEL;
+  inMemoryModel = trimmed;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_GEMINI_MODEL, trimmed);
+      const current = localStorage.getItem('resumehack_ai_settings');
+      let parsed: any = {};
+      try {
+        if (current) parsed = JSON.parse(current);
+      } catch { /* ignore */ }
+      parsed.model = trimmed;
+      localStorage.setItem('resumehack_ai_settings', JSON.stringify(parsed));
+    }
+  } catch { /* ignore */ }
+}
+
+export function setStoredGeminiApiKey(key: string, model?: string): void {
   const trimmed = key.trim();
   inMemoryKey = trimmed;
+  if (model) inMemoryModel = model.trim();
   try {
     if (typeof localStorage !== 'undefined') {
       if (trimmed) {
@@ -157,38 +205,59 @@ export function setStoredGeminiApiKey(key: string): void {
       } catch { /* ignore */ }
       parsed.provider = 'gemini';
       parsed.apiKey = trimmed;
-      if (!parsed.model) parsed.model = 'gemini-2.0-flash';
+      if (!parsed.model) parsed.model = model || getStoredGeminiModel() || DEFAULT_GEMINI_MODEL;
       localStorage.setItem('resumehack_ai_settings', JSON.stringify(parsed));
     }
   } catch { /* ignore */ }
 }
 
-export async function testGeminiApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
+export async function testGeminiApiKey(
+  apiKey: string,
+  requestedModel?: string
+): Promise<{ valid: boolean; error?: string; modelUsed?: string }> {
   if (!apiKey || !apiKey.trim()) {
     return { valid: false, error: 'API key cannot be empty' };
   }
-  try {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent`;
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey.trim(),
-      },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: 'Ping. Respond with "ok".' }] }],
-        generationConfig: { maxOutputTokens: 10 },
-      }),
-    });
 
-    if (res.ok) {
-      return { valid: true };
+  const candidateModels = [
+    requestedModel,
+    DEFAULT_GEMINI_MODEL,
+    ...GEMINI_RECOMMENDATION_MODELS,
+  ].filter(Boolean) as string[];
+  const uniqueModels = Array.from(new Set(candidateModels));
+
+  let lastError = '';
+  for (const currentModel of uniqueModels) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey.trim(),
+        },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: 'Ping. Respond with "ok".' }] }],
+          generationConfig: { maxOutputTokens: 10 },
+        }),
+      });
+
+      if (res.ok) {
+        return { valid: true, modelUsed: currentModel };
+      }
+      const errText = await res.text().catch(() => `HTTP ${res.status}`);
+      lastError = `Gemini API rejected key (${res.status}): ${errText.slice(0, 150)}`;
+
+      // If invalid API key format or unauthorized, immediately abort without retrying
+      if (res.status === 400 || res.status === 401 || res.status === 403) {
+        return { valid: false, error: lastError };
+      }
+    } catch (err: any) {
+      lastError = err?.message || 'Network connection failed';
     }
-    const errText = await res.text().catch(() => `HTTP ${res.status}`);
-    return { valid: false, error: `Gemini API rejected key (${res.status}): ${errText.slice(0, 150)}` };
-  } catch (err: any) {
-    return { valid: false, error: err?.message || 'Network connection failed' };
   }
+
+  return { valid: false, error: lastError };
 }
 
 // ── Domain & Semantic Bullet Classification ────────────────────────────────
@@ -758,7 +827,7 @@ export class GeminiRecommendationService {
 
   constructor(apiKey?: string, model?: string) {
     this.apiKey = (apiKey || getStoredGeminiApiKey()).trim();
-    this.primaryModel = model || 'gemini-2.0-flash';
+    this.primaryModel = model || getStoredGeminiModel() || DEFAULT_GEMINI_MODEL;
   }
 
   public setApiKey(key: string): void {
@@ -822,7 +891,7 @@ ${candidateBulletsText || 'No explicit accomplishment bullets detected; analyze 
 Please analyze the resume against tier-1 tech hiring standards and produce structured JSON recommendations.`;
 
     const candidateModels = [
-      request.model || this.primaryModel,
+      request.model || this.primaryModel || DEFAULT_GEMINI_MODEL,
       ...GEMINI_RECOMMENDATION_MODELS,
     ].filter(Boolean);
     const uniqueModels = Array.from(new Set(candidateModels));

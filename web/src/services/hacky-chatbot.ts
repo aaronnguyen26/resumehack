@@ -418,7 +418,7 @@ export class HackyChatbotService {
     try {
       const aiSettings = await getAiSettings();
       if (aiSettings?.apiKey && aiSettings.provider === 'gemini') {
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${aiSettings.model || 'gemini-2.0-flash'}:generateContent?key=${aiSettings.apiKey}`;
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${aiSettings.model || 'gemini-3.5-flash-lite'}:generateContent?key=${aiSettings.apiKey}`;
         const sysPrompt = `You are Hacky, an elite AI technical career coach and resume strategist. Respond in 2-3 concise, actionable paragraphs with bullet points. Tone: Encouraging, direct, high-standards engineering culture. Monochromatic zinc theme, zero fluff.`;
         const userPrompt = `Candidate context:
 ${context.applicantProfile?.firstName ? `Name: ${context.applicantProfile.firstName}` : ''}

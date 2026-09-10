@@ -220,7 +220,7 @@ Analyze the attached visual snapshot image(s) for visual balance, whitespace cro
     userPromptText: string,
     apiKey: string
   ): Promise<any> {
-    const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-1.5-pro'];
+    const candidateModels = ['gemini-3.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-1.5-pro'];
 
     for (const model of candidateModels) {
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;

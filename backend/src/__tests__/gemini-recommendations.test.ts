@@ -9,6 +9,10 @@ import {
   GeminiRecommendationService,
   getStoredGeminiApiKey,
   setStoredGeminiApiKey,
+  getStoredGeminiModel,
+  setStoredGeminiModel,
+  DEFAULT_GEMINI_MODEL,
+  GEMINI_RECOMMENDATION_MODELS,
   testGeminiApiKey,
   STORAGE_KEY_GEMINI_KEY,
 } from '../services/gemini-recommendations.js';
@@ -321,7 +325,7 @@ Theoretical Computer Science
       });
 
       expect(result.source).toBe('gemini');
-      expect(result.modelUsed).toBe('gemini-2.0-flash');
+      expect(result.modelUsed).toBe('gemini-3.5-flash-lite');
       expect(result.recommendations.length).toBe(2);
       expect(result.recommendations[0].title).toContain('Quantify Analytics Dashboard');
       expect(result.recommendations[0].domain).toBe('frontend');
@@ -420,6 +424,23 @@ Theoretical Computer Science
   });
 
   describe('Part 7: Gemini Key Storage & Validation Helpers', () => {
+    let mockStorage: Record<string, string> = {};
+
+    beforeEach(() => {
+      mockStorage = {};
+      (globalThis as any).localStorage = {
+        getItem: vi.fn((k: string) => mockStorage[k] || null),
+        setItem: vi.fn((k: string, v: string) => { mockStorage[k] = String(v); }),
+        removeItem: vi.fn((k: string) => { delete mockStorage[k]; }),
+        clear: vi.fn(() => { mockStorage = {}; }),
+      };
+    });
+
+    afterEach(() => {
+      delete (globalThis as any).localStorage;
+      vi.restoreAllMocks();
+    });
+
     it('stores and retrieves Gemini API key in localStorage', () => {
       setStoredGeminiApiKey('AIzaSyTestKey12345');
       const retrieved = getStoredGeminiApiKey();
@@ -430,6 +451,49 @@ Theoretical Computer Science
       const check = await testGeminiApiKey('');
       expect(check.valid).toBe(false);
       expect(check.error).toContain('cannot be empty');
+    });
+
+    it('defaults Gemini model routing to gemini-3.5-flash-lite', () => {
+      expect(DEFAULT_GEMINI_MODEL).toBe('gemini-3.5-flash-lite');
+      expect(GEMINI_RECOMMENDATION_MODELS[0]).toBe('gemini-3.5-flash-lite');
+      expect(getStoredGeminiModel()).toBe('gemini-3.5-flash-lite');
+    });
+
+    it('stores and retrieves custom model override in localStorage', () => {
+      setStoredGeminiModel('gemini-3.6-flash-lite');
+      expect(getStoredGeminiModel()).toBe('gemini-3.6-flash-lite');
+
+      // Reset back to default
+      setStoredGeminiModel(DEFAULT_GEMINI_MODEL);
+      expect(getStoredGeminiModel()).toBe('gemini-3.5-flash-lite');
+    });
+
+    it('syncs gemini-3.5-flash-lite default model when setting API key', () => {
+      localStorage.removeItem('resumehack_ai_settings');
+      setStoredGeminiApiKey('AIzaSyNewKey999');
+      const settingsRaw = localStorage.getItem('resumehack_ai_settings');
+      expect(settingsRaw).toBeTruthy();
+      const parsed = JSON.parse(settingsRaw!);
+      expect(parsed.provider).toBe('gemini');
+      expect(parsed.apiKey).toBe('AIzaSyNewKey999');
+      expect(parsed.model).toBe('gemini-3.5-flash-lite');
+    });
+
+    it('testGeminiApiKey tests with gemini-3.5-flash-lite by default on valid key', async () => {
+      let requestedEndpoint = '';
+      global.fetch = vi.fn().mockImplementation(async (url: string) => {
+        requestedEndpoint = url;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }),
+        };
+      });
+
+      const res = await testGeminiApiKey('AIzaSyValidKey');
+      expect(res.valid).toBe(true);
+      expect(res.modelUsed).toBe('gemini-3.5-flash-lite');
+      expect(requestedEndpoint).toContain('/models/gemini-3.5-flash-lite:generateContent');
     });
   });
 

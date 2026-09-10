@@ -38,6 +38,9 @@ import {
   GeminiPersonalizedRecommendation, 
   getStoredGeminiApiKey, 
   setStoredGeminiApiKey,
+  getStoredGeminiModel,
+  setStoredGeminiModel,
+  DEFAULT_GEMINI_MODEL,
   testGeminiApiKey 
 } from '../services/gemini-recommendations.js';
 import { 
@@ -125,13 +128,14 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
   // ── Gemini Recommendation Pipeline State ─────────────────────────────────
   const [geminiApiKey, setGeminiApiKey] = useState<string>(() => getStoredGeminiApiKey());
   const [apiKeyInput, setApiKeyInput] = useState<string>(() => getStoredGeminiApiKey());
+  const [selectedModel, setSelectedModel] = useState<string>(() => getStoredGeminiModel());
   const [isKeyConfigOpen, setIsKeyConfigOpen] = useState(false);
   const [isTestingKey, setIsTestingKey] = useState(false);
   const [keyFeedback, setKeyFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isGeneratingRecs, setIsGeneratingRecs] = useState(false);
   const [geminiRecommendations, setGeminiRecommendations] = useState<GeminiPersonalizedRecommendation[]>([]);
   const [recSource, setRecSource] = useState<'gemini' | 'heuristic_fallback'>('heuristic_fallback');
-  const [recModelUsed, setRecModelUsed] = useState<string>('gemini-2.0-flash');
+  const [recModelUsed, setRecModelUsed] = useState<string>(() => getStoredGeminiModel());
   const [selectedRecCategory, setSelectedRecCategory] = useState<string>('all');
 
   const triVariantService = useMemo(() => new TriVariantService(), []);
@@ -241,7 +245,10 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
   }, [atsReport.keywords]);
 
   // ── Gemini Recommendation Engine Pipeline ────────────────────────────────
-  const geminiService = useMemo(() => new GeminiRecommendationService(geminiApiKey), [geminiApiKey]);
+  const geminiService = useMemo(
+    () => new GeminiRecommendationService(geminiApiKey, selectedModel),
+    [geminiApiKey, selectedModel]
+  );
 
   const handleGenerateRecommendations = useCallback(async (forcedKey?: string) => {
     setIsGeneratingRecs(true);
@@ -252,6 +259,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
         jobDescription: currentJob?.description,
         targetRole,
         apiKey: activeKey,
+        model: selectedModel,
       });
 
       setGeminiRecommendations(result.recommendations);
@@ -262,11 +270,11 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
     } finally {
       setIsGeneratingRecs(false);
     }
-  }, [resumeText, currentJob?.description, targetRole, geminiApiKey, geminiService]);
+  }, [resumeText, currentJob?.description, targetRole, geminiApiKey, selectedModel, geminiService]);
 
   useEffect(() => {
     handleGenerateRecommendations();
-  }, [resumeText, currentJob?.description, targetRole]);
+  }, [resumeText, currentJob?.description, targetRole, selectedModel]);
 
   const handleSaveApiKey = async () => {
     const trimmed = apiKeyInput.trim();
@@ -281,13 +289,17 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
 
     setIsTestingKey(true);
     setKeyFeedback(null);
-    const testResult = await testGeminiApiKey(trimmed);
+    const testResult = await testGeminiApiKey(trimmed, selectedModel);
     setIsTestingKey(false);
 
     if (testResult.valid) {
-      setStoredGeminiApiKey(trimmed);
+      setStoredGeminiApiKey(trimmed, selectedModel);
+      setStoredGeminiModel(selectedModel);
       setGeminiApiKey(trimmed);
-      setKeyFeedback({ type: 'success', message: 'Gemini 2.0 connected successfully!' });
+      setKeyFeedback({
+        type: 'success',
+        message: `${(testResult.modelUsed || selectedModel).replace('gemini-', 'Gemini ')} connected successfully!`,
+      });
       setIsKeyConfigOpen(false);
       handleGenerateRecommendations(trimmed);
     } else {
@@ -527,7 +539,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                   {recSource === 'gemini' ? (
                     <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
                       <Zap className="w-3 h-3 text-emerald-500" />
-                      <span>{recModelUsed || 'Gemini 2.0'} Active</span>
+                      <span>{(recModelUsed || selectedModel || 'gemini-3.5-flash-lite').replace('gemini-', 'Gemini ')} Active</span>
                     </span>
                   ) : (
                     <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-700 flex items-center gap-1">
@@ -564,7 +576,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
 
               {/* Collapsible Gemini API Key Form */}
               {isKeyConfigOpen && (
-                <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800/80 space-y-2 animate-in fade-in duration-150">
+                <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800/80 space-y-2.5 animate-in fade-in duration-150">
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-mono font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1">
                       <span>Google Gemini API Key</span>
@@ -598,6 +610,34 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                       {isTestingKey ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                       <span>{isTestingKey ? 'Testing...' : 'Save'}</span>
                     </button>
+                  </div>
+
+                  {/* Default AI Model Selector */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-mono font-bold text-zinc-700 dark:text-zinc-300">
+                        Default AI Model Routing:
+                      </label>
+                      <span className="text-[9px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                        Default: 3.5 Flash Lite
+                      </span>
+                    </div>
+                    <select
+                      value={selectedModel}
+                      onChange={(e) => {
+                        const newModel = e.target.value;
+                        setSelectedModel(newModel);
+                        setStoredGeminiModel(newModel);
+                      }}
+                      className="w-full px-2.5 py-1.5 text-xs font-mono rounded-md bg-white dark:bg-[#121215] border border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500 cursor-pointer"
+                    >
+                      <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Default • Ultra Fast & High Accuracy)</option>
+                      <option value="gemini-3.6-flash-lite">gemini-3.6-flash-lite (Next-Gen Preview)</option>
+                      <option value="gemini-2.0-flash">gemini-2.0-flash (High Concurrency)</option>
+                      <option value="gemini-1.5-flash">gemini-1.5-flash (Balanced)</option>
+                      <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite (Lightweight)</option>
+                      <option value="gemini-1.5-pro">gemini-1.5-pro (Deep Reasoning)</option>
+                    </select>
                   </div>
 
                   {keyFeedback && (
