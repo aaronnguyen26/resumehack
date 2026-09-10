@@ -478,7 +478,7 @@ export function extractCandidateBullets(resumeText: string): ExtractedCandidateB
   return results;
 }
 
-// ── Smart Domain-Calibrated Fallback Engine ─────────────────────────────────
+// ── Smart Domain-Calibrated Fallback Engine (Elevated Hacky AI Pipeline) ───
 
 export function generatePersonalizedFallbackRecommendations(
   resumeText: string,
@@ -487,24 +487,36 @@ export function generatePersonalizedFallbackRecommendations(
 ): GeminiRecommendationResult {
   const extracted = extractCandidateBullets(resumeText);
   const items: GeminiPersonalizedRecommendation[] = [];
+  const usedLeadVerbs = new Set<string>();
+
+  function selectLeadVerb(preferred: string, fallbacks: string[]): string {
+    const candidateList = [preferred, ...fallbacks];
+    for (const v of candidateList) {
+      if (!usedLeadVerbs.has(v.toLowerCase())) {
+        usedLeadVerbs.add(v.toLowerCase());
+        return v;
+      }
+    }
+    return preferred;
+  }
 
   // Fallback when no experience bullets were detected (e.g. starter resume or pure contact info)
   if (extracted.length === 0) {
     return {
       recommendations: [
         {
-          id: 'rec-fallback-starter-structure',
+          id: 'hacky-rec-fallback-starter-structure',
           category: 'project_elevation',
           title: 'Establish High-Impact Work Experience & Technical Projects',
           priority: 'critical',
           impactPts: 22,
           sectionHint: 'experience',
           originalText: 'Resume currently lacks structured technical experience bullets.',
-          improvedText: '• Architected and deployed full-stack web applications with automated testing, CI/CD pipelines, and cloud hosting.',
+          improvedText: '• Architected and deployed full-stack web applications with automated testing, sustaining 99.9% uptime across 15,000+ monthly active users.',
           critique: 'No parsed engineering accomplishment bullets found. Automated ATS screeners prioritize quantifiable project bullets following the Google X-Y-Z formula.',
           reasoning: 'Adding structured experience bullets with action verbs and quantifiable results is the single highest-yield improvement for candidate screen pass rates.',
           domain: 'fullstack',
-          suggestedKeywords: ['Architecture', 'Testing', 'CI/CD'],
+          suggestedKeywords: ['Architecture', 'Testing', 'CI/CD', 'Reliability'],
           suggestedActionLabel: 'Add Experience Section',
           antiHallucinationVerified: true,
         },
@@ -512,7 +524,7 @@ export function generatePersonalizedFallbackRecommendations(
       source: 'heuristic_fallback',
       candidateBulletCount: 0,
       overallHealthScore: 50,
-      summary: 'No work accomplishment bullets detected in Experience/Projects sections. Structured accomplishments needed.',
+      summary: 'Hacky AI Career Intelligence analyzed document: No work accomplishment bullets detected in Experience/Projects sections.',
     };
   }
 
@@ -520,55 +532,59 @@ export function generatePersonalizedFallbackRecommendations(
   const weakVerbBullets = extracted.filter(b => b.hasWeakVerb);
   if (weakVerbBullets.length > 0) {
     const target = weakVerbBullets[0];
-    let elevatedVerb = 'Spearheaded and engineered';
-    let domainDetail = 'with automated testing and clean architectural boundaries';
+    const strippedWeak = target.cleanText
+      .replace(WEAK_VERB_REGEX, '')
+      .replace(/^(?:building|creating|developing|making|designing|implementing|writing)\s+(?:the\s+|a\s+|an\s+)?/i, '')
+      .replace(/\.$/, '')
+      .trim();
+
+    let leadVerb = '';
+    let upgradedBullet = '';
 
     switch (target.domain) {
       case 'frontend':
-        elevatedVerb = 'Architected responsive';
-        domainDetail = 'elevating client-side interactivity and user engagement across modern web browsers';
+        leadVerb = selectLeadVerb('Architected', ['Engineered', 'Overhauled', 'Streamlined']);
+        upgradedBullet = `• ${leadVerb} responsive ${strippedWeak}, cutting render latency by 42% and scaling to 15,000+ active users.`;
         break;
       case 'backend':
-        elevatedVerb = 'Engineered scalable';
-        domainDetail = 'optimizing database access patterns and ensuring robust service reliability';
+        leadVerb = selectLeadVerb('Engineered', ['Architected', 'Optimized', 'Orchestrated']);
+        upgradedBullet = `• ${leadVerb} scalable ${strippedWeak}, reducing P99 query latency by 45% under 12,000+ peak requests/min.`;
         break;
       case 'mobile':
-        elevatedVerb = 'Engineered high-performance';
-        domainDetail = 'ensuring smooth 60 FPS transitions and robust offline state synchronization';
+        leadVerb = selectLeadVerb('Engineered', ['Optimized', 'Overhauled', 'Pioneered']);
+        upgradedBullet = `• ${leadVerb} high-performance ${strippedWeak}, cutting cold app launch latency by 35% with 99.8% crash-free sessions.`;
         break;
       case 'devops':
-        elevatedVerb = 'Automated and orchestrated';
-        domainDetail = 'streamlining deployment cycles with zero-downtime rolling release pipelines';
+        leadVerb = selectLeadVerb('Automated', ['Orchestrated', 'Streamlined', 'Deployed']);
+        upgradedBullet = `• ${leadVerb} resilient ${strippedWeak}, slashing deployment cycle time by 60% with zero-downtime rolling releases.`;
         break;
       case 'data_ai':
-        elevatedVerb = 'Engineered end-to-end';
-        domainDetail = 'accelerating pipeline execution speed and ensuring data integrity across large datasets';
+        leadVerb = selectLeadVerb('Engineered', ['Synthesized', 'Optimized', 'Streamlined']);
+        upgradedBullet = `• ${leadVerb} high-throughput ${strippedWeak}, accelerating ETL pipeline velocity by 3.4x across 250,000+ daily events.`;
         break;
       case 'research_academic':
-        elevatedVerb = 'Formulated and benchmarked';
-        domainDetail = 'validating algorithmic correctness across structured experimental trials';
+        leadVerb = selectLeadVerb('Formulated', ['Synthesized', 'Pioneered', 'Delivered']);
+        upgradedBullet = `• ${leadVerb} algorithmic ${strippedWeak}, presenting findings to 200+ attendees and elevating benchmark accuracy to 95.8%.`;
         break;
       case 'leadership':
-        elevatedVerb = 'Spearheaded';
-        domainDetail = 'aligning cross-functional engineering deliverables and boosting sprint completion velocity';
+        leadVerb = selectLeadVerb('Spearheaded', ['Orchestrated', 'Directed', 'Instituted']);
+        upgradedBullet = `• ${leadVerb} delivery of ${strippedWeak}, boosting sprint velocity by 32% across 6 cross-functional engineers.`;
         break;
       default:
-        elevatedVerb = target.section === 'projects' ? 'Architected and engineered' : 'Spearheaded';
-        domainDetail = 'with comprehensive automated test coverage and streamlined delivery';
+        leadVerb = selectLeadVerb('Spearheaded', ['Architected', 'Engineered', 'Orchestrated']);
+        upgradedBullet = `• ${leadVerb} delivery of ${strippedWeak}, improving operational throughput by 35% with automated regression testing.`;
     }
 
-    const upgradedBullet = target.cleanText.replace(WEAK_VERB_REGEX, elevatedVerb);
-
     items.push({
-      id: 'rec-fallback-verb-' + Math.abs(hashCode(target.cleanText)),
+      id: 'hacky-rec-fallback-verb-' + Math.abs(hashCode(target.cleanText)),
       category: 'action_verbs',
       title: `Elevate Weak Action Verb with Domain Stewardship (${target.domain})`,
       priority: 'critical',
-      impactPts: 16,
+      impactPts: 18,
       sectionHint: target.section,
       domain: target.domain,
       originalText: target.cleanText,
-      improvedText: `• ${upgradedBullet}; ${domainDetail}.`,
+      improvedText: upgradedBullet,
       critique: `Your bullet begins with "${target.leadWord}", which signals passive participation rather than direct technical ownership. Tier-1 engineering screeners scan for leadership verbs within the ${target.domain} domain.`,
       reasoning: 'Starting with strong domain-specific action verbs (Architected, Engineered, Spearheaded) immediately elevates seniority rank in automated resume parsers.',
       suggestedActionLabel: 'Replace in Resume',
@@ -580,26 +596,51 @@ export function generatePersonalizedFallbackRecommendations(
   const repVerb = detectRepetitiveVerbs(extracted);
   if (repVerb && repVerb.bullets.length >= 2) {
     const secondBullet = repVerb.bullets[1];
-    const variedLeadVerb =
-      secondBullet.domain === 'frontend' ? 'Architected responsive'
-      : secondBullet.domain === 'backend' ? 'Engineered scalable'
-      : secondBullet.domain === 'devops' ? 'Orchestrated automated'
-      : secondBullet.domain === 'data_ai' ? 'Synthesized and deployed'
-      : secondBullet.domain === 'mobile' ? 'Engineered high-performance'
-      : 'Spearheaded';
+    const strippedRep = secondBullet.cleanText
+      .replace(new RegExp(`^${repVerb.verb}\\b`, 'i'), '')
+      .replace(/^(?:an|a|the)?\s+/i, '')
+      .replace(/\.$/, '')
+      .trim();
 
-    const clean = secondBullet.cleanText.replace(new RegExp(`^${repVerb.verb}\\b`, 'i'), variedLeadVerb);
+    let leadRep = '';
+    let upgradedRep = '';
+
+    switch (secondBullet.domain) {
+      case 'backend':
+        leadRep = selectLeadVerb('Engineered', ['Architected', 'Spearheaded', 'Orchestrated']);
+        upgradedRep = `• ${leadRep} concurrent ${strippedRep}, sustaining 20,000+ msgs/sec throughput with sub-25ms processing latency.`;
+        break;
+      case 'frontend':
+        leadRep = selectLeadVerb('Architected', ['Engineered', 'Spearheaded', 'Overhauled']);
+        upgradedRep = `• ${leadRep} dynamic ${strippedRep}, elevating Web Vitals compliance to 98% and cutting layout shifts by 65%.`;
+        break;
+      case 'devops':
+        leadRep = selectLeadVerb('Engineered', ['Automated', 'Spearheaded', 'Streamlined']);
+        upgradedRep = `• ${leadRep} automated ${strippedRep}, cutting manual deployment overhead by 70% and enforcing strict CI/CD gates.`;
+        break;
+      case 'data_ai':
+        leadRep = selectLeadVerb('Engineered', ['Synthesized', 'Spearheaded', 'Optimized']);
+        upgradedRep = `• ${leadRep} scalable ${strippedRep}, processing 1.5M+ data points daily with 99.4% pipeline uptime.`;
+        break;
+      case 'mobile':
+        leadRep = selectLeadVerb('Engineered', ['Architected', 'Spearheaded', 'Overhauled']);
+        upgradedRep = `• ${leadRep} native ${strippedRep}, reducing memory footprint by 28% and sustaining 60 FPS scroll performance.`;
+        break;
+      default:
+        leadRep = selectLeadVerb('Spearheaded', ['Architected', 'Engineered', 'Orchestrated']);
+        upgradedRep = `• ${leadRep} end-to-end ${strippedRep}, accelerating delivery velocity by 38% with automated test coverage.`;
+    }
 
     items.push({
-      id: 'rec-fallback-rep-verb-' + Math.abs(hashCode(secondBullet.cleanText)),
+      id: 'hacky-rec-fallback-rep-verb-' + Math.abs(hashCode(secondBullet.cleanText)),
       category: 'action_verbs',
       title: `Eliminate Action Verb Repetition ("${secondBullet.leadWord}")`,
       priority: 'high',
-      impactPts: 12,
+      impactPts: 14,
       sectionHint: secondBullet.section,
       domain: secondBullet.domain,
       originalText: secondBullet.cleanText,
-      improvedText: `• ${clean}.`,
+      improvedText: upgradedRep,
       critique: `You started ${repVerb.count} separate bullets with "${secondBullet.leadWord}". Tech recruiters and hiring rubrics penalize repetitive phrasing. Diversifying with distinct executive verbs demonstrates broader technical versatility.`,
       reasoning: 'Varying power verbs (Architected, Engineered, Spearheaded, Orchestrated) demonstrates versatility across architecture, delivery, and optimization.',
       suggestedActionLabel: 'Replace in Resume',
@@ -611,37 +652,51 @@ export function generatePersonalizedFallbackRecommendations(
   const unquantified = extracted.filter(b => !b.hasMetric && !b.hasWeakVerb);
   if (unquantified.length > 0) {
     const target = unquantified[0];
-    const clean = target.cleanText.replace(/\.$/, '');
-    let upgraded = '';
+    const strippedClean = target.cleanText
+      .replace(/^[A-Za-z]+(?:ed|ing|s)?\b/i, '')
+      .replace(/^(?:an|a|the|comprehensive|automated)\s+/i, '')
+      .replace(/\.$/, '')
+      .trim();
+
+    let leadQuant = '';
+    let upgradedQuant = '';
 
     switch (target.domain) {
       case 'frontend':
-        upgraded = `• ${clean}, cutting Largest Contentful Paint (LCP) by 35% and elevating client-side performance across 10,000+ active user sessions.`;
+        leadQuant = selectLeadVerb('Automated', ['Streamlined', 'Standardized', 'Overhauled']);
+        upgradedQuant = `• ${leadQuant} comprehensive ${strippedClean}, cutting client-side render latency by 45% across 250+ releases.`;
         break;
       case 'backend':
-        upgraded = `• ${clean}, reducing P99 API latency by 38% and sustaining throughput across 15,000+ peak requests/min.`;
+        leadQuant = selectLeadVerb('Architected', ['Engineered', 'Optimized', 'Scaled']);
+        upgradedQuant = `• ${leadQuant} high-availability ${strippedClean}, reducing P99 API latency by 38% under 15,000+ peak requests/min.`;
         break;
       case 'mobile':
-        upgraded = `• ${clean}, achieving a 99.8% crash-free session rate and slashing cold app startup latency by 42%.`;
+        leadQuant = selectLeadVerb('Optimized', ['Engineered', 'Accelerated', 'Overhauled']);
+        upgradedQuant = `• ${leadQuant} responsive ${strippedClean}, achieving 99.8% crash-free sessions and cutting launch latency by 42%.`;
         break;
       case 'devops':
-        upgraded = `• ${clean}, slashing deployment cycle time by 55% with automated rollback verification and 99.9% uptime.`;
+        leadQuant = selectLeadVerb('Automated', ['Streamlined', 'Orchestrated', 'Standardized']);
+        upgradedQuant = `• ${leadQuant} scalable ${strippedClean}, slashing deployment cycle time by 55% with 99.9% verified pipeline uptime.`;
         break;
       case 'data_ai':
-        upgraded = `• ${clean}, accelerating data pipeline throughput by 3.2x and improving model prediction accuracy to 94.5%.`;
+        leadQuant = selectLeadVerb('Accelerated', ['Optimized', 'Streamlined', 'Engineered']);
+        upgradedQuant = `• ${leadQuant} distributed ${strippedClean}, accelerating data throughput by 3.2x across 500,000+ daily events.`;
         break;
       case 'research_academic':
-        upgraded = `• ${clean}, presenting empirical findings to 150+ academic attendees and synthesizing 25,000+ benchmark trials.`;
+        leadQuant = selectLeadVerb('Formulated', ['Synthesized', 'Delivered', 'Pioneered']);
+        upgradedQuant = `• ${leadQuant} benchmarked ${strippedClean}, synthesizing 25,000+ experimental trials with 96.4% statistical significance.`;
         break;
       case 'leadership':
-        upgraded = `• ${clean}, mentoring 4 engineers and accelerating sprint delivery velocity by 28%.`;
+        leadQuant = selectLeadVerb('Spearheaded', ['Orchestrated', 'Directed', 'Streamlined']);
+        upgradedQuant = `• ${leadQuant} team delivery of ${strippedClean}, accelerating sprint velocity by 28% across 8 sprint cycles.`;
         break;
       default:
-        upgraded = `• ${clean}, improving operational workflow efficiency by 34% and accelerating task turnaround time.`;
+        leadQuant = selectLeadVerb('Streamlined', ['Optimized', 'Standardized', 'Automated']);
+        upgradedQuant = `• ${leadQuant} operational ${strippedClean}, improving delivery turnaround by 34% with automated verification.`;
     }
 
     items.push({
-      id: 'rec-fallback-quant-' + Math.abs(hashCode(target.cleanText)),
+      id: 'hacky-rec-fallback-quant-' + Math.abs(hashCode(target.cleanText)),
       category: 'star_quantification',
       title: `Inject Measurable Domain Metrics (${target.domain})`,
       priority: 'critical',
@@ -649,7 +704,7 @@ export function generatePersonalizedFallbackRecommendations(
       sectionHint: target.section,
       domain: target.domain,
       originalText: target.cleanText,
-      improvedText: upgraded,
+      improvedText: upgradedQuant,
       critique: `This bullet lacks measurable outcomes in the ${target.domain} domain. Google, Meta, and Stripe hiring committees mandate the X-Y-Z formula: Accomplished [X] as measured by [Y] by doing [Z].`,
       reasoning: 'Quantified accomplishments demonstrate commercial scale and business ROI, driving a 40% higher recruiter interview callback rate.',
       suggestedActionLabel: 'Replace in Resume',
@@ -660,42 +715,55 @@ export function generatePersonalizedFallbackRecommendations(
   // 3. Second unquantified bullet -> Systems & Architectural Depth
   if (unquantified.length > 1) {
     const target = unquantified[1];
-    const clean = target.cleanText.replace(/\.$/, '');
-    let upgraded = '';
+    const strippedSys = target.cleanText
+      .replace(/^[A-Za-z]+(?:ed|ing|s)?\b/i, '')
+      .replace(/^(?:an|a|the)?\s+/i, '')
+      .replace(/\.$/, '')
+      .trim();
+
+    let leadSys = '';
+    let upgradedSys = '';
 
     switch (target.domain) {
       case 'frontend':
-        upgraded = `• ${clean}, implementing reusable component design systems and modular state management for seamless cross-browser consistency.`;
+        leadSys = selectLeadVerb('Overhauled', ['Standardized', 'Refactored', 'Optimized']);
+        upgradedSys = `• ${leadSys} modular ${strippedSys}, architecting reusable design components that cut bundle size by 35% and sped up page loads.`;
         break;
       case 'backend':
-        upgraded = `• ${clean}, introducing connection pooling and distributed caching layers to eliminate database bottlenecks under high concurrency.`;
+        leadSys = selectLeadVerb('Overhauled', ['Consolidated', 'Optimized', 'Architected']);
+        upgradedSys = `• ${leadSys} fault-tolerant ${strippedSys}, introducing connection pooling and caching that slashed database CPU load by 45%.`;
         break;
       case 'mobile':
-        upgraded = `• ${clean}, integrating local offline caching and background data prefetching to deliver instant offline responsiveness.`;
+        leadSys = selectLeadVerb('Engineered', ['Optimized', 'Refactored', 'Standardized']);
+        upgradedSys = `• ${leadSys} offline-first ${strippedSys}, implementing local caching and prefetching that reduced network payload by 50%.`;
         break;
       case 'devops':
-        upgraded = `• ${clean}, provisioning infrastructure as code with comprehensive health monitoring and automated alerts.`;
+        leadSys = selectLeadVerb('Provisioned', ['Standardized', 'Consolidated', 'Orchestrated']);
+        upgradedSys = `• ${leadSys} declarative ${strippedSys}, creating infrastructure as code with automated health probes that reduced MTTR by 60%.`;
         break;
       case 'data_ai':
-        upgraded = `• ${clean}, structuring optimized ETL data pipelines with automated schema validation and real-time error auditing.`;
+        leadSys = selectLeadVerb('Streamlined', ['Optimized', 'Consolidated', 'Standardized']);
+        upgradedSys = `• ${leadSys} scalable ${strippedSys}, orchestrating automated schema validation that reduced ETL pipeline failures by 80%.`;
         break;
       case 'research_academic':
-        upgraded = `• ${clean}, developing rigorous mathematical models and comparative baseline benchmarks published in collaborative reports.`;
+        leadSys = selectLeadVerb('Pioneered', ['Delivered', 'Synthesized', 'Formulated']);
+        upgradedSys = `• ${leadSys} empirical ${strippedSys}, structuring comparative baseline models that enhanced classification accuracy by 18%.`;
         break;
       default:
-        upgraded = `• ${clean}, establishing modular software architecture patterns with end-to-end integration test suites.`;
+        leadSys = selectLeadVerb('Standardized', ['Consolidated', 'Optimized', 'Streamlined']);
+        upgradedSys = `• ${leadSys} modular ${strippedSys}, establishing decoupled service boundaries and test suites that reduced bug recurrence by 40%.`;
     }
 
     items.push({
-      id: 'rec-fallback-systems-' + Math.abs(hashCode(target.cleanText)),
+      id: 'hacky-rec-fallback-systems-' + Math.abs(hashCode(target.cleanText)),
       category: 'systems_depth',
       title: `Deepen Architecture & Engineering Patterns (${target.domain})`,
       priority: 'high',
-      impactPts: 14,
+      impactPts: 15,
       sectionHint: target.section,
       domain: target.domain,
       originalText: target.cleanText,
-      improvedText: upgraded,
+      improvedText: upgradedSys,
       critique: `The description lacks technical architectural depth. Interviewers evaluate whether candidates understand production patterns (modularity, resilience, concurrency) within ${target.domain}.`,
       reasoning: 'Highlighting architectural patterns signals senior-level engineering thinking rather than surface-level script execution.',
       suggestedActionLabel: 'Replace in Resume',
@@ -709,7 +777,7 @@ export function generatePersonalizedFallbackRecommendations(
     const tightened = tightenBulletText(raggedCandidate.cleanText);
     if (tightened.length < raggedCandidate.cleanText.length - 4) {
       items.push({
-        id: 'rec-fallback-ragged-' + Math.abs(hashCode(raggedCandidate.cleanText)),
+        id: 'hacky-rec-fallback-ragged-' + Math.abs(hashCode(raggedCandidate.cleanText)),
         category: 'brevity_line_budget',
         title: 'Eliminate Ragged Widow (Tighten to Clean 1-Line Budget)',
         priority: 'high',
@@ -762,11 +830,17 @@ export function generatePersonalizedFallbackRecommendations(
         extracted[0];
 
       const orig = hostBullet ? hostBullet.cleanText : 'Developed software solutions for team projects.';
-      const cleanOrig = orig.replace(/\.$/, '');
-      const upgraded = `• ${cleanOrig}, integrating ${topMissingNames.join(' & ')} into core workflows with automated CI/CD pipelines.`;
+      const cleanHost = orig
+        .replace(/^[A-Za-z]+(?:ed|ing|s)?\b/i, '')
+        .replace(/^(?:an|a|the)?\s+/i, '')
+        .replace(/\.$/, '')
+        .trim();
+
+      const leadSkill = selectLeadVerb('Standardized', ['Consolidated', 'Streamlined', 'Orchestrated']);
+      const upgraded = `• ${leadSkill} ${cleanHost}, integrating ${topMissingNames.join(' & ')} into core workflows to reduce release overhead by 48%.`;
 
       items.push({
-        id: 'rec-fallback-skills-' + Math.abs(hashCode(topMissingNames.join('-'))),
+        id: 'hacky-rec-fallback-skills-' + Math.abs(hashCode(topMissingNames.join('-'))),
         category: 'missing_skills',
         title: `Target Role Skill Gap (${topMissingNames.join(', ')})`,
         priority: 'critical',
@@ -788,8 +862,15 @@ export function generatePersonalizedFallbackRecommendations(
   const hasCloudOrContainer = /(docker|kubernetes|aws|gcp|azure|ci\/cd|terraform|datadog|prometheus|cloud)/i.test(resumeText);
   if (!hasCloudOrContainer && extracted.length > 0) {
     const host = extracted.find(b => b.domain === 'backend' || b.domain === 'devops' || b.domain === 'fullstack') || extracted[extracted.length - 1];
+    const hostClean = host.cleanText
+      .replace(/^[A-Za-z]+(?:ed|ing|s)?\b/i, '')
+      .replace(/^(?:an|a|the)?\s+/i, '')
+      .replace(/\.$/, '')
+      .trim();
+
+    const leadProd = selectLeadVerb('Deployed', ['Containerized', 'Automated', 'Orchestrated']);
     items.push({
-      id: 'rec-fallback-prod-infra',
+      id: 'hacky-rec-fallback-prod-infra',
       category: 'production_scale',
       title: 'Missing Production Infrastructure & Deployment Signal',
       priority: 'high',
@@ -797,7 +878,7 @@ export function generatePersonalizedFallbackRecommendations(
       sectionHint: host.section,
       domain: host.domain,
       originalText: host.cleanText,
-      improvedText: `• ${host.cleanText.replace(/\.$/, '')}; deployed containerized services with automated GitHub Actions CI/CD and production health monitoring.`,
+      improvedText: `• ${leadProd} containerized ${hostClean} via Docker and GitHub Actions, sustaining 99.95% availability across 5+ environments.`,
       critique: 'No cloud infrastructure or automated deployment keywords detected. Modern tech companies require engineers who understand deployment, CI/CD, and production reliability.',
       reasoning: 'Adding cloud deployment signals validates operational maturity and prevents candidate down-leveling from Senior/Staff tiers.',
       suggestedKeywords: ['Docker', 'CI/CD', 'GitHub Actions', 'Production Monitoring'],
@@ -815,7 +896,7 @@ export function generatePersonalizedFallbackRecommendations(
     source: 'heuristic_fallback',
     candidateBulletCount: extracted.length,
     overallHealthScore: healthScore,
-    summary: `Analyzed ${extracted.length} verified accomplishment bullets across Experience & Projects. Protected Education/Certifications from mutation. Found ${items.length} high-accuracy improvements.`,
+    summary: `Hacky AI Career Intelligence analyzed ${extracted.length} verified accomplishment bullets across Experience & Projects. Protected Education/Certifications from mutation. Generated ${items.length} high-accuracy recommendations.`,
   };
 }
 
@@ -856,22 +937,24 @@ export class GeminiRecommendationService {
 
     const systemPrompt = `You are Hacky, an elite AI Career Architect, Principal Engineer, and Hiring Committee Leader for top tech companies (Google, Meta, Apple, Stripe, Netflix).
 Your mission is to perform a rigorous architectural and ATS audit of the candidate's resume and generate 5 to 7 deeply personalized, high-accuracy recommendations.
+You represent Hacky AI. Mask all outputs under Hacky AI identity. Recommendation IDs MUST follow the pattern 'hacky-rec-1', 'hacky-rec-2', etc. NEVER mention Google Gemini, OpenAI, or third-party provider names in recommendations, titles, or critiques.
 
 STRICT PERSONALIZATION & ANTI-HALLUCINATION RULES:
 1. Every recommendation MUST quote an ACTUAL bullet or phrase from the candidate's resume in 'originalText'. Do NOT invent fake bullets.
 2. STRICT SECTION ISOLATION: NEVER evaluate, rewrite, or inject metrics into Education, Degrees, High School Diplomas, Certifications, or Contact info. Only evaluate actual work experience or technical project bullets.
 3. DOMAIN-CALIBRATED ELEVATION:
    - Preserve the candidate's actual work domain.
-   - If the candidate worked on Frontend/Web UI, elevate with Frontend metrics (Largest Contentful Paint, bundle size, interactive responsiveness, WCAG AA accessibility, user session volume). DO NOT invent backend Redis caching or distributed databases!
+   - If Frontend/Web UI, elevate with Frontend metrics (Largest Contentful Paint, bundle size, interactive responsiveness, WCAG AA accessibility, user session volume). DO NOT invent backend Redis caching or distributed databases!
    - If Backend, elevate with P99 latency, RPS/QPS throughput, database connection pooling, caching, or data consistency.
    - If Mobile, elevate with crash-free session rate, cold launch latency, offline synchronization, or App Store adoption.
    - If Data/AI/ML, elevate with pipeline throughput, inference latency, dataset scale, or F1/accuracy benchmarks.
    - If Academic/Research, elevate with publication presentations, benchmark dataset scale, or mathematical proof validation.
-4. GOOGLE X-Y-Z FORMULA:
-   - In 'improvedText', rewrite into: "Accomplished [X] as measured by [Y] by doing [Z]".
-   - Use strong executive action verbs (Architected, Engineered, Spearheaded, Orchestrated) instead of passive verbs ('worked on', 'helped', 'responsible for').
-5. In 'critique', provide an incisive diagnostic explaining why the original bullet is weak or fails ATS/interviewer screens.
-6. In 'reasoning', explain why the elevated rewrite directly improves interview callback rates.
+4. GOOGLE X-Y-Z FORMULA WITH HARD METRICS:
+   - In 'improvedText', rewrite every single bullet into: "Accomplished [X] as measured by [Y] by doing [Z]".
+   - ALWAYS include hard quantifiable metrics (%, ms latency, RPS, scale, users, $ impact) and causal connectors (cutting, by, reducing, sustaining, yielding, accelerating, with).
+   - Use diverse, elite executive action verbs (Architected, Engineered, Spearheaded, Orchestrated, Automated, Overhauled, Streamlined) instead of passive verbs ('worked on', 'helped', 'responsible for'). NEVER repeat the same lead verb across recommendations.
+5. In 'critique', provide an incisive diagnostic explaining why the original bullet is weak or fails ATS/interviewer screens (at least 35 characters).
+6. In 'reasoning', explain why the elevated rewrite directly improves interview callback rates (at least 35 characters).
 7. If a Job Description is provided, identify missing critical skills and weave them naturally into relevant experience bullets.
 8. BREVITY & LINE BUDGETING: Identify bullets that spill onto a second or third line by only 1-3 words ('ragged widows') and offer tightened rewrites under category 'brevity_line_budget' that fit cleanly onto a single line without losing impact.`;
 
@@ -888,7 +971,7 @@ Candidate's Extracted Accomplishment Bullets (from Experience & Projects only):
 ${candidateBulletsText || 'No explicit accomplishment bullets detected; analyze experience descriptions.'}
 """
 
-Please analyze the resume against tier-1 tech hiring standards and produce structured JSON recommendations.`;
+Please analyze the resume against tier-1 tech hiring standards and produce structured JSON recommendations masked cleanly as Hacky AI.`;
 
     const candidateModels = [
       request.model || this.primaryModel || DEFAULT_GEMINI_MODEL,
@@ -1015,28 +1098,52 @@ Please analyze the resume against tier-1 tech hiring standards and produce struc
 
         const domain = r.domain || (orig ? classifyBulletDomain(orig) : 'general');
 
+        let recId = r.id || `hacky-rec-${i + 1}-${Math.abs(hashCode(r.title))}`;
+        if (recId.startsWith('gemini-')) {
+          recId = recId.replace(/^gemini-/, 'hacky-');
+        } else if (!recId.startsWith('hacky-rec-')) {
+          recId = `hacky-rec-${recId.replace(/^rec-/, '')}`;
+        }
+
+        const sanitizedTitle = (r.title || '')
+          .replace(/\bGoogle Gemini\b/gi, 'Hacky AI')
+          .replace(/\bGemini\b/gi, 'Hacky AI');
+
+        const sanitizedCritique = (r.critique || 'Lacks measurable business impact and active engineering verbs.')
+          .replace(/\bGoogle Gemini\b/gi, 'Hacky AI')
+          .replace(/\bGemini\b/gi, 'Hacky AI');
+
+        const sanitizedReasoning = (r.reasoning || 'Elevates candidate visibility and passes automated ATS semantic rubrics.')
+          .replace(/\bGoogle Gemini\b/gi, 'Hacky AI')
+          .replace(/\bGemini\b/gi, 'Hacky AI');
+
         items.push({
-          id: r.id || `gemini-rec-${i + 1}-${Math.abs(hashCode(r.title))}`,
+          id: recId,
           category: r.category || 'star_quantification',
           domain,
-          title: r.title,
+          title: sanitizedTitle,
           priority: r.priority || (i < 2 ? 'critical' : 'high'),
           impactPts: typeof r.impactPts === 'number' ? Math.min(25, Math.max(6, r.impactPts)) : 14,
           sectionHint: r.sectionHint || 'experience',
           originalText: orig,
           improvedText: imp,
-          critique: r.critique || 'Lacks measurable business impact and active engineering verbs.',
-          reasoning: r.reasoning || 'Elevates candidate visibility and passes automated ATS semantic rubrics.',
+          critique: sanitizedCritique,
+          reasoning: sanitizedReasoning,
           suggestedKeywords: Array.isArray(r.suggestedKeywords) ? r.suggestedKeywords : [],
           suggestedActionLabel: 'Replace in Resume',
           antiHallucinationVerified: true,
         });
       }
 
+      const defaultSummary = 'Hacky AI Career Intelligence analyzed candidate experience against tier-1 engineering rubrics.';
+      const candidateSummary = parsed.candidateSummary
+        ? parsed.candidateSummary.replace(/\bGoogle Gemini\b/gi, 'Hacky AI').replace(/\bGemini\b/gi, 'Hacky AI')
+        : defaultSummary;
+
       return {
         recommendations: items,
         healthScore: Math.min(95, Math.max(50, 60 + items.length * 5)),
-        candidateSummary: parsed.candidateSummary || '',
+        candidateSummary,
       };
     } catch (e) {
       console.error('[GeminiRecommendationService] Failed to parse JSON response:', e);
