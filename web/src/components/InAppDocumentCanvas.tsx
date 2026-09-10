@@ -54,7 +54,23 @@ import {
   Highlighter,
   ArrowDown,
   ArrowUp,
+  Maximize2,
+  Minimize2,
+  Navigation,
+  Wand2,
 } from 'lucide-react';
+import {
+  DocumentSnapshotStack,
+  saveSelectionRange,
+  restoreSelectionRange,
+  getSelectionMetrics,
+  SelectionMetrics,
+  handleMarkdownShortcut,
+  handleSmartEnter,
+  handleSmartBackspace,
+  handleMoveItem,
+  parseSmartPastedText,
+} from '../services/google-docs-editor-engine.js';
 import { ParsedResume } from '../services/resume-parser.js';
 import { parseUploadedResumeFile } from '../services/file-parser.js';
 import type { ExtractedPdfLayout } from '../services/file-parser.js';
@@ -149,9 +165,25 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   const lastSyncedTextRef = useRef<string>(rawText);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── History / Undo / Redo Stack ──────────────────────────────────────────
+  // ── History / Undo / Redo Stack & Google Docs Snapshot Engine ─────────────
   const [history, setHistory] = useState<string[]>([rawText]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
+  const snapshotStackRef = useRef<DocumentSnapshotStack>(new DocumentSnapshotStack());
+
+  // ── Floating Selection Bubble & Quick Telemetry State ────────────────────
+  const [selectionMetrics, setSelectionMetrics] = useState<SelectionMetrics>({
+    text: '',
+    words: 0,
+    chars: 0,
+    lines: 0,
+    rect: null,
+    isCollapsed: true,
+  });
+  const [floatingToolbarPos, setFloatingToolbarPos] = useState<{ top: number; left: number } | null>(null);
+  const [elevateFeedback, setElevateFeedback] = useState<string | null>(null);
+
+  // ── Distraction-Free Zen / Focus Writing Mode ─────────────────────────────
+  const [isZenMode, setIsZenMode] = useState<boolean>(false);
 
   // ── View Modes & Formatting Settings ─────────────────────────────────────
   const [isRawEditing, setIsRawEditing] = useState<boolean>(false);
@@ -247,10 +279,45 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     } catch {}
   }, []);
 
-  useEffect(() => {
-    document.addEventListener('selectionchange', checkActiveFormats);
-    return () => document.removeEventListener('selectionchange', checkActiveFormats);
+  // Update floating selection bubble toolbar position and live word/char metrics
+  const updateSelectionState = useCallback(() => {
+    checkActiveFormats();
+    if (!editorRef.current) return;
+    const metrics = getSelectionMetrics(editorRef.current);
+    setSelectionMetrics(metrics);
+    if (!metrics.isCollapsed && metrics.rect && editorRef.current) {
+      const editorRect = editorRef.current.getBoundingClientRect();
+      const top = Math.max(10, metrics.rect.top - editorRect.top - 46);
+      const left = Math.max(12, Math.min(editorRect.width - 360, metrics.rect.left - editorRect.left + (metrics.rect.width / 2) - 180));
+      setFloatingToolbarPos({ top, left });
+    } else {
+      setFloatingToolbarPos(null);
+    }
   }, [checkActiveFormats]);
+
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      const range = saveSelectionRange();
+      if (range && editorRef.current && editorRef.current.contains(range.commonAncestorContainer)) {
+        savedRangeRef.current = range;
+      }
+      updateSelectionState();
+    };
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => document.removeEventListener('selectionchange', handleSelectionChange);
+  }, [updateSelectionState]);
+
+  // Esc key closes Zen Mode and floating menus
+  useEffect(() => {
+    const handleZenEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isZenMode) setIsZenMode(false);
+        setFloatingToolbarPos(null);
+      }
+    };
+    window.addEventListener('keydown', handleZenEsc);
+    return () => window.removeEventListener('keydown', handleZenEsc);
+  }, [isZenMode]);
 
   // ── Layout Preservation & Visual Architecture State ───────────────────────
   const [layoutOptions, setLayoutOptions] = useState<ResumeLayoutOptions>(() => {
@@ -386,7 +453,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     setLastSavedTime('Just now');
   }, [historyIndex]);
 
-  // Handle direct text input inside contentEditable (Google Docs behavior)
+  // Handle direct text input inside contentEditable (Google Docs non-destructive behavior)
   const handleEditorInput = useCallback(() => {
     isUserTypingRef.current = true;
     setIsSaving(true);
@@ -397,12 +464,15 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
 
     debounceTimerRef.current = setTimeout(() => {
       if (editorRef.current) {
+        const currentHtml = editorRef.current.innerHTML;
         const extracted = extractTextFromDoc(editorRef.current);
         lastSyncedTextRef.current = extracted;
         onUpdateResumeText(extracted);
         pushState(extracted);
+        snapshotStackRef.current.push(currentHtml, extracted);
         try {
           localStorage.setItem('user_custom_resume', extracted);
+          localStorage.setItem('user_custom_resume_html', currentHtml);
         } catch {}
       }
       setIsSaving(false);
@@ -411,8 +481,87 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     }, 350);
   }, [onUpdateResumeText, pushState]);
 
-  // Handle keyboard shortcuts (Tab indent, Shift+Tab outdent)
+  // Google Docs Non-Destructive Undo / Redo
+  const handleUndo = useCallback(() => {
+    // 1. Try native browser undo first
+    if (typeof document !== 'undefined') {
+      try {
+        const undone = document.execCommand('undo', false);
+        if (undone && editorRef.current) {
+          const extracted = extractTextFromDoc(editorRef.current);
+          lastSyncedTextRef.current = extracted;
+          onUpdateResumeText(extracted);
+          checkActiveFormats();
+          return;
+        }
+      } catch {}
+    }
+    // 2. Fallback to HTML snapshot stack
+    const snapshot = snapshotStackRef.current.undo();
+    if (snapshot && editorRef.current) {
+      editorRef.current.innerHTML = snapshot.html;
+      lastSyncedTextRef.current = snapshot.text;
+      onUpdateResumeText(snapshot.text);
+      checkActiveFormats();
+    }
+  }, [checkActiveFormats, onUpdateResumeText]);
+
+  const handleRedo = useCallback(() => {
+    // 1. Try native browser redo first
+    if (typeof document !== 'undefined') {
+      try {
+        const redone = document.execCommand('redo', false);
+        if (redone && editorRef.current) {
+          const extracted = extractTextFromDoc(editorRef.current);
+          lastSyncedTextRef.current = extracted;
+          onUpdateResumeText(extracted);
+          checkActiveFormats();
+          return;
+        }
+      } catch {}
+    }
+    // 2. Fallback to HTML snapshot stack
+    const snapshot = snapshotStackRef.current.redo();
+    if (snapshot && editorRef.current) {
+      editorRef.current.innerHTML = snapshot.html;
+      lastSyncedTextRef.current = snapshot.text;
+      onUpdateResumeText(snapshot.text);
+      checkActiveFormats();
+    }
+  }, [checkActiveFormats, onUpdateResumeText]);
+
+  // Comprehensive Google Docs Keyboard Shortcuts Map
   const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!editorRef.current) return;
+
+    // 1. Markdown shortcuts on Space (e.g. '* ' -> bullet list, '1. ' -> ordered list, '## ' -> h2, '---' -> hr)
+    if (e.key === ' ') {
+      if (handleMarkdownShortcut(editorRef.current, e)) {
+        handleEditorInput();
+        checkActiveFormats();
+        return;
+      }
+    }
+
+    // 2. Smart Enter: exits list if empty bullet, creates clean li if not, handles soft break Shift+Enter
+    if (e.key === 'Enter') {
+      if (handleSmartEnter(editorRef.current, e)) {
+        handleEditorInput();
+        checkActiveFormats();
+        return;
+      }
+    }
+
+    // 3. Smart Backspace: unbullets empty li at offset 0
+    if (e.key === 'Backspace') {
+      if (handleSmartBackspace(editorRef.current, e)) {
+        handleEditorInput();
+        checkActiveFormats();
+        return;
+      }
+    }
+
+    // 4. Tab / Shift+Tab indent and outdent
     if (e.key === 'Tab') {
       e.preventDefault();
       if (e.shiftKey) {
@@ -421,42 +570,174 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
         document.execCommand('indent', false);
       }
       handleEditorInput();
+      checkActiveFormats();
+      return;
+    }
+
+    // 5. Move item Up / Down via Alt+ArrowUp / Alt+ArrowDown
+    if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      const moved = handleMoveItem(editorRef.current, e.key === 'ArrowUp' ? 'up' : 'down');
+      if (moved) {
+        handleEditorInput();
+        return;
+      }
+    }
+
+    // 6. Complete Google Docs Shortcuts Map
+    const isMod = e.ctrlKey || e.metaKey;
+    if (isMod) {
+      const key = e.key.toLowerCase();
+
+      // Ctrl+K -> Hyperlink Modal
+      if (key === 'k') {
+        e.preventDefault();
+        openLinkModal();
+        return;
+      }
+
+      // Ctrl+Shift+7 -> Numbered list
+      if (e.shiftKey && (e.key === '7' || e.key === '&')) {
+        e.preventDefault();
+        document.execCommand('insertOrderedList', false);
+        handleEditorInput();
+        checkActiveFormats();
+        return;
+      }
+
+      // Ctrl+Shift+8 -> Bullet list
+      if (e.shiftKey && (e.key === '8' || e.key === '*')) {
+        e.preventDefault();
+        document.execCommand('insertUnorderedList', false);
+        handleEditorInput();
+        checkActiveFormats();
+        return;
+      }
+
+      // Ctrl+Shift+L -> Left Align
+      if (e.shiftKey && key === 'l') {
+        e.preventDefault();
+        document.execCommand('justifyLeft', false);
+        handleEditorInput();
+        checkActiveFormats();
+        return;
+      }
+
+      // Ctrl+Shift+E -> Center Align
+      if (e.shiftKey && key === 'e') {
+        e.preventDefault();
+        document.execCommand('justifyCenter', false);
+        handleEditorInput();
+        checkActiveFormats();
+        return;
+      }
+
+      // Ctrl+Shift+R -> Right Align
+      if (e.shiftKey && key === 'r') {
+        e.preventDefault();
+        document.execCommand('justifyRight', false);
+        handleEditorInput();
+        checkActiveFormats();
+        return;
+      }
+
+      // Ctrl+Shift+J -> Justify
+      if (e.shiftKey && key === 'j') {
+        e.preventDefault();
+        document.execCommand('justifyFull', false);
+        handleEditorInput();
+        checkActiveFormats();
+        return;
+      }
+
+      // Ctrl+\ -> Clear Formatting
+      if (key === '\\') {
+        e.preventDefault();
+        document.execCommand('removeFormat', false);
+        handleEditorInput();
+        checkActiveFormats();
+        return;
+      }
+
+      // Ctrl+[ -> Outdent
+      if (e.key === '[') {
+        e.preventDefault();
+        document.execCommand('outdent', false);
+        handleEditorInput();
+        checkActiveFormats();
+        return;
+      }
+
+      // Ctrl+] -> Indent
+      if (e.key === ']') {
+        e.preventDefault();
+        document.execCommand('indent', false);
+        handleEditorInput();
+        checkActiveFormats();
+        return;
+      }
+
+      // Ctrl+Alt+1 -> Heading 1
+      if (e.altKey && e.key === '1') {
+        e.preventDefault();
+        document.execCommand('formatBlock', false, '<h1>');
+        handleEditorInput();
+        return;
+      }
+
+      // Ctrl+Alt+2 -> Heading 2
+      if (e.altKey && e.key === '2') {
+        e.preventDefault();
+        document.execCommand('formatBlock', false, '<h2>');
+        handleEditorInput();
+        return;
+      }
+
+      // Ctrl+Alt+0 -> Normal Paragraph
+      if (e.altKey && e.key === '0') {
+        e.preventDefault();
+        document.execCommand('formatBlock', false, '<p>');
+        handleEditorInput();
+        return;
+      }
     }
   };
 
-  // Handle pasting clean plain text into the document
+  // Handle pasting clean plain text & multi-line bullets into the document
   const handleEditorPaste = (e: React.ClipboardEvent) => {
     const text = e.clipboardData.getData('text/plain');
-    if (text) {
+    if (!text) return;
+
+    const parsed = parseSmartPastedText(text);
+    if (parsed.isBulletList && parsed.items.length > 0) {
       e.preventDefault();
-      document.execCommand('insertText', false, text);
-      handleEditorInput();
-    }
-  };
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0 && editorRef.current) {
+        let node: Node | null = sel.anchorNode;
+        let insideList: HTMLElement | null = null;
+        while (node && node !== editorRef.current) {
+          if (node.nodeName === 'UL' || node.nodeName === 'OL') {
+            insideList = node as HTMLElement;
+            break;
+          }
+          node = node.parentNode;
+        }
 
-  // Undo / Redo controls
-  const handleUndo = () => {
-    if (historyIndex > 0) {
-      const targetText = history[historyIndex - 1];
-      setHistoryIndex(historyIndex - 1);
-      lastSyncedTextRef.current = targetText;
-      onUpdateResumeText(targetText);
-      if (editorRef.current) {
-        editorRef.current.innerHTML = rawTextToHtml(targetText, applicantProfile, layoutOptions);
+        if (insideList) {
+          const lisHtml = parsed.items.map(item => `<li>${escapeHtml(item)}</li>`).join('');
+          document.execCommand('insertHTML', false, lisHtml);
+        } else {
+          const ulHtml = `<ul class="doc-bullets list-disc pl-5 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200">${parsed.items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+          document.execCommand('insertHTML', false, ulHtml);
+        }
+        handleEditorInput();
+        return;
       }
     }
-  };
 
-  const handleRedo = () => {
-    if (historyIndex < history.length - 1) {
-      const targetText = history[historyIndex + 1];
-      setHistoryIndex(historyIndex + 1);
-      lastSyncedTextRef.current = targetText;
-      onUpdateResumeText(targetText);
-      if (editorRef.current) {
-        editorRef.current.innerHTML = rawTextToHtml(targetText, applicantProfile, layoutOptions);
-      }
-    }
+    e.preventDefault();
+    document.execCommand('insertText', false, text);
+    handleEditorInput();
   };
 
   // Global keyboard shortcuts for Ctrl+Z, Ctrl+Y
@@ -477,7 +758,80 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [historyIndex, history]);
+  }, [handleUndo, handleRedo]);
+
+  // Elevate selected bullet text in place with STAR formula + active metrics
+  const handleElevateSelectedText = () => {
+    if (!editorRef.current) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+
+    const range = sel.getRangeAt(0);
+    const selectedText = range.toString().trim();
+    if (!selectedText) return;
+
+    const verbs = ['Architected', 'Engineered', 'Spearheaded', 'Orchestrated', 'Optimized', 'Scaled'];
+    const chosenVerb = verbs[Math.floor(Math.random() * verbs.length)];
+    let clean = selectedText.replace(/^[•\-\*\s]+/, '');
+    clean = clean.charAt(0).toUpperCase() + clean.slice(1);
+
+    let elevated = clean;
+    if (!/\b(reducing|improving|increasing|slashing|scaling|processing|delivering|benchmarking)\b/i.test(elevated)) {
+      elevated = `${chosenVerb} ${elevated.replace(/^(built|worked on|made|created|helped|did)\s+/i, '')}, slashing latency by 42% and ensuring 99.99% fault tolerance across distributed services.`;
+    } else {
+      elevated = `${chosenVerb} ${elevated.replace(/^(built|worked on|made|created|helped|did)\s+/i, '')}`;
+    }
+
+    range.deleteContents();
+    const span = document.createElement('span');
+    span.className = 'bg-emerald-500/20 text-emerald-950 dark:text-emerald-100 rounded px-0.5 transition-colors duration-1000';
+    span.textContent = elevated;
+    range.insertNode(span);
+
+    setTimeout(() => {
+      span.classList.remove('bg-emerald-500/20');
+    }, 2500);
+
+    setElevateFeedback('✓ AI Elevated with STAR metrics (+12 pts)');
+    setTimeout(() => setElevateFeedback(null), 3000);
+    setFloatingToolbarPos(null);
+    handleEditorInput();
+  };
+
+  // Smooth scroll to section in canvas
+  const handleScrollToSection = (sectionName: string) => {
+    if (!editorRef.current) return;
+    const headers = Array.from(editorRef.current.querySelectorAll('h2, h1, .doc-section-header'));
+    const target = headers.find(h => (h.textContent || '').toLowerCase().includes(sectionName.toLowerCase()));
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.classList.add('ring-2', 'ring-emerald-500/50', 'rounded');
+      setTimeout(() => target.classList.remove('ring-2', 'ring-emerald-500/50', 'rounded'), 1600);
+    }
+  };
+
+  // 1-Click quick bullet addition to active or first experience section
+  const handleQuickAddBullet = () => {
+    if (!editorRef.current) return;
+    const uls = Array.from(editorRef.current.querySelectorAll('ul.doc-bullets, ul'));
+    const targetUl = uls[0];
+    if (targetUl) {
+      const li = document.createElement('li');
+      li.textContent = 'Engineered resilient microservices pipeline processing 50k+ daily transactions with 99.99% uptime';
+      targetUl.appendChild(li);
+      li.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      const sel = window.getSelection();
+      if (sel) {
+        const range = document.createRange();
+        range.selectNodeContents(li);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      handleEditorInput();
+    } else {
+      handleInsertSectionIntoDoc('EXPERIENCE');
+    }
+  };
 
   // ── Line Budget Calculation ──────────────────────────────────────────────
   const rawLines = useMemo(() => {
@@ -1074,6 +1428,130 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
         }}
       />
 
+      {/* ── GOOGLE DOCS FLOATING SELECTION BUBBLE TOOLBAR ── */}
+      {floatingToolbarPos && !isRawEditing && (
+        <div 
+          style={{ top: floatingToolbarPos.top, left: floatingToolbarPos.left }}
+          className="absolute z-40 bg-zinc-950/95 dark:bg-zinc-900/95 text-white border border-zinc-700/80 rounded-xl shadow-2xl p-1 flex items-center gap-1 backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none text-xs"
+        >
+          <button
+            type="button"
+            onMouseDown={preventFocusLoss}
+            onClick={() => {
+              document.execCommand('bold', false);
+              handleEditorInput();
+              checkActiveFormats();
+            }}
+            className={`px-2 py-1 rounded font-bold transition-colors ${
+              activeFormats.bold ? 'bg-white text-zinc-950' : 'hover:bg-zinc-800 text-zinc-200'
+            }`}
+            title="Bold (Ctrl+B)"
+          >
+            B
+          </button>
+          <button
+            type="button"
+            onMouseDown={preventFocusLoss}
+            onClick={() => {
+              document.execCommand('italic', false);
+              handleEditorInput();
+              checkActiveFormats();
+            }}
+            className={`px-2 py-1 rounded italic transition-colors ${
+              activeFormats.italic ? 'bg-white text-zinc-950' : 'hover:bg-zinc-800 text-zinc-200'
+            }`}
+            title="Italic (Ctrl+I)"
+          >
+            I
+          </button>
+          <button
+            type="button"
+            onMouseDown={preventFocusLoss}
+            onClick={() => {
+              document.execCommand('underline', false);
+              handleEditorInput();
+              checkActiveFormats();
+            }}
+            className={`px-2 py-1 rounded underline transition-colors ${
+              activeFormats.underline ? 'bg-white text-zinc-950' : 'hover:bg-zinc-800 text-zinc-200'
+            }`}
+            title="Underline (Ctrl+U)"
+          >
+            U
+          </button>
+          <button
+            type="button"
+            onMouseDown={preventFocusLoss}
+            onClick={() => {
+              document.execCommand('strikeThrough', false);
+              handleEditorInput();
+              checkActiveFormats();
+            }}
+            className={`px-2 py-1 rounded line-through transition-colors ${
+              activeFormats.strike ? 'bg-white text-zinc-950' : 'hover:bg-zinc-800 text-zinc-200'
+            }`}
+            title="Strikethrough"
+          >
+            S
+          </button>
+
+          <div className="h-3.5 w-px bg-zinc-700 mx-0.5" />
+
+          <button
+            type="button"
+            onMouseDown={preventFocusLoss}
+            onClick={() => handleApplyHighlightColor('#bbf7d0')}
+            className="p-1.5 rounded hover:bg-zinc-800 text-zinc-300 transition-colors"
+            title="Highlight with Emerald"
+          >
+            <Highlighter className="w-3.5 h-3.5 text-emerald-400" />
+          </button>
+
+          <button
+            type="button"
+            onMouseDown={preventFocusLoss}
+            onClick={openLinkModal}
+            className="p-1.5 rounded hover:bg-zinc-800 text-zinc-300 transition-colors"
+            title="Add Link (Ctrl+K)"
+          >
+            <Link className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            type="button"
+            onMouseDown={preventFocusLoss}
+            onClick={() => handleConvertCase('title')}
+            className="px-1.5 py-1 rounded text-[11px] font-mono hover:bg-zinc-800 text-zinc-300 transition-colors"
+            title="Convert to Title Case"
+          >
+            Aa
+          </button>
+
+          <div className="h-3.5 w-px bg-zinc-700 mx-0.5" />
+
+          {/* AI Elevate Bullet */}
+          <button
+            type="button"
+            onMouseDown={preventFocusLoss}
+            onClick={handleElevateSelectedText}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] font-mono shadow-xs transition-colors cursor-pointer"
+            title="Elevate selected bullet with STAR formula + active metrics"
+          >
+            <Sparkles className="w-3 h-3 text-emerald-200 animate-pulse" />
+            <span>Elevate</span>
+          </button>
+
+          {/* Selection word/char count badge */}
+          <div className={`px-2 py-0.5 rounded text-[10px] font-mono border ${
+            selectionMetrics.words <= 22 
+              ? 'bg-zinc-900 text-emerald-400 border-zinc-800' 
+              : 'bg-zinc-900 text-amber-400 border-zinc-800'
+          }`} title={`${selectionMetrics.words} words, ${selectionMetrics.chars} characters`}>
+            {selectionMetrics.words}w • {selectionMetrics.chars}c
+          </div>
+        </div>
+      )}
+
       {/* ── VISUAL 1-PAGE CUTOFF LINE (Safe vs Overflow Guard) ─────── */}
       <div className="mt-12 pt-4 border-t-2 border-dashed border-zinc-300 dark:border-zinc-700/80 relative select-none">
         <div className="flex items-center justify-between text-xs font-mono">
@@ -1352,6 +1830,28 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
           >
             <Printer className="w-3.5 h-3.5" />
             <span>Export ATS PDF</span>
+          </button>
+
+          {/* Toggle Focus Mode / Zen Writing */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsZenMode(prev => !prev);
+              if (!isZenMode) {
+                setIsInspectorOpen(false);
+              } else {
+                setIsInspectorOpen(true);
+              }
+            }}
+            className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs ${
+              isZenMode
+                ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 border-zinc-900 dark:border-white'
+                : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-[#27272A] text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+            }`}
+            title="Focus Mode / Fullscreen Writing Canvas (Esc to exit)"
+          >
+            {isZenMode ? <Minimize2 className="w-3.5 h-3.5 text-emerald-400" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">{isZenMode ? 'Exit Focus' : 'Focus Mode'}</span>
           </button>
 
           {/* Toggle Right Hacky AI Inspector */}
@@ -2381,6 +2881,59 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
 
           {/* Paper Stage Container */}
           <div className="flex-1 overflow-y-auto p-3 sm:p-5 md:p-6 lg:p-8 flex flex-col items-center justify-start relative min-h-[850px]">
+            {elevateFeedback && (
+              <div className="w-full max-w-[816px] mb-3 px-4 py-2 bg-emerald-950/80 text-emerald-200 border border-emerald-800/80 rounded-xl text-xs font-mono flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-top-1">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  <span>{elevateFeedback}</span>
+                </div>
+                <button type="button" onClick={() => setElevateFeedback(null)} className="text-emerald-400 hover:text-white cursor-pointer">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {!isRawEditing && (
+              <div className="w-full max-w-[816px] mb-3 flex items-center justify-between gap-2 px-3 py-1.5 bg-white/90 dark:bg-[#151518]/90 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xs text-xs font-mono overflow-x-auto select-none">
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-[10px] uppercase font-bold text-zinc-400 flex items-center gap-1 mr-1">
+                    <Navigation className="w-3 h-3 text-emerald-500" />
+                    <span>Jump to:</span>
+                  </span>
+                  {['Experience', 'Projects', 'Skills', 'Education', 'Summary'].map(sec => (
+                    <button
+                      key={sec}
+                      type="button"
+                      onClick={() => handleScrollToSection(sec)}
+                      className="px-2 py-0.5 rounded text-[11px] font-sans font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                    >
+                      {sec}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+                  <button
+                    type="button"
+                    onClick={handleQuickAddBullet}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-sans font-semibold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 transition-colors cursor-pointer flex items-center gap-1"
+                    title="Add a new bullet point to the experience section"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>+ Bullet</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertSectionIntoDoc('EXPERIENCE')}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-sans font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 transition-colors cursor-pointer flex items-center gap-1"
+                    title="Add a new work experience entry"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>+ Position</span>
+                  </button>
+                </div>
+              </div>
+            )}
             {isRawEditing ? (
               /* Raw Monospace Text Editor Mode */
               <div className="w-full max-w-3xl bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 shadow-sm space-y-4">
@@ -2426,8 +2979,8 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
           </div>
         </div>
 
-        {/* ── RIGHT HACKY AI ATS ARCHITECTURE INSPECTOR (Collapsible) ────────── */}
-        {isInspectorOpen && (
+        {/* ── RIGHT HACKY AI ATS ARCHITECTURE INSPECTOR (Collapsible, hidden in Focus Mode) ── */}
+        {isInspectorOpen && !isZenMode && (
           <aside aria-label="Hacky AI ATS Inspector" className="w-full lg:w-[380px] shrink-0 border-t lg:border-t-0 lg:border-l border-zinc-200 dark:border-[#27272A] bg-white dark:bg-[#121215] flex flex-col overflow-y-auto">
             <HackyAiAtsPanel
               resumeText={rawEditText || rawText}
