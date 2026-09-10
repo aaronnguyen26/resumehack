@@ -1,68 +1,66 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Settings, 
+  User, 
   ShieldCheck, 
   Check, 
-  Key, 
-  User, 
-  FileText, 
+  Sun, 
+  Moon, 
+  Laptop, 
+  Sparkles, 
+  RotateCcw, 
   Cloud, 
   LogOut, 
-  RefreshCw, 
-  AlertCircle, 
-  ExternalLink,
-  Eye,
-  EyeOff,
-  Sparkles,
+  Database, 
+  Sliders, 
+  CheckCircle2, 
+  RefreshCw,
   Zap,
-  Bot,
-  ChevronDown,
-  ChevronUp,
-  CheckCircle2,
-  Lock,
-  Edit3,
-  Sun,
-  Moon,
-  Laptop,
+  Lock
 } from 'lucide-react';
 import { 
   getStoredSettings, 
   saveStoredSettings, 
-  getGoogleAccessToken, 
-  setGoogleAccessToken, 
-  removeGoogleAccessToken,
-  refreshGoogleAccessToken,
-  getStoredApplicantProfile,
-  saveStoredApplicantProfile,
-  DEFAULT_APPLICANT_PROFILE,
-  markOnboardingComplete,
+  StoredSettings,
+  getStoredApplicantProfile
 } from '../services/storage.js';
-import {
-  authenticateGoogleAccount,
-  launchGoogleWebAuthFlow,
-  getRedirectUri
-} from '../services/google-auth.js';
-import { 
-  getAiSettings, 
-  saveAiSettings, 
-  removeAiSettings,
-  EMBEDDED_GEMINI_API_KEY,
-  AiProvider,
-  AiSettings
-} from '../services/ai-tailor.js';
-import { openGoogleDocPicker } from '../services/google-picker.js';
-import { PROVIDER_MODEL_PRESETS, ApplicantProfile } from '../types/index.js';
 import { ThemeMode, getStoredThemeMode, saveStoredThemeMode } from '../services/theme.js';
+import { ApplicantProfile } from '../types/index.js';
 
-interface SettingsTabProps {
+export interface SettingsTabProps {
   currentThemeMode?: ThemeMode;
   onThemeChange?: (mode: ThemeMode) => void;
   onReopenOnboarding?: () => void;
+  currentUser?: { id: string; email?: string; firstName?: string; lastName?: string } | null;
+  onOpenAuthModal?: () => void;
+  onSignOut?: () => void;
+  cloudResumesCount?: number;
+  onOpenCloudManager?: () => void;
+  applicantProfile?: ApplicantProfile;
 }
 
-export const SettingsTab: React.FC<SettingsTabProps> = ({ currentThemeMode, onThemeChange, onReopenOnboarding }) => {
+export const SettingsTab: React.FC<SettingsTabProps> = ({
+  currentThemeMode,
+  onThemeChange,
+  onReopenOnboarding,
+  currentUser,
+  onOpenAuthModal,
+  onSignOut,
+  cloudResumesCount = 0,
+  onOpenCloudManager,
+  applicantProfile,
+}) => {
   // Appearance / Theme State
   const [themeMode, setThemeModeState] = useState<ThemeMode>(currentThemeMode || 'system');
+
+  // Guardrail Toggles State (Abstracted from internal engine)
+  const [strictAntiHallucination, setStrictAntiHallucination] = useState<boolean>(true);
+  const [onePageLineBudgetGuard, setOnePageLineBudgetGuard] = useState<boolean>(true);
+  const [triVariantFraming, setTriVariantFraming] = useState<boolean>(true);
+  const [profile, setProfile] = useState<ApplicantProfile | null>(applicantProfile || null);
+
+  // Status Notification
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isClearingCache, setIsClearingCache] = useState<boolean>(false);
 
   useEffect(() => {
     if (currentThemeMode) {
@@ -72,6 +70,31 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ currentThemeMode, onTh
     }
   }, [currentThemeMode]);
 
+  useEffect(() => {
+    if (applicantProfile) {
+      setProfile(applicantProfile);
+    } else {
+      getStoredApplicantProfile().then(setProfile);
+    }
+
+    getStoredSettings().then((settings) => {
+      if (settings.strictAntiHallucination !== undefined) {
+        setStrictAntiHallucination(settings.strictAntiHallucination);
+      }
+      if (settings.onePageLineBudgetGuard !== undefined) {
+        setOnePageLineBudgetGuard(settings.onePageLineBudgetGuard);
+      }
+      if (settings.triVariantFraming !== undefined) {
+        setTriVariantFraming(settings.triVariantFraming);
+      }
+    });
+  }, [applicantProfile]);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
   const handleSelectTheme = async (mode: ThemeMode) => {
     setThemeModeState(mode);
     if (onThemeChange) {
@@ -79,1593 +102,420 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ currentThemeMode, onTh
     } else {
       await saveStoredThemeMode(mode);
     }
+    showToast(`✓ Theme set to ${mode.charAt(0).toUpperCase() + mode.slice(1)}`);
   };
 
-  // Master doc is tracked by name only — the actual ID is stored internally, never shown raw
-  const [masterDocName, setMasterDocName] = useState<string | null>(null);
-  const [targetTitle, setTargetTitle] = useState('');
-  const [strictAntiHallucination, setStrictAntiHallucination] = useState(true);
-  
-  // Google Picker State
-  const [isOpeningPicker, setIsOpeningPicker] = useState(false);
-  const [selectedDocTitle, setSelectedDocTitle] = useState<string | null>(null);
-  const [pickerMessage, setPickerMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const [showManualDocInput, setShowManualDocInput] = useState(false);
-  const [manualDocId, setManualDocId] = useState('');
+  const handleToggleAntiHallucination = async () => {
+    const next = !strictAntiHallucination;
+    setStrictAntiHallucination(next);
+    await saveStoredSettings({ strictAntiHallucination: next });
+    showToast(next ? '✓ Strict Anti-Hallucination Gate enabled' : '⚠️ Anti-Hallucination Gate set to Permissive');
+  };
 
-  // OAuth & Custom Token State
-  const [connectionMode, setConnectionMode] = useState<'refresh_token' | 'access_token'>('refresh_token');
-  const [refreshToken, setRefreshToken] = useState('');
-  const [customToken, setCustomToken] = useState('');
-  const [connectedEmail, setConnectedEmail] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showToken, setShowToken] = useState(false);
-  const [showRefreshToken, setShowRefreshToken] = useState(false);
-  const [authStatus, setAuthStatus] = useState<'connected' | 'permanent_token' | 'custom_token' | 'not_connected'>('not_connected');
-  const [isAuthorizing, setIsAuthorizing] = useState(false);
-  const [isTestingToken, setIsTestingToken] = useState(false);
-  const [authMessage, setAuthMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const [saved, setSaved] = useState(false);
+  const handleToggleLineBudget = async () => {
+    const next = !onePageLineBudgetGuard;
+    setOnePageLineBudgetGuard(next);
+    await saveStoredSettings({ onePageLineBudgetGuard: next });
+    showToast(next ? '✓ 1-Page Line Budget Guard active' : '⚠️ 1-Page Line Budget Guard disabled');
+  };
 
-  // AI API Key State
-  const [aiProvider, setAiProvider] = useState<AiProvider>('gemini');
-  const [aiApiKey, setAiApiKey] = useState('');
-  const [aiModel, setAiModel] = useState('');
-  const [aiBaseUrl, setAiBaseUrl] = useState('');
-  const [showAiKey, setShowAiKey] = useState(false);
-  const [aiKeyStatus, setAiKeyStatus] = useState<'saved' | 'not_set'>('not_set');
-  const [aiMessage, setAiMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const [isTestingAiKey, setIsTestingAiKey] = useState(false);
+  const handleToggleTriVariant = async () => {
+    const next = !triVariantFraming;
+    setTriVariantFraming(next);
+    await saveStoredSettings({ triVariantFraming: next });
+    showToast(next ? '✓ Tri-Variant Role Framing enabled' : '⚠️ Standard single-variant framing enabled');
+  };
 
-  // Applicant Profile State
-  const [applicantProfile, setApplicantProfile] = useState<ApplicantProfile>(DEFAULT_APPLICANT_PROFILE);
-  const [profileSaved, setProfileSaved] = useState(false);
-
-  const fetchUserInfo = async (token: string): Promise<string | null> => {
+  const handleClearCache = async () => {
+    setIsClearingCache(true);
     try {
-      const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const u = await res.json();
-        const email = u.email || u.name;
-        if (email) {
-          setConnectedEmail(email);
-          await saveStoredSettings({ googleUserEmail: email });
-          return email;
-        }
-      }
-    } catch (err) {
-      console.debug('[SettingsTab] userinfo lookup note:', err);
-    }
-    return null;
-  };
-
-  useEffect(() => {
-    // Load stored settings, custom token, and AI settings
-    getStoredApplicantProfile().then(setApplicantProfile);
-
-    getStoredSettings().then(async (settings) => {
-      // Show the selected doc name if available (ID stays internal)
-      if (settings.masterDocId) {
-        // We store the name separately when the user picks via Picker.
-        // For legacy stored IDs we just show a truncated indicator, not the raw ID.
-        setMasterDocName(selectedDocTitle || null);
-      }
-      if (settings.targetTitle) setTargetTitle(settings.targetTitle);
-      if (settings.strictAntiHallucination !== undefined) {
-        setStrictAntiHallucination(settings.strictAntiHallucination);
-      }
-      if (settings.googleUserEmail) {
-        setConnectedEmail(settings.googleUserEmail);
-      }
-
-      if (settings.googleRefreshToken) {
-        setRefreshToken(settings.googleRefreshToken);
-        setCustomToken(settings.googleAccessToken || '');
-        setAuthStatus('connected');
-        if (settings.googleAccessToken) {
-          fetchUserInfo(settings.googleAccessToken);
-        }
-      } else if (settings.googleAccessToken) {
-        setCustomToken(settings.googleAccessToken);
-        setAuthStatus('connected');
-        fetchUserInfo(settings.googleAccessToken);
-      } else {
-        checkSilentChromeOAuth();
-      }
-    });
-
-    getAiSettings().then((aiSettings) => {
-      if (aiSettings?.provider) {
-        setAiProvider(aiSettings.provider);
-        setAiApiKey(aiSettings.apiKey || '');
-        setAiModel(aiSettings.model || '');
-        setAiBaseUrl(aiSettings.baseUrl || '');
-        if (aiSettings.apiKey || aiSettings.provider === 'ollama') {
-          setAiKeyStatus('saved');
-        }
-      }
-    });
-
-    // Load selected doc name from storage (set when picker was used)
-    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-      chrome.storage.local.get(['resumehack_master_doc_name'], (result: any) => {
-        if (result.resumehack_master_doc_name) {
-          setSelectedDocTitle(result.resumehack_master_doc_name as string);
-          setMasterDocName(result.resumehack_master_doc_name as string);
-        }
-      });
-    }
-  }, []);
-
-  const checkSilentChromeOAuth = () => {
-    if (typeof chrome !== 'undefined' && chrome.identity?.getAuthToken) {
-      chrome.identity.getAuthToken({ interactive: false }, async (tok) => {
-        if (!chrome.runtime?.lastError && tok) {
-          const tokenStr = tok as string;
-          await setGoogleAccessToken(tokenStr, 3300);
-          setAuthStatus('connected');
-          await fetchUserInfo(tokenStr);
-        } else {
-          setAuthStatus((prev) => (prev === 'custom_token' || prev === 'permanent_token' ? prev : 'not_connected'));
-        }
-      });
-    }
-  };
-
-  // 1. Universal Google OAuth (Native getAuthToken for Chrome, launchWebAuthFlow + PKCE for Comet/Brave/Edge)
-  const handleInteractiveAuthorize = async () => {
-    setIsAuthorizing(true);
-    setAuthMessage(null);
-
-    try {
-      const res = await authenticateGoogleAccount(true);
-      setIsAuthorizing(false);
-
-      if (res.success && res.accessToken) {
-        setCustomToken(res.accessToken);
-        setAuthStatus('connected');
-        const email = res.email || (await fetchUserInfo(res.accessToken)) || 'Google Account';
-        setConnectedEmail(email);
-        setAuthMessage({
-          text: `✅ Connected as ${email}! Docs & Drive permissions authorized (${res.method === 'launchWebAuthFlow' ? 'Web Auth Flow' : 'Chrome OAuth'}).`,
-          type: 'success'
-        });
-        setTimeout(() => setAuthMessage(null), 6000);
-      } else {
-        const rawErrMsg = res.error || 'OAuth authorization window was closed or canceled.';
-        console.error('[ResumeHack Settings] OAuth authorization error:', rawErrMsg, res.rawError);
-
-        let extraHint = '';
-        if (rawErrMsg.toLowerCase().includes('client') || rawErrMsg.toLowerCase().includes('oauth2')) {
-          extraHint = ` (Authorized redirect URI: ${getRedirectUri()} — verify in Google Cloud Console).`;
-        } else if (rawErrMsg.toLowerCase().includes('access_denied') || rawErrMsg.toLowerCase().includes('permission') || rawErrMsg.toLowerCase().includes('blocked')) {
-          extraHint = ' (If in Testing mode in Cloud Console, add your email under Audience -> Test Users).';
-        }
-
-        setAuthMessage({
-          text: `⚠️ OAuth Error: "${rawErrMsg}"${extraHint}`,
-          type: 'error'
-        });
-      }
-    } catch (err: any) {
-      setIsAuthorizing(false);
-      console.error('[ResumeHack Settings] OAuth exception:', err);
-      setAuthMessage({
-        text: `⚠️ OAuth Exception: ${err.message || 'Error during authorization'}`,
-        type: 'error'
-      });
-    }
-  };
-
-  // 2. Disconnect Google OAuth (Full Cache + Storage Clearance)
-  const handleDisconnect = async () => {
-    setAuthMessage(null);
-    if (typeof chrome !== 'undefined' && chrome.identity) {
-      const stored = await getStoredSettings();
-      const tok = stored.googleAccessToken || customToken;
-      if (tok && chrome.identity.removeCachedAuthToken) {
-        chrome.identity.removeCachedAuthToken({ token: tok }, () => {});
-      }
-      chrome.identity.getAuthToken({ interactive: false }, (activeTok) => {
-        if (activeTok && chrome.identity.removeCachedAuthToken) {
-          chrome.identity.removeCachedAuthToken({ token: activeTok }, () => {});
-        }
-      });
-    }
-    await removeGoogleAccessToken();
-    await saveStoredSettings({ googleRefreshToken: '', googleUserEmail: '', googleAccessToken: '' });
-    setCustomToken('');
-    setRefreshToken('');
-    setConnectedEmail(null);
-    setAuthStatus('not_connected');
-    setAuthMessage({
-      text: 'Disconnected Google Account and cleared stored credentials.',
-      type: 'info'
-    });
-    setTimeout(() => setAuthMessage(null), 4000);
-  };
-
-  // 3. Save Permanent Refresh Token (Never Expires)
-  const handleSaveRefreshToken = async () => {
-    const trimmed = refreshToken.trim();
-    if (!trimmed) {
-      await saveStoredSettings({ googleRefreshToken: '' });
-      setAuthStatus('not_connected');
-      setAuthMessage({
-        text: 'Cleared refresh token.',
-        type: 'info'
-      });
-      return;
-    }
-
-    setIsTestingToken(true);
-    setAuthMessage(null);
-
-    try {
-      // Test exchanging the refresh token for a live access token
-      const res = await refreshGoogleAccessToken(trimmed);
-      if (res.success && res.accessToken) {
-        setAuthStatus('permanent_token');
-        setCustomToken(res.accessToken);
-        const email = await fetchUserInfo(res.accessToken);
-        setAuthMessage({
-          text: `🎉 Permanent Connection Active${email ? ` (${email})` : ''}! Verified with Google Docs API. Tokens auto-renew forever.`,
-          type: 'success'
-        });
-      } else {
-        setAuthMessage({
-          text: `⚠️ Could not exchange refresh token: ${res.error || 'Check token'}. In OAuth Playground Step 2, ensure you clicked "Exchange authorization code for tokens" and copied the Refresh token field.`,
-          type: 'error'
-        });
-      }
-    } catch (err: any) {
-      setAuthMessage({
-        text: `⚠️ Error saving refresh token: ${err?.message || 'Network error'}`,
-        type: 'error'
-      });
+      localStorage.removeItem('resumehack_applications');
+      localStorage.removeItem('user_custom_resume');
+      localStorage.removeItem('resumehack_bullet_vault');
+      showToast('✓ Local cache cleared and re-synchronized from Supabase');
+    } catch {
+      showToast('⚠️ Could not clear local cache');
     } finally {
-      setIsTestingToken(false);
+      setTimeout(() => setIsClearingCache(false), 500);
     }
   };
 
-  // 4. Save Custom Access Token
-  const handleSaveCustomToken = async () => {
-    const trimmed = customToken.trim();
-    if (trimmed) {
-      await setGoogleAccessToken(trimmed, 3300);
-      setAuthStatus('custom_token');
-      const email = await fetchUserInfo(trimmed);
-      setAuthMessage({
-        text: `✨ Custom Google Access Token saved${email ? ` (${email})` : ''}! Note: Standard tokens expire in ~60m.`,
-        type: 'success'
-      });
-    } else {
-      await removeGoogleAccessToken();
-      setAuthStatus('not_connected');
-      checkSilentChromeOAuth();
-      setAuthMessage({
-        text: 'Cleared custom access token.',
-        type: 'info'
-      });
-    }
-    setTimeout(() => setAuthMessage(null), 4000);
-  };
+  const userEmail = currentUser?.email || profile?.email || 'user@resumehack.com';
+  const userFullName = (profile?.firstName || profile?.lastName)
+    ? `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim()
+    : profile?.fullName || (currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : 'Active User');
 
-  // 5. Test Access Token Connection
-  const handleTestTokenConnection = async () => {
-    const tokenToTest = customToken.trim();
-    if (!tokenToTest) {
-      setAuthMessage({
-        text: '⚠️ Please enter an access token to test.',
-        type: 'error'
-      });
-      return;
-    }
-
-    setIsTestingToken(true);
-    setAuthMessage(null);
-
-    try {
-      // 1. Verify token validity and inspect scopes via Google's tokeninfo endpoint
-      let activeToken = tokenToTest;
-      let tokenInfoRes = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${encodeURIComponent(activeToken)}`);
-      
-      if (!tokenInfoRes.ok) {
-        // If testing failed, attempt background auto-renewal if a refresh token is configured
-        const settings = await getStoredSettings();
-        const configuredRefresh = refreshToken.trim() || settings.googleRefreshToken;
-        if (configuredRefresh) {
-          const refreshRes = await refreshGoogleAccessToken(configuredRefresh);
-          if (refreshRes.success && refreshRes.accessToken) {
-            activeToken = refreshRes.accessToken;
-            setCustomToken(activeToken);
-            setAuthStatus('permanent_token');
-            tokenInfoRes = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${encodeURIComponent(activeToken)}`);
-          }
-        }
-      }
-
-      if (!tokenInfoRes.ok) {
-        setAuthMessage({
-          text: `⚠️ Invalid or Expired Token (HTTP ${tokenInfoRes.status}). Use the 1-Click Connect button above or configure a Permanent Refresh Token.`,
-          type: 'error'
-        });
-        return;
-      }
-
-      const tokenInfo = await tokenInfoRes.json();
-      const scopeStr = tokenInfo.scope || '';
-      const hasDocumentsScope =
-        scopeStr.includes('https://www.googleapis.com/auth/documents') ||
-        scopeStr.includes('https://www.googleapis.com/auth/drive');
-
-      if (!hasDocumentsScope) {
-        setAuthMessage({
-          text: `⚠️ Missing 'documents' scope! Your token only has: [${scopeStr}]. Please connect using the 1-Click Connect button or check 'https://www.googleapis.com/auth/documents' in OAuth Playground.`,
-          type: 'error'
-        });
-        return;
-      }
-
-      // 2. Fetch user profile
-      const userName = (await fetchUserInfo(activeToken)) || 'Google User';
-      const expiresInSec = Number(tokenInfo.expires_in || 3600);
-      const minutesLeft = Math.max(1, Math.round(expiresInSec / 60));
-      await setGoogleAccessToken(activeToken, expiresInSec);
-      setAuthStatus('custom_token');
-      setAuthMessage({
-        text: `✅ Valid Google Docs Token for ${userName}! Scopes: documents + drive. Expires in ~${minutesLeft} min.`,
-        type: 'success'
-      });
-    } catch (err: any) {
-      setAuthMessage({
-        text: `⚠️ Network error testing token: ${err.message || 'Check connection'}`,
-        type: 'error'
-      });
-    } finally {
-      setIsTestingToken(false);
-    }
-  };
-
-  // ── AI API Key Handlers ──────────────────────────────────────────────────────
-
-  const handleSaveAiKey = async () => {
-    const trimmedKey = aiApiKey.trim();
-    if (!trimmedKey && aiProvider !== 'ollama') {
-      await removeAiSettings();
-      setAiKeyStatus('not_set');
-      setAiMessage({ text: 'AI configuration removed. Using rule-based suggestions.', type: 'info' });
-      setTimeout(() => setAiMessage(null), 3000);
-      return;
-    }
-    const defaultModel = PROVIDER_MODEL_PRESETS[aiProvider]?.defaultModel || 'default';
-    await saveAiSettings({
-      provider: aiProvider,
-      apiKey: trimmedKey,
-      model: aiModel.trim() || defaultModel,
-      baseUrl: aiBaseUrl.trim() || undefined,
-    });
-    setAiKeyStatus('saved');
-    const providerName = PROVIDER_MODEL_PRESETS[aiProvider]?.label || aiProvider;
-    setAiMessage({
-      text: `✅ ${providerName} settings saved! AI-powered suggestions are active.`,
-      type: 'success'
-    });
-    setTimeout(() => setAiMessage(null), 5000);
-  };
-
-  const handleTestAiKey = async () => {
-    const trimmedKey = aiApiKey.trim() || (aiProvider === 'gemini' ? EMBEDDED_GEMINI_API_KEY : '');
-    if (!trimmedKey && aiProvider !== 'ollama') {
-      setAiMessage({ text: '⚠️ Enter an API key first.', type: 'error' });
-      return;
-    }
-
-    setIsTestingAiKey(true);
-    setAiMessage(null);
-
-    try {
-      if (aiProvider === 'gemini') {
-        let rawModel = aiModel.trim() || PROVIDER_MODEL_PRESETS.gemini.defaultModel;
-        let requestedModel = rawModel.replace(/^models\//, '').trim();
-        const testCandidates = [requestedModel, 'gemini-3.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'].filter(Boolean);
-        const uniqueTestModels = Array.from(new Set(testCandidates));
-
-        let verifiedModel: string | null = null;
-        let lastErrMsg = '';
-
-        for (const m of uniqueTestModels) {
-          try {
-            const res = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'x-goog-api-key': trimmedKey,
-                },
-                body: JSON.stringify({
-                  contents: [{ role: 'user', parts: [{ text: 'Reply {"status":"ok"}' }] }],
-                  generationConfig: { maxOutputTokens: 20, responseMimeType: 'application/json' },
-                }),
-              }
-            );
-            if (res.ok) {
-              verifiedModel = m;
-              break;
-            } else {
-              const err = await res.json().catch(() => ({}));
-              lastErrMsg = err?.error?.message || `HTTP ${res.status}`;
-            }
-          } catch (e: any) {
-            lastErrMsg = e?.message || lastErrMsg;
-          }
-        }
-
-        if (verifiedModel) {
-          setAiMessage({ text: `✅ Google Gemini connection verified! Model: ${verifiedModel} (Active & Ready)`, type: 'success' });
-        } else {
-          setAiMessage({ text: `⚠️ Gemini API error: ${lastErrMsg}`, type: 'error' });
-        }
-      } else if (aiProvider === 'openai') {
-        const model = aiModel.trim() || PROVIDER_MODEL_PRESETS.openai.defaultModel;
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${trimmedKey}`,
-          },
-          body: JSON.stringify({
-            model,
-            messages: [{ role: 'user', content: 'Say {"status":"ok"}' }],
-            max_tokens: 20,
-            response_format: { type: 'json_object' },
-          }),
-        });
-        if (res.ok) {
-          setAiMessage({ text: `✅ OpenAI connection verified! Model: ${model}`, type: 'success' });
-        } else {
-          const err = await res.json().catch(() => ({}));
-          setAiMessage({ text: `⚠️ OpenAI error: ${err?.error?.message || `HTTP ${res.status}`}`, type: 'error' });
-        }
-      } else if (aiProvider === 'claude') {
-        const model = aiModel.trim() || PROVIDER_MODEL_PRESETS.claude.defaultModel;
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': trimmedKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
-          },
-          body: JSON.stringify({
-            model,
-            messages: [{ role: 'user', content: 'Say ok' }],
-            max_tokens: 10,
-          }),
-        });
-        if (res.ok) {
-          setAiMessage({ text: `✅ Anthropic Claude connection verified! Model: ${model}`, type: 'success' });
-        } else {
-          const err = await res.json().catch(() => ({}));
-          setAiMessage({ text: `⚠️ Claude error: ${err?.error?.message || `HTTP ${res.status}`}`, type: 'error' });
-        }
-      } else if (aiProvider === 'deepseek') {
-        const model = aiModel.trim() || PROVIDER_MODEL_PRESETS.deepseek.defaultModel;
-        const res = await fetch('https://api.deepseek.com/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${trimmedKey}`,
-          },
-          body: JSON.stringify({
-            model,
-            messages: [{ role: 'user', content: 'Say {"status":"ok"}' }],
-            max_tokens: 10,
-            response_format: { type: 'json_object' },
-          }),
-        });
-        if (res.ok) {
-          setAiMessage({ text: `✅ DeepSeek connection verified! Model: ${model}`, type: 'success' });
-        } else {
-          const err = await res.json().catch(() => ({}));
-          setAiMessage({ text: `⚠️ DeepSeek error: ${err?.error?.message || `HTTP ${res.status}`}`, type: 'error' });
-        }
-      } else if (aiProvider === 'ollama') {
-        const baseUrl = aiBaseUrl.trim() || 'http://localhost:11434';
-        const model = aiModel.trim() || PROVIDER_MODEL_PRESETS.ollama.defaultModel;
-        const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/tags`);
-        if (res.ok) {
-          const data = await res.json().catch(() => ({}));
-          const modelsAvailable = (data?.models || []).map((m: any) => m.name).join(', ');
-          setAiMessage({
-            text: `✅ Ollama connected at ${baseUrl}! Models available: ${modelsAvailable || model}`,
-            type: 'success'
-          });
-        } else {
-          setAiMessage({ text: `⚠️ Ollama returned HTTP ${res.status}. Verify Ollama is running.`, type: 'error' });
-        }
-      } else {
-        const baseUrl = aiBaseUrl.trim() || 'https://api.openai.com/v1';
-        const model = aiModel.trim() || 'default';
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (trimmedKey) headers['Authorization'] = `Bearer ${trimmedKey}`;
-        const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            model,
-            messages: [{ role: 'user', content: 'test' }],
-            max_tokens: 5,
-          }),
-        });
-        if (res.ok) {
-          setAiMessage({ text: `✅ Custom endpoint connection verified!`, type: 'success' });
-        } else {
-          setAiMessage({ text: `⚠️ Endpoint error: HTTP ${res.status}`, type: 'error' });
-        }
-      }
-    } catch (err: any) {
-      setAiMessage({ text: `⚠️ Network error: ${err.message}`, type: 'error' });
-    } finally {
-      setIsTestingAiKey(false);
-      setTimeout(() => setAiMessage(null), 8000);
-    }
-  };
-
-  // ────────────────────────────────────────────────────────────────────────────
-
-  const handleSavePreferences = async () => {
-    await saveStoredSettings({
-      targetTitle,
-      strictAntiHallucination,
-      googleAccessToken: customToken.trim() || undefined,
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  const handleSaveProfile = async () => {
-    await saveStoredApplicantProfile(applicantProfile);
-    setProfileSaved(true);
-    setTimeout(() => setProfileSaved(false), 2000);
-  };
+  const maskedUserId = currentUser?.id 
+    ? `usr_${currentUser.id.slice(0, 8)}…${currentUser.id.slice(-4)}`
+    : 'usr_local_guest';
 
   return (
-    <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      <div>
-        <h2 className="font-bold text-sm text-zinc-900 dark:text-white">
-          Settings &amp; Master Resume
-        </h2>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-          Configure your Google Docs integration, appearance, and AI tailoring preferences.
-        </p>
-      </div>
+    <div className="w-full max-w-[1780px] mx-auto space-y-6 animate-in fade-in duration-200 select-none">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-20 right-6 z-50 px-4 py-2.5 bg-emerald-600 text-white rounded-xl shadow-lg text-xs font-mono font-medium flex items-center gap-2 animate-in slide-in-from-top-2">
+          <Check className="w-4 h-4" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
 
-      {/* Appearance & Dark Mode Card */}
-      <div className="bg-white dark:bg-[#121215] p-5 rounded-xl border border-zinc-200 dark:border-[#27272A] shadow-xs space-y-4 transition-colors">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
-              <Sun className="w-4 h-4 dark:hidden text-amber-500" />
-              <Moon className="w-4 h-4 hidden dark:block text-zinc-300" />
-            </div>
-            <div>
-              <h3 className="font-bold text-xs text-zinc-900 dark:text-white">
-                Appearance &amp; Dark Mode
-              </h3>
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                Stitch Minimalist Zinc dark theme or system preference
-              </p>
-            </div>
-          </div>
-          <span className="text-[10px] font-mono uppercase px-2.5 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold border border-zinc-200 dark:border-zinc-700">
-            {themeMode}
+      {/* Header Section */}
+      <div className="border-b border-zinc-200 dark:border-[#27272A] pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold font-headline tracking-tight text-zinc-950 dark:text-zinc-50 flex items-center gap-2.5">
+            <Sliders className="w-6 h-6 text-zinc-700 dark:text-zinc-300" />
+            <span>Preferences & Settings</span>
+          </h2>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+            Manage your authenticated cloud account, interface appearance, and AI optimization guardrails.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            Cloud Synced
           </span>
         </div>
-
-        <div className="grid grid-cols-3 gap-2 p-1 bg-zinc-100 dark:bg-zinc-800/60 rounded-lg border border-zinc-200/60 dark:border-zinc-700/60">
-          <button
-            type="button"
-            onClick={() => handleSelectTheme('light')}
-            className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-xs font-semibold cursor-pointer transition-all ${
-              themeMode === 'light'
-                ? 'bg-white text-zinc-900 shadow-xs font-bold'
-                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
-            }`}
-          >
-            <Sun className="w-3.5 h-3.5 text-amber-500" />
-            <span>Light</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSelectTheme('dark')}
-            className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-xs font-semibold cursor-pointer transition-all ${
-              themeMode === 'dark'
-                ? 'bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-xs font-bold'
-                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
-            }`}
-          >
-            <Moon className="w-3.5 h-3.5 text-zinc-400" />
-            <span>Dark</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSelectTheme('system')}
-            className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-xs font-semibold cursor-pointer transition-all ${
-              themeMode === 'system'
-                ? 'bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-xs font-bold'
-                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
-            }`}
-          >
-            <Laptop className="w-3.5 h-3.5" />
-            <span>System</span>
-          </button>
-        </div>
       </div>
 
-      {/* Google Account Connection Card */}
-      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-stitch border border-slate-200 dark:border-slate-800 shadow-sm space-y-3 transition-colors duration-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded bg-brand-50 flex items-center justify-center text-brand-600">
-              <Cloud className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="font-headline font-bold text-xs text-slate-900">
-                Google Workspace Connection
-              </h3>
-              <p className="text-[10px] text-slate-500">
-                Live Docs apply &amp; Drive visual PDF snapshots
-              </p>
-            </div>
-          </div>
-
-          {authStatus === 'permanent_token' && (
-            <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-mono font-bold flex items-center gap-1">
-              <Sparkles className="w-2.5 h-2.5" />
-              <span>Permanent Active</span>
-            </span>
-          )}
-          {authStatus === 'connected' && (
-            <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-mono font-bold flex items-center gap-1">
-              <CheckCircle2 className="w-2.5 h-2.5" />
-              <span>OAuth Connected</span>
-            </span>
-          )}
-          {authStatus === 'custom_token' && (
-            <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-mono font-bold">
-              Token Active (~60m)
-            </span>
-          )}
-          {authStatus === 'not_connected' && (
-            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-mono font-bold">
-              Not Connected
-            </span>
-          )}
-        </div>
-
-        {/* ── STATE A: CONNECTED ── */}
-        {authStatus !== 'not_connected' ? (
-          <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-md space-y-2.5">
-            <div className="flex items-start justify-between gap-2">
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-[11px] font-bold text-emerald-950 font-headline">
-                    Connected as {connectedEmail || 'Google Workspace Account'}
-                  </span>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Card 1: Account & Cloud Identity */}
+        <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 shadow-xs flex flex-col justify-between space-y-6">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b border-zinc-100 dark:border-[#1E1E22] pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] flex items-center justify-center text-zinc-800 dark:text-zinc-200">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
                 </div>
-                <p className="text-[10px] text-emerald-800 leading-tight">
-                  Authorized for Google Docs (editing) &amp; Drive (PDF export snapshots).
-                </p>
+                <div>
+                  <h3 className="font-bold text-sm font-headline text-zinc-950 dark:text-zinc-50">
+                    Account & Cloud Identity
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    Supabase PostgreSQL Cloud Persistence
+                  </p>
+                </div>
               </div>
 
-              <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-mono text-[9px] font-semibold shrink-0">
-                Active
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-zinc-700 dark:text-zinc-300">
+                {currentUser ? 'Authenticated' : 'Local Guest'}
               </span>
             </div>
 
-            <div className="flex items-center justify-between pt-1 border-t border-emerald-200/60">
-              <button
-                type="button"
-                onClick={handleInteractiveAuthorize}
-                disabled={isAuthorizing}
-                className="text-[10px] font-semibold text-emerald-800 hover:text-emerald-950 underline flex items-center gap-1"
-              >
-                <RefreshCw className={`w-2.5 h-2.5 ${isAuthorizing ? 'animate-spin' : ''}`} />
-                <span>Switch / Re-authorize Account</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleDisconnect}
-                className="py-1 px-2.5 bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 text-slate-700 border border-slate-200 rounded text-[10px] font-bold transition-all flex items-center gap-1 shadow-2xs"
-              >
-                <LogOut className="w-3 h-3 text-rose-500" />
-                <span>Disconnect</span>
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* ── STATE B: NOT CONNECTED (1-CLICK PRIMARY CTA) ── */
-          <div className="space-y-2.5">
-            <p className="text-[11px] text-slate-600 leading-relaxed">
-              Connect your Google account to enable 1-click bullet tailoring inside Google Docs and visual PDF snapshot rendering.
-            </p>
-
-            <button
-              type="button"
-              onClick={handleInteractiveAuthorize}
-              disabled={isAuthorizing}
-              className="w-full py-2.5 px-4 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 disabled:opacity-60 text-white rounded-stitch font-headline font-bold text-xs shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
-            >
-              {isAuthorizing ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Opening Google OAuth...</span>
-                </>
-              ) : (
-                <>
-                  <Cloud className="w-4 h-4" />
-                  <span>Connect Google Account</span>
-                </>
-              )}
-            </button>
-
-            <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-400">
-              <Lock className="w-2.5 h-2.5" />
-              <span>Uses Chrome's native OAuth picker with secure token storage.</span>
-            </div>
-          </div>
-        )}
-
-        {/* ── Collapsible Advanced Manual Token Mode (Dev / Headless) ── */}
-        <div className="pt-1 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="w-full py-1 text-left flex items-center justify-between text-[10px] font-semibold text-slate-500 hover:text-slate-800 transition-colors"
-          >
-            <span>⚙️ Advanced: Manual OAuth Playground / Headless Token</span>
-            {showAdvanced ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-          </button>
-
-          {showAdvanced && (
-            <div className="space-y-3 pt-2">
-              {/* Connection Mode Selector Tabs */}
-              <div className="flex bg-slate-100 p-0.5 rounded border border-slate-200 text-[11px] font-medium">
-                <button
-                  type="button"
-                  onClick={() => setConnectionMode('refresh_token')}
-                  className={`flex-1 py-1 px-2 rounded text-center transition-all ${
-                    connectionMode === 'refresh_token'
-                      ? 'bg-white text-brand-700 font-semibold shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  ⚡ Permanent Refresh Token
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConnectionMode('access_token')}
-                  className={`flex-1 py-1 px-2 rounded text-center transition-all ${
-                    connectionMode === 'access_token'
-                      ? 'bg-white text-brand-700 font-semibold shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  🕒 Raw Access Token (60m)
-                </button>
+            {/* User Identity Details */}
+            <div className="bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Candidate Name</span>
+                <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 font-headline">
+                  {userFullName}
+                </span>
               </div>
 
-              {/* ── Mode A: Permanent Refresh Token ── */}
-              {connectionMode === 'refresh_token' && (
-                <div className="space-y-2.5 pt-1">
-                  <div className="bg-emerald-50/60 border border-emerald-100 rounded-md p-2.5 text-[10px] text-emerald-950 space-y-1.5 leading-relaxed">
-                    <div className="font-semibold text-emerald-900 flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-emerald-600" />
-                      <span>Get a Permanent Token via OAuth Playground:</span>
-                    </div>
-                    <ol className="list-decimal list-inside space-y-0.5 text-emerald-900/90 pl-0.5">
-                      <li>
-                        Open{' '}
-                        <a
-                          href="https://developers.google.com/oauthplayground"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-semibold underline hover:text-emerald-700 inline-flex items-center gap-0.5"
-                        >
-                          Google OAuth Playground <ExternalLink className="w-2.5 h-2.5" />
-                        </a>
-                      </li>
-                      <li>Under <strong>Step 1</strong>, select <code className="bg-emerald-100/80 px-1 py-0.2 rounded font-mono">.../auth/documents</code> and <code className="bg-emerald-100/80 px-1 py-0.2 rounded font-mono">.../auth/drive.readonly</code></li>
-                      <li>Click <strong>Authorize APIs</strong> &amp; sign in with your Google account</li>
-                      <li>In <strong>Step 2</strong>, click <strong>Exchange authorization code for tokens</strong></li>
-                      <li>Copy the <strong>Refresh token</strong> (<code className="bg-emerald-100/80 px-1 py-0.2 rounded font-mono">1//0g...</code>) and paste below!</li>
-                    </ol>
-                  </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Account Email</span>
+                <span className="text-xs font-mono text-zinc-800 dark:text-zinc-200">
+                  {userEmail}
+                </span>
+              </div>
 
-                  <div className="relative">
-                    <input
-                      type={showRefreshToken ? 'text' : 'password'}
-                      value={refreshToken}
-                      onChange={(e) => setRefreshToken(e.target.value)}
-                      placeholder="1//0gX_sample_permanent_refresh_token..."
-                      className="w-full pl-2.5 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded font-mono text-[11px] text-slate-900 focus:outline-none focus:border-brand-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowRefreshToken(!showRefreshToken)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
-                    >
-                      {showRefreshToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Cloud User ID</span>
+                <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
+                  {maskedUserId}
+                </span>
+              </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleSaveRefreshToken}
-                      disabled={isTestingToken || !refreshToken.trim()}
-                      className="py-1.5 px-3 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded text-[11px] font-semibold transition-colors flex items-center gap-1.5 shadow-xs"
-                    >
-                      {isTestingToken ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
-                      <span>Save Refresh Token</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* ── Mode B: Quick Access Token ── */}
-              {connectionMode === 'access_token' && (
-                <div className="space-y-2 pt-1">
-                  <div className="relative">
-                    <input
-                      type={showToken ? 'text' : 'password'}
-                      value={customToken}
-                      onChange={(e) => setCustomToken(e.target.value)}
-                      placeholder="ya29.a0AfH6SM..."
-                      className="w-full pl-2.5 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded font-mono text-[11px] text-slate-900 focus:outline-none focus:border-brand-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowToken(!showToken)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
-                    >
-                      {showToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleSaveCustomToken}
-                      className="py-1 px-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded text-[10px] font-semibold transition-colors"
-                    >
-                      Save Token
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleTestTokenConnection}
-                      disabled={isTestingToken || !customToken.trim()}
-                      className="py-1 px-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 rounded text-[10px] font-semibold transition-colors flex items-center gap-1"
-                    >
-                      {isTestingToken ? <RefreshCw className="w-3 h-3 animate-spin" /> : null}
-                      <span>Test Connection</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Status / Alert Banner */}
-        {authMessage && (
-          <div
-            className={`p-2.5 rounded text-[11px] leading-relaxed flex items-start gap-1.5 ${
-              authMessage.type === 'success'
-                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                : authMessage.type === 'error'
-                ? 'bg-rose-50 text-rose-800 border border-rose-200'
-                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700'
-            }`}
-          >
-            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            <span>{authMessage.text}</span>
-          </div>
-        )}
-      </div>
-
-      {/* ── AI API Key Card ─────────────────────────────────────────── */}
-      <div className="bg-white dark:bg-[#121215] p-5 rounded-xl border border-zinc-200 dark:border-[#27272A] shadow-xs space-y-4 transition-colors">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
-              <Bot className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="font-bold text-xs text-zinc-900 dark:text-white">
-                AI Suggestion Engine
-              </h3>
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                Gemini, OpenAI, Claude, DeepSeek, or Local Ollama
-              </p>
+              <div className="flex items-center justify-between pt-1 border-t border-zinc-200/60 dark:border-[#27272A]">
+                <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">PostgreSQL Sync</span>
+                <span className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Continuous Sync Active
+                </span>
+              </div>
             </div>
           </div>
-          {aiKeyStatus === 'saved' ? (
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-[10px] font-mono font-bold">
-              AI Active
-            </span>
-          ) : (
-            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 text-[10px] font-mono font-bold">
-              Rule-Based
-            </span>
-          )}
-        </div>
 
-        <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
-          Connect your preferred LLM to generate high-impact, ATS-optimized STAR bullet rewrites with strict anti-hallucination guardrails.
-        </p>
+          {/* Action Row */}
+          <div className="flex items-center justify-between gap-3 pt-2">
+            {currentUser ? (
+              <>
+                {onOpenCloudManager && (
+                  <button
+                    type="button"
+                    onClick={onOpenCloudManager}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-[#18181B] dark:hover:bg-[#27272A] border border-zinc-200 dark:border-[#27272A] text-xs font-mono font-medium text-zinc-900 dark:text-zinc-100 transition-colors cursor-pointer"
+                  >
+                    <Cloud className="w-3.5 h-3.5 text-zinc-500" />
+                    <span>Manage Cloud Resumes ({cloudResumesCount})</span>
+                  </button>
+                )}
 
-        {/* Provider selector */}
-        <div className="space-y-1">
-          <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">AI Provider</label>
-          <select
-            value={aiProvider}
-            onChange={(e) => {
-              const prov = e.target.value as AiProvider;
-              setAiProvider(prov);
-              setAiModel(PROVIDER_MODEL_PRESETS[prov]?.defaultModel || '');
-              if (prov === 'ollama') {
-                setAiBaseUrl('http://localhost:11434');
-              }
-            }}
-            className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-zinc-500 font-medium"
-          >
-            <option value="gemini">Google Gemini (Recommended — Free API)</option>
-            <option value="openai">OpenAI (GPT-4o, GPT-4o-mini)</option>
-            <option value="claude">Anthropic Claude (Claude 3.5 Sonnet / Haiku)</option>
-            <option value="deepseek">DeepSeek (DeepSeek-Chat, Reasoner)</option>
-            <option value="ollama">Local Ollama (Offline / Private)</option>
-            <option value="custom">Custom OpenAI-Compatible Endpoint</option>
-          </select>
-        </div>
-
-        {/* Base URL row (for Ollama or Custom) */}
-        {(aiProvider === 'ollama' || aiProvider === 'custom') && (
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Base URL</label>
-            <input
-              type="text"
-              value={aiBaseUrl}
-              onChange={(e) => setAiBaseUrl(e.target.value)}
-              placeholder={aiProvider === 'ollama' ? 'http://localhost:11434' : 'https://api.example.com/v1'}
-              className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-700 rounded-lg font-mono text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-zinc-500"
-            />
-          </div>
-        )}
-
-        {/* Model dropdown / input */}
-        <div className="space-y-1">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Model</label>
-            <span className="text-[10px] text-zinc-400 font-mono">Default: {PROVIDER_MODEL_PRESETS[aiProvider]?.defaultModel}</span>
-          </div>
-          {PROVIDER_MODEL_PRESETS[aiProvider]?.models.length > 1 ? (
-            <select
-              value={aiModel || PROVIDER_MODEL_PRESETS[aiProvider]?.defaultModel}
-              onChange={(e) => setAiModel(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-zinc-500 font-mono text-[11px]"
-            >
-              {PROVIDER_MODEL_PRESETS[aiProvider]?.models.map((m) => {
-                let label = m;
-                if (m === 'gemini-3.5-flash-lite') {
-                  label = 'gemini-3.5-flash-lite (Standard & Default · Free Plan)';
-                } else if (m === 'gemini-3.6-flash-lite') {
-                  label = 'gemini-3.6-flash-lite (Optional · High Speed)';
-                }
-                return (
-                  <option key={m} value={m}>
-                    {label}
-                  </option>
-                );
-              })}
-            </select>
-          ) : (
-            <input
-              type="text"
-              value={aiModel}
-              onChange={(e) => setAiModel(e.target.value)}
-              placeholder={PROVIDER_MODEL_PRESETS[aiProvider]?.defaultModel || 'Model name'}
-              className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-700 rounded-lg font-mono text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-zinc-500"
-            />
-          )}
-        </div>
-
-        {/* API Key input (optional for local Ollama) */}
-        {aiProvider !== 'ollama' && (
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-              <Key className="w-3 h-3 text-zinc-400" />
-              <span>{PROVIDER_MODEL_PRESETS[aiProvider]?.label} API Key</span>
-            </label>
-            <div className="relative">
-              <input
-                type={showAiKey ? 'text' : 'password'}
-                value={aiApiKey}
-                onChange={(e) => setAiApiKey(e.target.value)}
-                placeholder={PROVIDER_MODEL_PRESETS[aiProvider]?.placeholderKey || 'API Key…'}
-                className="w-full pl-3 pr-9 py-2 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-700 rounded-lg font-mono text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-zinc-500"
-              />
-              <button
-                type="button"
-                onClick={() => setShowAiKey(!showAiKey)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-1 cursor-pointer"
-              >
-                {showAiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-            {PROVIDER_MODEL_PRESETS[aiProvider]?.keyUrl && (
-              <p className="text-[10px] text-zinc-400">
-                <a
-                  href={PROVIDER_MODEL_PRESETS[aiProvider]?.keyUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-zinc-700 dark:text-zinc-300 hover:underline inline-flex items-center gap-1 font-medium"
+                {onSignOut && (
+                  <button
+                    type="button"
+                    onClick={onSignOut}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-transparent hover:bg-zinc-100 dark:hover:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-xs font-mono text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Sign Out</span>
+                  </button>
+                )}
+              </>
+            ) : (
+              onOpenAuthModal && (
+                <button
+                  type="button"
+                  onClick={onOpenAuthModal}
+                  className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 rounded-xl text-xs font-headline font-semibold transition-colors cursor-pointer shadow-xs"
                 >
-                  <span>Get {PROVIDER_MODEL_PRESETS[aiProvider]?.label} API key</span>
-                  <ExternalLink className="w-2.5 h-2.5" />
-                </a>
-              </p>
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Sign In or Register with Supabase</span>
+                </button>
+              )
             )}
           </div>
-        )}
-
-        {/* Action buttons */}
-        <div className="flex items-center gap-2 pt-1">
-          <button
-            onClick={handleSaveAiKey}
-            className="py-1.5 px-3.5 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Save Configuration</span>
-          </button>
-          <button
-            onClick={handleTestAiKey}
-            disabled={isTestingAiKey || (!aiApiKey.trim() && aiProvider !== 'ollama')}
-            className="py-1.5 px-3 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 disabled:opacity-50 text-zinc-800 dark:text-zinc-200 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
-          >
-            {isTestingAiKey ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-amber-500" />}
-            <span>Test Connection</span>
-          </button>
-          {aiKeyStatus === 'saved' && (
-            <button
-              onClick={async () => {
-                await removeAiSettings();
-                setAiApiKey('');
-                setAiModel('');
-                setAiBaseUrl('');
-                setAiKeyStatus('not_set');
-                setAiMessage({ text: 'AI configuration removed. Using rule-based suggestions.', type: 'info' });
-                setTimeout(() => setAiMessage(null), 3000);
-              }}
-              className="py-1.5 px-2.5 bg-zinc-100 hover:bg-rose-500/10 hover:text-rose-600 dark:bg-zinc-800 dark:hover:bg-rose-500/20 text-zinc-600 dark:text-zinc-400 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-            >
-              Remove
-            </button>
-          )}
         </div>
 
-        {/* AI Status / Alert Banner */}
-        {aiMessage && (
-          <div
-            className={`p-2.5 rounded-lg text-xs leading-relaxed flex items-start gap-2 ${
-              aiMessage.type === 'success'
-                ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 border border-emerald-500/20'
-                : aiMessage.type === 'error'
-                ? 'bg-rose-500/10 text-rose-800 dark:text-rose-200 border border-rose-500/20'
-                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700'
-            }`}
-          >
-            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            <span>{aiMessage.text}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Auto-Apply Applicant Profile Card */}
-      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-stitch border border-slate-200 dark:border-slate-800 shadow-sm space-y-3.5 transition-colors duration-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <User className="w-4 h-4 text-brand-600 dark:text-brand-400" />
-            <h3 className="font-headline font-bold text-xs text-slate-900 dark:text-white">
-              Applicant Profile &amp; Work Auth
-            </h3>
-          </div>
-          <span className="px-1.5 py-0.2 rounded text-[9px] bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800/50 font-mono font-medium">
-            Auto-Apply Store
-          </span>
-        </div>
-
-        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
-          Used to assemble job applications and prepare pre-flight previews. Stored securely on your device.
-        </p>
-
-        {/* Contact & Basics */}
-        <div className="space-y-2">
-          <div className="text-[11px] font-bold text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 pb-1">
-            Personal &amp; Contact
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] font-semibold text-slate-600">First Name</label>
-              <input
-                type="text"
-                value={applicantProfile.firstName}
-                onChange={(e) => setApplicantProfile({ ...applicantProfile, firstName: e.target.value })}
-                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-semibold text-slate-600">Last Name</label>
-              <input
-                type="text"
-                value={applicantProfile.lastName}
-                onChange={(e) => setApplicantProfile({ ...applicantProfile, lastName: e.target.value })}
-                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] font-semibold text-slate-600">Email Address</label>
-              <input
-                type="email"
-                value={applicantProfile.email}
-                onChange={(e) => setApplicantProfile({ ...applicantProfile, email: e.target.value })}
-                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-semibold text-slate-600">Phone Number</label>
-              <input
-                type="tel"
-                value={applicantProfile.phone}
-                onChange={(e) => setApplicantProfile({ ...applicantProfile, phone: e.target.value })}
-                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-[10px] font-semibold text-slate-600">Current Location (City, State)</label>
-            <input
-              type="text"
-              value={applicantProfile.location}
-              onChange={(e) => setApplicantProfile({ ...applicantProfile, location: e.target.value })}
-              placeholder="e.g. San Francisco, CA"
-              className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-            />
-          </div>
-        </div>
-
-        {/* Links */}
-        <div className="space-y-2 pt-1">
-          <div className="text-[11px] font-bold text-slate-800 border-b border-slate-100 pb-1">
-            Online Profiles &amp; Links
-          </div>
-          <div>
-            <label className="text-[10px] font-semibold text-slate-600">LinkedIn URL</label>
-            <input
-              type="url"
-              value={applicantProfile.linkedinUrl}
-              onChange={(e) => setApplicantProfile({ ...applicantProfile, linkedinUrl: e.target.value })}
-              className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] font-semibold text-slate-600">GitHub URL</label>
-              <input
-                type="url"
-                value={applicantProfile.githubUrl}
-                onChange={(e) => setApplicantProfile({ ...applicantProfile, githubUrl: e.target.value })}
-                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-semibold text-slate-600">Portfolio Website (Optional)</label>
-              <input
-                type="url"
-                value={applicantProfile.portfolioUrl || ''}
-                onChange={(e) => setApplicantProfile({ ...applicantProfile, portfolioUrl: e.target.value })}
-                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Education */}
-        <div className="space-y-2 pt-1">
-          <div className="text-[11px] font-bold text-slate-800 border-b border-slate-100 pb-1">
-            Education
-          </div>
-          <div>
-            <label className="text-[10px] font-semibold text-slate-600">School / University</label>
-            <input
-              type="text"
-              value={applicantProfile.school}
-              onChange={(e) => setApplicantProfile({ ...applicantProfile, school: e.target.value })}
-              className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-            />
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <label className="text-[10px] font-semibold text-slate-600">Degree</label>
-              <input
-                type="text"
-                value={applicantProfile.degree}
-                onChange={(e) => setApplicantProfile({ ...applicantProfile, degree: e.target.value })}
-                placeholder="BS"
-                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-semibold text-slate-600">Major</label>
-              <input
-                type="text"
-                value={applicantProfile.major}
-                onChange={(e) => setApplicantProfile({ ...applicantProfile, major: e.target.value })}
-                placeholder="Computer Science"
-                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-semibold text-slate-600">GPA</label>
-              <input
-                type="text"
-                value={applicantProfile.gpa || ''}
-                onChange={(e) => setApplicantProfile({ ...applicantProfile, gpa: e.target.value })}
-                placeholder="3.85"
-                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-[10px] font-semibold text-slate-600">Graduation Month / Year</label>
-            <input
-              type="text"
-              value={applicantProfile.gradMonthYear}
-              onChange={(e) => setApplicantProfile({ ...applicantProfile, gradMonthYear: e.target.value })}
-              placeholder="May 2026"
-              className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-            />
-          </div>
-        </div>
-
-        {/* Work Authorization */}
-        <div className="space-y-2 pt-1">
-          <div className="text-[11px] font-bold text-slate-800 border-b border-slate-100 pb-1">
-            Work Authorization (Explicit User Input)
-          </div>
-          <div>
-            <label className="text-[10px] font-semibold text-slate-600">Authorization Status</label>
-            <select
-              value={applicantProfile.workAuthorization}
-              onChange={(e) => setApplicantProfile({ ...applicantProfile, workAuthorization: e.target.value as any })}
-              className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-            >
-              <option value="US_CITIZEN">US Citizen</option>
-              <option value="PERMANENT_RESIDENT">Permanent Resident (Green Card)</option>
-              <option value="F1_OPT">F-1 OPT / CPT Student Visa</option>
-              <option value="REQUIRES_SPONSORSHIP">Requires Visa Sponsorship (H-1B, O-1, TN)</option>
-              <option value="OTHER">Other Authorization</option>
-            </select>
-          </div>
-
-          <div className="flex items-center justify-between p-2 bg-slate-50 rounded border border-slate-200">
-            <div className="space-y-0.5 pr-2">
-              <span className="text-xs font-semibold text-slate-800 block">Requires Visa Sponsorship</span>
-              <span className="text-[10px] text-slate-500 block">Will you now or in future require employer visa sponsorship?</span>
-            </div>
-            <input
-              type="checkbox"
-              checked={applicantProfile.requiresVisaSponsorship}
-              onChange={(e) => setApplicantProfile({ ...applicantProfile, requiresVisaSponsorship: e.target.checked })}
-              className="w-4 h-4 accent-brand-600 rounded cursor-pointer"
-            />
-          </div>
-        </div>
-
-        {/* EEO Privacy Guarantee Banner */}
-        <div className="p-2.5 rounded bg-slate-50 border border-slate-200 text-[10px] text-slate-600 space-y-1">
-          <div className="font-semibold text-slate-800 flex items-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Voluntary EEO &amp; Demographic Privacy Guarantee</span>
-          </div>
-          <p className="leading-relaxed">
-            Demographic questions (race, gender, veteran status, disability, sexual orientation) are voluntary and strictly excluded from this profile store. ResumeHack never infers or auto-fills demographic answers.
-          </p>
-        </div>
-
-        <button
-          onClick={handleSaveProfile}
-          className="w-full py-2 px-3 rounded-stitch bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-        >
-          {profileSaved ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : null}
-          <span>{profileSaved ? 'Profile Saved Successfully!' : 'Save Applicant Profile'}</span>
-        </button>
-      </div>
-
-      {/* Master Profile & Document Selection Form */}
-      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-stitch border border-slate-200 dark:border-slate-800 shadow-sm space-y-3.5 transition-colors duration-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <FileText className="w-4 h-4 text-brand-600 dark:text-brand-400" />
-            <h3 className="font-headline font-bold text-xs text-slate-900 dark:text-white">
-              Master Resume Document
-            </h3>
-          </div>
-          <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 font-mono font-medium">
-            Google Drive
-          </span>
-        </div>
-
-        {/* Primary Document Selection via Google Picker */}
-        <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 space-y-3">
-          <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
-            Select your master resume from Google Drive. ResumeHack will read and edit this document when applying tailored bullets.
-          </p>
-
-          {/* Show selected doc name (never show the raw ID) */}
-          {(selectedDocTitle || masterDocName) ? (
-            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 p-2 rounded text-[11px] text-emerald-900">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <span className="font-semibold block">Connected Resume:</span>
-                <span className="truncate block">{selectedDocTitle || masterDocName}</span>
+        {/* Card 2: Appearance & Interface Theme */}
+        <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 shadow-xs flex flex-col justify-between space-y-6">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b border-zinc-100 dark:border-[#1E1E22] pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] flex items-center justify-center text-zinc-800 dark:text-zinc-200">
+                  <Sun className="w-4 h-4 text-amber-500" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm font-headline text-zinc-950 dark:text-zinc-50">
+                    Appearance & Theme
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    High-contrast monochromatic visual interface
+                  </p>
+                </div>
               </div>
+            </div>
+
+            <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
+              Select your preferred visual mode. The platform uses a high-contrast monochromatic zinc palette engineered for algorithmic focus with zero visual fatigue.
+            </p>
+
+            {/* Segmented Control */}
+            <div className="grid grid-cols-3 gap-2 p-1 bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl">
               <button
                 type="button"
-                onClick={async () => {
-                  setIsOpeningPicker(true);
-                  setPickerMessage(null);
-                  try {
-                    let token = await getGoogleAccessToken();
-                    if (!token) {
-                      const authRes = await authenticateGoogleAccount(true);
-                      if (authRes.success && authRes.accessToken) {
-                        token = authRes.accessToken;
-                        setAuthStatus('connected');
-                      } else {
-                        setPickerMessage({ text: 'Connect your Google Account first.', type: 'error' });
-                        setIsOpeningPicker(false);
-                        return;
-                      }
-                    }
-                    await openGoogleDocPicker({
-                      accessToken: token,
-                      onPicked: async (doc) => {
-                        setSelectedDocTitle(doc.name);
-                        setMasterDocName(doc.name);
-                        await saveStoredSettings({ masterDocId: doc.id });
-                        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-                          chrome.storage.local.set({ resumehack_master_doc_name: doc.name });
-                        }
-                        setPickerMessage({ text: `✓ Switched to "${doc.name}"`, type: 'success' });
-                        setIsOpeningPicker(false);
-                      },
-                      onCancel: () => { setIsOpeningPicker(false); },
-                      onError: (err) => {
-                        setPickerMessage({ text: `Picker error: ${err.message}`, type: 'error' });
-                        setIsOpeningPicker(false);
-                      },
-                    });
-                  } catch (err: any) {
-                    setPickerMessage({ text: `Error: ${err.message}`, type: 'error' });
-                    setIsOpeningPicker(false);
-                  }
-                }}
-                disabled={isOpeningPicker}
-                className="shrink-0 text-[10px] text-emerald-700 hover:text-emerald-900 font-semibold underline disabled:opacity-50"
+                onClick={() => handleSelectTheme('light')}
+                className={`py-2 px-3 rounded-lg text-xs font-mono font-medium flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  themeMode === 'light'
+                    ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white shadow-xs font-semibold'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
+                }`}
               >
-                Change
+                <Sun className="w-3.5 h-3.5 text-amber-500" />
+                <span>Light</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSelectTheme('dark')}
+                className={`py-2 px-3 rounded-lg text-xs font-mono font-medium flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  themeMode === 'dark'
+                    ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white shadow-xs font-semibold'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
+                }`}
+              >
+                <Moon className="w-3.5 h-3.5 text-zinc-700 dark:text-zinc-300" />
+                <span>Dark</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSelectTheme('system')}
+                className={`py-2 px-3 rounded-lg text-xs font-mono font-medium flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  themeMode === 'system'
+                    ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white shadow-xs font-semibold'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
+                }`}
+              >
+                <Laptop className="w-3.5 h-3.5 text-zinc-500" />
+                <span>System</span>
               </button>
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={async () => {
-                setIsOpeningPicker(true);
-                setPickerMessage(null);
-                try {
-                  let token = await getGoogleAccessToken();
-                  if (!token) {
-                    const authRes = await authenticateGoogleAccount(true);
-                    if (authRes.success && authRes.accessToken) {
-                      token = authRes.accessToken;
-                      setAuthStatus('connected');
-                    } else {
-                      setPickerMessage({
-                        text: 'Please connect your Google Account in the section above first.',
-                        type: 'error',
-                      });
-                      setIsOpeningPicker(false);
-                      return;
-                    }
-                  }
-                  await openGoogleDocPicker({
-                    accessToken: token,
-                    onPicked: async (doc) => {
-                      setSelectedDocTitle(doc.name);
-                      setMasterDocName(doc.name);
-                      await saveStoredSettings({ masterDocId: doc.id });
-                      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-                        chrome.storage.local.set({ resumehack_master_doc_name: doc.name });
-                      }
-                      setPickerMessage({ text: `✓ Connected "${doc.name}" from Google Drive!`, type: 'success' });
-                      setIsOpeningPicker(false);
-                    },
-                    onCancel: () => { setIsOpeningPicker(false); },
-                    onError: (err) => {
-                      setPickerMessage({
-                        text: `Google Picker: ${err.message}`,
-                        type: 'error',
-                      });
-                      setIsOpeningPicker(false);
-                    },
-                  });
-                } catch (err: any) {
-                  setPickerMessage({ text: `Picker error: ${err.message}`, type: 'error' });
-                  setIsOpeningPicker(false);
-                }
-              }}
-              disabled={isOpeningPicker}
-              className="w-full py-2 px-3 rounded bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
-            >
-              <Cloud className="w-3.5 h-3.5" />
-              <span>{isOpeningPicker ? 'Opening Google Drive…' : 'Select Resume from Google Drive'}</span>
-            </button>
-          )}
-
-          {pickerMessage && (
-            <div className={`p-2 rounded text-[11px] leading-tight flex items-center gap-1.5 ${
-              pickerMessage.type === 'success'
-                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                : 'bg-amber-50 text-amber-800 border border-amber-200'
-            }`}>
-              {pickerMessage.type === 'success' ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              ) : (
-                <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              )}
-              <span>{pickerMessage.text}</span>
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-[11px] font-semibold text-slate-700">Target Role Focus</label>
-          <input
-            type="text"
-            value={targetTitle}
-            onChange={(e) => setTargetTitle(e.target.value)}
-            placeholder="e.g. Software Engineer, Product Manager"
-            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-900 focus:outline-none focus:border-brand-500"
-          />
-        </div>
-
-        {/* Anti-hallucination toggle */}
-        <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-          <div className="space-y-0.5 pr-2">
-            <span className="text-xs font-semibold text-slate-800 block">Strict Factual Guardrails</span>
-            <span className="text-[10px] text-slate-500 block">Never fabricate past experiences or metrics.</span>
           </div>
-          <input
-            type="checkbox"
-            checked={strictAntiHallucination}
-            onChange={(e) => setStrictAntiHallucination(e.target.checked)}
-            className="w-4 h-4 accent-brand-600 rounded cursor-pointer"
-          />
-        </div>
 
-        <button
-          onClick={handleSavePreferences}
-          className="w-full py-2 px-3 rounded-stitch bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-        >
-          {saved ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : null}
-          <span>{saved ? 'Preferences Saved!' : 'Save Preferences'}</span>
-        </button>
+          <div className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 pt-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span>Theme persists across your browser session and cloud profile</span>
+          </div>
+        </div>
       </div>
 
-      {/* Re-run Profile Setup */}
-      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-stitch border border-slate-200 dark:border-slate-800 shadow-sm space-y-2 transition-colors duration-200">
-        <div className="flex items-center gap-1.5">
-          <Edit3 className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-          <h3 className="font-headline font-bold text-xs text-slate-900 dark:text-white">Profile Setup</h3>
-        </div>
-        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
-          Need to update your name, email, or school? Re-run the setup wizard to update your applicant profile.
-        </p>
-        <button
-          type="button"
-          onClick={async () => {
-            // Reset the onboarding flag so it shows again
-            if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-              await new Promise<void>((resolve) => {
-                chrome.storage.local.remove(['resumehack_onboarding_complete'], () => resolve());
-              });
-            }
-            try {
-              if (typeof localStorage !== 'undefined') {
-                localStorage.removeItem('resumehack_onboarding_complete');
-              }
-            } catch {}
-            if (onReopenOnboarding) {
-              onReopenOnboarding();
-            } else {
-              window.location.reload();
-            }
-          }}
-          className="w-full py-1.5 px-3 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-transparent dark:border-slate-700 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-        >
-          <Edit3 className="w-3.5 h-3.5" />
-          <span>Re-run Profile Setup Wizard</span>
-        </button>
-      </div>
-
-      {/* Desktop Mascot Companion Card */}
-      <div className="bg-white dark:bg-[#121215] p-5 rounded-xl border border-zinc-200 dark:border-[#27272A] shadow-xs space-y-3 transition-colors">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center font-bold text-sm">
-              🦉
+      {/* Card 3: AI Intelligence Engine & Optimization Guardrails */}
+      <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-100 dark:border-[#1E1E22] pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] flex items-center justify-center text-zinc-800 dark:text-zinc-200">
+              <Sparkles className="w-5 h-5 text-emerald-500" />
             </div>
             <div>
-              <h3 className="font-bold text-xs text-zinc-900 dark:text-white">
-                Desktop Mascot Companion ("Hacky")
+              <h3 className="font-bold text-base font-headline text-zinc-950 dark:text-zinc-50">
+                AI Optimization Engine & ATS Guardrails
               </h3>
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                Always-on bottom-right screen assistant
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Fully managed neural intelligence models with automated precision guardrails
               </p>
             </div>
           </div>
-          <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-[10px] font-mono font-bold">
-            Active
-          </span>
+
+          {/* Managed Model Badge */}
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-semibold bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Hacky AI Gemini Pro Active</span>
+            </span>
+          </div>
         </div>
 
-        <p className="text-[11px] text-slate-600 dark:text-slate-300">
-          Hacky floats on the bottom right of your browser, automatically detects active Google Docs and job openings, and opens ResumeHack with a single click.
-        </p>
+        {/* Managed Model Explanation */}
+        <div className="p-4 rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed space-y-1">
+          <p className="font-semibold text-zinc-900 dark:text-zinc-200">Managed AI Architecture</p>
+          <p>
+            ResumeHack Intelligence automatically orchestrates job de-noising, closed-loop ATS evaluation, and STAR bullet optimization. All models and inference endpoints are pre-configured and verified—no manual API keys or developer credentials required.
+          </p>
+        </div>
 
-        <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-          <div className="text-[11px] text-slate-700 font-medium">
-            Reset Screen Position
+        {/* Guardrail Controls */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+          {/* Guardrail 1: AST Anti-Hallucination */}
+          <div className="p-4 rounded-xl border border-zinc-200 dark:border-[#27272A] bg-white dark:bg-[#151518] flex flex-col justify-between space-y-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-headline font-bold text-zinc-950 dark:text-zinc-50">
+                  Anti-Hallucination Gate
+                </span>
+                <button
+                  type="button"
+                  onClick={handleToggleAntiHallucination}
+                  className={`w-10 h-6 rounded-full transition-colors relative cursor-pointer ${
+                    strictAntiHallucination ? 'bg-emerald-600' : 'bg-zinc-300 dark:bg-zinc-700'
+                  }`}
+                >
+                  <span className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                    strictAntiHallucination ? 'left-5' : 'left-1'
+                  }`} />
+                </button>
+              </div>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                AST-level metric verification. Ungrounded statistics are safely replaced with verified placeholder tokens (e.g. <code className="font-mono text-zinc-800 dark:text-zinc-200">[X%]</code>).
+              </p>
+            </div>
+            <div className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+              <Check className="w-3 h-3" />
+              <span>{strictAntiHallucination ? 'Strict Fact Checking' : 'Permissive'}</span>
+            </div>
           </div>
+
+          {/* Guardrail 2: 1-Page Line Budget */}
+          <div className="p-4 rounded-xl border border-zinc-200 dark:border-[#27272A] bg-white dark:bg-[#151518] flex flex-col justify-between space-y-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-headline font-bold text-zinc-950 dark:text-zinc-50">
+                  1-Page Line Budget Guard
+                </span>
+                <button
+                  type="button"
+                  onClick={handleToggleLineBudget}
+                  className={`w-10 h-6 rounded-full transition-colors relative cursor-pointer ${
+                    onePageLineBudgetGuard ? 'bg-emerald-600' : 'bg-zinc-300 dark:bg-zinc-700'
+                  }`}
+                >
+                  <span className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                    onePageLineBudgetGuard ? 'left-5' : 'left-1'
+                  }`} />
+                </button>
+              </div>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                Enforces a strict 35-line budget cap using greedy knapsack optimization to guarantee single-page formatting without page spill.
+              </p>
+            </div>
+            <div className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+              <Check className="w-3 h-3" />
+              <span>{onePageLineBudgetGuard ? '35-Line Budget Enforced' : 'Unbounded'}</span>
+            </div>
+          </div>
+
+          {/* Guardrail 3: Tri-Variant Role Framing */}
+          <div className="p-4 rounded-xl border border-zinc-200 dark:border-[#27272A] bg-white dark:bg-[#151518] flex flex-col justify-between space-y-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-headline font-bold text-zinc-950 dark:text-zinc-50">
+                  Tri-Variant Role Framing
+                </span>
+                <button
+                  type="button"
+                  onClick={handleToggleTriVariant}
+                  className={`w-10 h-6 rounded-full transition-colors relative cursor-pointer ${
+                    triVariantFraming ? 'bg-emerald-600' : 'bg-zinc-300 dark:bg-zinc-700'
+                  }`}
+                >
+                  <span className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                    triVariantFraming ? 'left-5' : 'left-1'
+                  }`} />
+                </button>
+              </div>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                Simultaneously computes Systems Depth, Scale & Impact, and Velocity & MVP framing variants for each resume bullet.
+              </p>
+            </div>
+            <div className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+              <Check className="w-3 h-3" />
+              <span>{triVariantFraming ? '3 Archetypes Generated' : 'Single Variant'}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Card 4: Onboarding Calibration & Data Management */}
+      <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+        <div className="space-y-1.5 max-w-xl">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] flex items-center justify-center text-zinc-800 dark:text-zinc-200">
+              <RotateCcw className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
+            </div>
+            <h3 className="font-bold text-sm font-headline text-zinc-950 dark:text-zinc-50">
+              Profile Re-calibration & Data Management
+            </h3>
+          </div>
+          <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
+            Need to update your target role, university, graduation date, or work authorization? Re-run the onboarding wizard to keep your profile settings up to date.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0 self-stretch sm:self-auto justify-end flex-wrap">
           <button
-            onClick={() => {
-              if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-                chrome.storage.local.set({ resumehack_mascot_prefs: { position: null, isMinimized: false } });
-              }
-              try {
-                localStorage.removeItem('resumehack_mascot_prefs');
-              } catch {}
-              setSaved(true);
-              setTimeout(() => setSaved(false), 2000);
-            }}
-            className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[10px] transition-colors"
+            type="button"
+            onClick={handleClearCache}
+            disabled={isClearingCache}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-[#18181B] dark:hover:bg-[#27272A] border border-zinc-200 dark:border-[#27272A] text-xs font-mono font-medium text-zinc-800 dark:text-zinc-200 transition-colors cursor-pointer"
+            title="Clears local browser cache and re-syncs from Supabase cloud database"
           >
-            Snap to Bottom-Right
+            <RefreshCw className={`w-3.5 h-3.5 text-zinc-500 ${isClearingCache ? 'animate-spin' : ''}`} />
+            <span>Clear Local Cache</span>
           </button>
+
+          {onReopenOnboarding && (
+            <button
+              type="button"
+              onClick={onReopenOnboarding}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 text-xs font-headline font-semibold transition-colors cursor-pointer shadow-xs"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Re-run Onboarding</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
+export default SettingsTab;

@@ -28,10 +28,13 @@ import {
   Star,
   Trash2,
   Search,
-  Filter
+  Filter,
+  Settings,
 } from 'lucide-react';
 import { ApplicantProfile } from '../types/index.js';
 import { BulletVaultService, VaultBullet } from '../services/bullet-vault.js';
+import { SettingsTab } from './SettingsTab.js';
+import { ThemeMode } from '../services/theme.js';
 
 interface ProfileTabProps {
   profile: ApplicantProfile;
@@ -45,6 +48,9 @@ interface ProfileTabProps {
   onSignOut?: () => void;
   cloudResumesCount?: number;
   onOpenCloudManager?: () => void;
+  themeMode?: ThemeMode;
+  onThemeChange?: (mode: ThemeMode) => void;
+  initialSection?: 'profile' | 'vault' | 'settings';
 }
 
 export const ProfileTab: React.FC<ProfileTabProps> = ({
@@ -59,6 +65,9 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   onSignOut,
   cloudResumesCount = 0,
   onOpenCloudManager,
+  themeMode,
+  onThemeChange,
+  initialSection = 'profile',
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<ApplicantProfile>({ ...profile });
@@ -111,8 +120,14 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     setIsEditing(false);
   };
 
-  // ── Master Bullet Vault State ───────────────────────────────────────────
-  const [activeSection, setActiveSection] = useState<'profile' | 'vault'>('profile');
+  // ── Master Bullet Vault & Settings Sub-Navigation State ──────────────────
+  const [activeSection, setActiveSection] = useState<'profile' | 'vault' | 'settings'>(initialSection || 'profile');
+
+  React.useEffect(() => {
+    if (initialSection) {
+      setActiveSection(initialSection);
+    }
+  }, [initialSection]);
   const vaultService = useMemo(() => new BulletVaultService(), []);
 
   const [vaultBullets, setVaultBullets] = useState<VaultBullet[]>(() => {
@@ -209,7 +224,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   }, [vaultBullets, filterCompany, searchQuery]);
 
   return (
-    <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8 animate-in fade-in duration-200 select-none">
+    <div className="w-full max-w-[1780px] mx-auto px-1 sm:px-2 md:px-4 py-4 space-y-6 animate-in fade-in duration-200 select-none">
       {/* Toast Notification */}
       {saveStatus && (
         <div className="fixed top-20 right-6 z-50 px-4 py-2.5 bg-emerald-600 text-white rounded-lg shadow-lg text-xs font-medium flex items-center gap-2 animate-in slide-in-from-top-2">
@@ -330,6 +345,19 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
           <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-200 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-bold">
             {vaultBullets.length}
           </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSection('settings')}
+          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-mono font-semibold transition-colors cursor-pointer ${
+            activeSection === 'settings'
+              ? 'bg-zinc-950 text-white dark:bg-zinc-100 dark:text-zinc-950 shadow-xs'
+              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
+          }`}
+        >
+          <Settings className="w-3.5 h-3.5" />
+          <span>Preferences & Settings</span>
         </button>
       </div>
 
@@ -1209,6 +1237,20 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {activeSection === 'settings' && (
+        <SettingsTab
+          currentThemeMode={themeMode}
+          onThemeChange={onThemeChange}
+          onReopenOnboarding={onReopenOnboarding}
+          currentUser={currentUser}
+          onOpenAuthModal={onOpenAuthModal}
+          onSignOut={onSignOut}
+          cloudResumesCount={cloudResumesCount}
+          onOpenCloudManager={onOpenCloudManager}
+          applicantProfile={profile}
+        />
       )}
     </div>
   );

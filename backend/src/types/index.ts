@@ -17,7 +17,7 @@ export interface JobPosting {
   location: string;
   type: 'Internship' | 'New Grad' | 'Full-time';
   url: string;
-  source: 'LinkedIn' | 'Greenhouse' | 'Lever' | 'Workday' | 'Handshake' | 'CuratedFeed' | 'SimplifyJobs' | 'Custom';
+  source: 'LinkedIn' | 'Greenhouse' | 'Lever' | 'Ashby' | 'Workday' | 'Handshake' | 'CuratedFeed' | 'SimplifyJobs' | 'Custom' | 'Direct ATS' | string;
   salaryRange?: string;
   description: string;
   postedDate?: string;
@@ -58,6 +58,14 @@ export interface JobPosting {
   prepTips?: string[];
   teamHighlights?: string[];
   deadline?: string;
+
+  // Direct Ingestion & Delta Sync Fields
+  isVerified?: boolean;
+  status?: 'active' | 'closed';
+  contentHash?: string;
+  updatedAt?: string;
+  closedAt?: string;
+  sourceType?: 'direct_ats' | 'github_scraper' | 'curated';
 }
 
 export interface KeywordMatch {
@@ -401,7 +409,7 @@ export interface ScrapedJobData {
   location?: string;
   description: string;
   url: string;
-  source: 'LinkedIn' | 'Greenhouse' | 'Lever' | 'Workday' | 'Indeed' | 'Handshake' | 'Ashby' | 'WorkAtAStartup' | 'ZipRecruiter' | 'Glassdoor' | 'CuratedFeed' | 'SimplifyJobs' | 'Custom';
+  source: 'LinkedIn' | 'Greenhouse' | 'Lever' | 'Workday' | 'Indeed' | 'Handshake' | 'Ashby' | 'WorkAtAStartup' | 'ZipRecruiter' | 'Glassdoor' | 'CuratedFeed' | 'SimplifyJobs' | 'Custom' | 'Direct ATS' | string;
   salary?: string;
   employmentType?: string;
   seniorityLevel?: string;

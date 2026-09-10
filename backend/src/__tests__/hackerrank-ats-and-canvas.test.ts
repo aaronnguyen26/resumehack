@@ -121,9 +121,13 @@ https://github.com/sarahconnor/cache-engine
       expect(content).toContain('<span>Discovery</span>');
       expect(content).toContain('<span>Tracker</span>');
       expect(content).toContain('<span>Profile</span>');
-      expect(content).toContain('<span>Settings</span>');
       expect(content).not.toContain('<span>Match & Tailor</span>');
       expect(content).not.toContain("'match'");
+
+      // Settings is compacted under ProfileTab
+      const profilePath = path.resolve(__dirname, '../../../web/src/components/ProfileTab.tsx');
+      const profileContent = fs.readFileSync(profilePath, 'utf8');
+      expect(profileContent).toContain('<span>Preferences & Settings</span>');
     });
 
     it('HomePage completely disregards Option 1 (Google Docs Sync) and focuses on direct PDF upload', () => {

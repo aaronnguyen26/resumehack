@@ -1042,7 +1042,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
       {/* ── MAIN WORKSPACE VIEWPORT (Center Canvas + Right Inspector) ─────── */}
       <div className="flex-1 flex flex-col md:flex-row items-stretch justify-center relative overflow-x-hidden">
         {/* ── CENTER DOCUMENT WORKBENCH (Paper Stage) ────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 lg:p-12 flex flex-col items-center justify-start bg-zinc-100/70 dark:bg-[#0c0c0e] relative min-h-[850px]">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-5 md:p-6 lg:p-8 flex flex-col items-center justify-start bg-zinc-100/70 dark:bg-[#0c0c0e] relative min-h-[850px]">
           {isRawEditing ? (
             /* Raw Monospace Text Editor Mode */
             <div className="w-full max-w-3xl bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-2xl p-6 shadow-sm space-y-4">

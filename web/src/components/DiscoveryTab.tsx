@@ -106,6 +106,7 @@ export const DiscoveryTab: React.FC<DiscoveryTabProps> = ({
 
   const categories = [
     'All',
+    'Verified',
     '⚡ Fresh (< 2m)',
     'New (24h)',
     'Business & Strategy',
@@ -244,7 +245,9 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
 
         const matchesCategory =
           selectedCategory === 'All' ||
-          (selectedCategory === '⚡ Fresh (< 2m)'
+          (selectedCategory === 'Verified'
+            ? Boolean(job.isVerified)
+            : selectedCategory === '⚡ Fresh (< 2m)'
             ? Boolean((job as any).isUltraFresh || (job as any).isFreshAts || (job.daysAgo ?? 999) === 0)
             : selectedCategory === 'New (24h)'
             ? (job.daysAgo ?? 999) === 0
@@ -285,6 +288,7 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
   // Category counts
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { All: enrichedJobsList.length };
+    counts['Verified'] = enrichedJobsList.filter(j => Boolean(j.isVerified)).length;
     counts['⚡ Fresh (< 2m)'] = enrichedJobsList.filter(
       j => (j as any).isUltraFresh || (j as any).isFreshAts || (j.daysAgo ?? 999) === 0
     ).length;
@@ -298,7 +302,7 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
   }, [enrichedJobsList]);
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="w-full max-w-[1780px] mx-auto px-1 sm:px-2 md:px-4 py-4 space-y-4">
       {/* Toast Notification */}
       {actionToast && (
         <div className="fixed top-16 left-1/2 transform -translate-x-1/2 z-50 bg-zinc-900 text-white text-xs font-semibold px-4 py-2 rounded-full shadow-xl flex items-center gap-2 border border-zinc-700 animate-in fade-in slide-in-from-top-2">
@@ -479,21 +483,64 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
         </div>
       </div>
 
+      {/* Quick Target Inspector Ribbon (Horizontal Rapid Preview) */}
+      <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-3 sm:p-3.5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2 shrink-0">
+          <Sparkles className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+          <span className="text-[11px] font-bold uppercase tracking-wider font-mono text-zinc-500 dark:text-zinc-400">
+            Quick Spec Inspector:
+          </span>
+        </div>
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
+          {filteredJobs.slice(0, 6).map(targetJob => {
+            const match = computeJobMatch(targetJob);
+            const isTargetExpanded = expandedJobIds.has(targetJob.id);
+            return (
+              <button
+                key={targetJob.id}
+                type="button"
+                onClick={() => {
+                  toggleExpand(targetJob.id);
+                  const el = document.getElementById(`job-card-${targetJob.id}`);
+                  el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border ${
+                  isTargetExpanded
+                    ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 border-zinc-900 dark:border-white shadow-xs'
+                    : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600'
+                }`}
+              >
+                <span className="truncate max-w-[130px]">{targetJob.company}</span>
+                {match && (
+                  <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-bold ${
+                    isTargetExpanded
+                      ? 'bg-emerald-500 text-white'
+                      : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                  }`}>
+                    {match.score}%
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Results Count & Match Tip */}
-      <div className="flex items-center justify-between text-[11px] text-slate-500 px-0.5">
-        <span className="font-semibold text-slate-700">
-          Showing {filteredJobs.length} opening{filteredJobs.length === 1 ? '' : 's'} with full in-app specs
+      <div className="flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400 px-0.5">
+        <span className="font-semibold text-zinc-700 dark:text-zinc-300">
+          Showing {filteredJobs.length} opening{filteredJobs.length === 1 ? '' : 's'} with horizontal in-app specs
         </span>
         {resumeText && resumeText.length > 20 && (
-          <span className="text-[10px] text-emerald-700 font-medium flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-            <CheckCircle className="w-3 h-3 text-emerald-600" />
+          <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium flex items-center gap-1 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+            <CheckCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
             Resume Matching Active
           </span>
         )}
       </div>
 
       {/* Jobs List Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
         {filteredJobs.map(job => {
           const isExpanded = isCardExpanded(job.id);
           const matchInfo = computeJobMatch(job);
@@ -503,9 +550,10 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
           return (
             <div
               key={job.id}
+              id={`job-card-${job.id}`}
               className={`bg-white dark:bg-[#121215] rounded-xl border transition-all duration-200 overflow-hidden shadow-xs ${
                 isExpanded
-                  ? 'border-zinc-900 dark:border-white ring-2 ring-zinc-200 dark:ring-zinc-800 shadow-md'
+                  ? 'col-span-full border-zinc-400 dark:border-zinc-500 ring-2 ring-zinc-300 dark:ring-zinc-700 shadow-md'
                   : 'border-zinc-200 dark:border-[#27272A] hover:border-zinc-400 dark:hover:border-zinc-600 hover:shadow-sm'
               }`}
             >
@@ -524,6 +572,12 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
                       <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate">
                         {job.company}
                       </span>
+                      {job.isVerified && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1 shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          Verified
+                        </span>
+                      )}
                       {job.category && (
                         <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700">
                           {job.category}
@@ -674,238 +728,72 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
                 </div>
               </div>
 
-              {/* ── EXPANDED FULL ROLE BREAKDOWN ───────────────────────────────── */}
+              {/* ── EXPANDED HORIZONTAL MULTI-COLUMN INTELLIGENCE INSPECTOR ────────────────────── */}
               {isExpanded && (
-                <div className="border-t border-slate-200 bg-slate-50/70 p-4 space-y-4 text-xs animate-in fade-in duration-200">
-                  {/* Section 0A: Key Facts Strip (Location, Pay, Education, Sponsorship) */}
-                  <div className="grid grid-cols-2 gap-2 text-[11px] bg-white p-3 rounded-lg border border-slate-200">
-                    <div className="flex items-center gap-1.5 text-slate-700 truncate">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="font-medium truncate">{job.location}</span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 text-emerald-700 font-bold font-mono text-[11px] truncate">
-                      <DollarSign className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span className="truncate">{job.salaryRange || 'Competitive Pay'}</span>
-                    </div>
-
-                    {job.educationRequirements && (
-                      <div className="flex items-center gap-1.5 text-slate-600 text-[10px] truncate">
-                        <GraduationCap className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate font-medium">{job.educationRequirements}</span>
-                      </div>
-                    )}
-
-                    {job.sponsorship && (
-                      <div className="flex items-center gap-1.5 text-slate-600 text-[10px] truncate">
-                        <ShieldCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate font-medium">{job.sponsorship}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Section 0B: Live Resume ATS Match Pill */}
-                  {matchInfo && (
-                    <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px]">
-                      <div className="flex items-center gap-1.5 font-bold text-emerald-800">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                        <span>{matchInfo.score}% ATS Match with your Resume</span>
-                      </div>
-                      <span className="text-emerald-700 font-semibold text-[10px]">
-                        {matchInfo.matched.length}/{matchInfo.total} skills matched
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Section 0C: Role Overview & Domain */}
-                  <div className="space-y-1 bg-white p-3 rounded-lg border border-slate-200">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Role Summary & Domain:
-                    </span>
-                    <p className="text-xs text-slate-700 leading-relaxed">
-                      {job.aboutTeam || job.aboutCompany || job.description}
-                    </p>
-                  </div>
-
-                  {/* Section 0D: Key Responsibilities */}
-                  {job.responsibilities && job.responsibilities.length > 0 && (
-                    <div className="space-y-1.5 bg-white p-3 rounded-lg border border-slate-200">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                        <Briefcase className="w-3.5 h-3.5 text-brand-600" />
-                        <span>Key Responsibilities (What You Will Do):</span>
-                      </span>
-                      <ul className="space-y-1.5 text-[11px] text-slate-700">
-                        {job.responsibilities.map((resp, i) => (
-                          <li key={i} className="flex items-start gap-1.5 leading-snug">
-                            <span className="w-1.5 h-1.5 rounded-full bg-brand-500 shrink-0 mt-1.5" />
-                            <span>{resp}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Section 0E: Core Skills & Tech Stack Badges */}
-                  {job.skills && job.skills.length > 0 && (
-                    <div className="space-y-1.5 bg-white p-3 rounded-lg border border-slate-200">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                        Required Tech Stack & Skills:
-                      </span>
-                      <div className="flex flex-wrap gap-1 items-center">
-                        {job.skills.map(skill => {
-                          const isSkillMatched = matchInfo?.matched.includes(skill);
-                          return (
-                            <span
-                              key={skill}
-                              className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-all ${
-                                isSkillMatched
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold shadow-2xs'
-                                  : 'bg-slate-100 text-slate-700 border-slate-200'
-                              }`}
-                            >
-                              {isSkillMatched ? `✓ ${skill}` : skill}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Section 1: Team Highlights & Scale */}
-                  {job.teamHighlights && job.teamHighlights.length > 0 && (
-                    <div className="space-y-1.5">
-                      <h4 className="font-headline font-bold text-xs text-emerald-900 flex items-center gap-1.5">
-                        <Zap className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Why This Role & Team Stands Out</span>
-                      </h4>
-                      <div className="space-y-1.5 bg-emerald-50/70 p-3 rounded-lg border border-emerald-200">
-                        {job.teamHighlights.map((th, i) => (
-                          <div key={i} className="flex items-start gap-2 text-[11px] text-emerald-950 font-medium">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                            <span>{th}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Section 2: Minimum Qualifications & Eligibility */}
-                  {job.requirements && job.requirements.length > 0 && (
-                    <div className="space-y-1.5">
-                      <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                        <Target className="w-3.5 h-3.5 text-zinc-700 dark:text-zinc-300" />
-                        <span>Minimum Qualifications &amp; Eligibility</span>
-                      </h4>
-                      <ul className="space-y-1.5 bg-white dark:bg-zinc-900 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                        {job.requirements.map((req, i) => (
-                          <li key={i} className="flex items-start gap-2 text-xs text-zinc-800 dark:text-zinc-200 leading-relaxed">
-                            <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                            <span>{req}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Section 3: Preferred Qualifications */}
-                  {job.preferredQualifications && job.preferredQualifications.length > 0 && (
-                    <div className="space-y-1.5">
-                      <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                        <span>Preferred &amp; Bonus Qualifications</span>
-                      </h4>
-                      <ul className="space-y-1.5 bg-zinc-50 dark:bg-zinc-900/60 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                        {job.preferredQualifications.map((pref, i) => (
-                          <li key={i} className="flex items-start gap-2 text-xs text-zinc-800 dark:text-zinc-200 leading-relaxed">
-                            <span className="text-amber-600 dark:text-amber-400 font-bold shrink-0">★</span>
-                            <span>{pref}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Section 4: Total Compensation & Benefits */}
-                  {job.benefits && job.benefits.length > 0 && (
-                    <div className="space-y-1.5">
-                      <h4 className="font-headline font-bold text-xs text-emerald-900 flex items-center gap-1.5">
-                        <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Total Rewards, Housing Stipends & Perks</span>
-                      </h4>
-                      <ul className="space-y-1 bg-white p-3 rounded-lg border border-slate-200">
-                        {job.benefits.map((ben, i) => (
-                          <li key={i} className="flex items-start gap-2 text-[11px] text-slate-800">
-                            <span className="text-emerald-600 font-bold shrink-0">🎁</span>
-                            <span>{ben}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Section 5: Interview Process & Prep Tips */}
-                  {job.interviewProcess && job.interviewProcess.length > 0 && (
-                    <div className="space-y-2 bg-amber-50/70 p-3.5 rounded-lg border border-amber-200">
-                      <h4 className="font-headline font-bold text-xs text-amber-950 flex items-center gap-1.5">
-                        <Lightbulb className="w-3.5 h-3.5 text-amber-600" />
-                        <span>Interview Process & Insider Preparation Guide</span>
-                      </h4>
-
-                      <div className="space-y-1.5">
-                        {job.interviewProcess.map((step, i) => (
-                          <div key={i} className="flex items-start gap-2 text-[11px] text-amber-950 font-medium">
-                            <span className="w-4 h-4 rounded-full bg-amber-200 text-amber-900 flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5">
-                              {i + 1}
-                            </span>
-                            <span>{step}</span>
-                          </div>
-                        ))}
-                      </div>
-
-                      {job.prepTips && job.prepTips.length > 0 && (
-                        <div className="pt-2 border-t border-amber-200 space-y-1">
-                          <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wide">
-                            💡 What Interviewers Test & Key Focus Areas:
+                <div className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-[#0c0c0e] p-4 sm:p-6 animate-in fade-in duration-200 space-y-4 text-xs">
+                  {/* Section 0: Live ATS Match & Key Parameters Horizontal Ribbon */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-[#151518] border border-zinc-200 dark:border-zinc-800 rounded-xl p-3 sm:p-3.5 shadow-2xs">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      {matchInfo ? (
+                        <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span>{matchInfo.score}% ATS Match</span>
+                          <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-mono">
+                            ({matchInfo.matched.length}/{matchInfo.total} skills)
                           </span>
-                          {job.prepTips.map((tip, i) => (
-                            <p key={i} className="text-[11px] text-amber-950 leading-relaxed pl-2 border-l-2 border-amber-400">
-                              {tip}
-                            </p>
-                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-semibold">
+                          <span>Algorithmic ATS Rubric</span>
+                        </div>
+                      )}
+
+                      {job.isVerified && (
+                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          <span>Verified</span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-mono text-xs px-2.5 py-1 rounded bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700">
+                        <DollarSign className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span className="font-bold text-emerald-700 dark:text-emerald-400">{job.salaryRange || 'Competitive Pay'}</span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 text-xs px-2.5 py-1 rounded bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700">
+                        <MapPin className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                        <span>{job.location} ({job.workModel || 'Hybrid'})</span>
+                      </div>
+
+                      {job.educationRequirements && (
+                        <div className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 text-[11px] px-2.5 py-1 rounded bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700">
+                          <GraduationCap className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                          <span className="truncate max-w-[150px]">{job.educationRequirements}</span>
+                        </div>
+                      )}
+
+                      {job.sponsorship && (
+                        <div className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 text-[11px] px-2.5 py-1 rounded bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700">
+                          <ShieldCheck className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                          <span className="truncate max-w-[150px]">{job.sponsorship}</span>
                         </div>
                       )}
                     </div>
-                  )}
 
-                  {/* Section 6: Raw Job Description / Notes (If available) */}
-                  {job.description && job.description.length > 100 && (
-                    <div className="space-y-1.5">
-                      <h4 className="font-headline font-bold text-xs text-slate-800 flex items-center gap-1.5">
-                        <FileText className="w-3.5 h-3.5 text-slate-600" />
-                        <span>Original Job Description Text</span>
-                      </h4>
-                      <div className="bg-white p-3 rounded-lg border border-slate-200 text-[11px] text-slate-700 whitespace-pre-line leading-relaxed max-h-48 overflow-y-auto font-mono text-[10px]">
-                        {job.description}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Expanded Bottom Action Bar */}
-                  <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-200">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleCopyJobSpec(job)}
-                        className="px-2.5 py-1.5 rounded-stitch bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold flex items-center gap-1 transition-all"
-                        title="Copy formatted job details to clipboard"
+                        className="px-2.5 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Copy formatted job specifications"
                       >
                         {copiedJobId === job.id ? (
                           <>
-                            <Check className="w-3 h-3 text-emerald-600" />
-                            <span className="text-emerald-700">Copied!</span>
+                            <Check className="w-3.5 h-3.5 text-emerald-500" />
+                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">Copied</span>
                           </>
                         ) : (
                           <>
-                            <Copy className="w-3 h-3 text-slate-500" />
+                            <Copy className="w-3.5 h-3.5 text-zinc-400" />
                             <span>Copy Spec</span>
                           </>
                         )}
@@ -913,44 +801,302 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
 
                       <button
                         onClick={() => handleBookmark(job)}
-                        className={`px-2.5 py-1.5 rounded-stitch border text-[11px] font-semibold flex items-center gap-1 transition-all ${
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border ${
                           bookmarked
-                            ? 'bg-amber-50 border-amber-200 text-amber-800'
-                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300'
+                            : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
                         }`}
                       >
                         {bookmarked ? (
                           <>
-                            <BookmarkCheck className="w-3 h-3 text-amber-600" />
+                            <BookmarkCheck className="w-3.5 h-3.5 fill-amber-500 text-amber-600" />
                             <span>Bookmarked</span>
                           </>
                         ) : (
                           <>
-                            <Bookmark className="w-3 h-3 text-slate-500" />
+                            <Bookmark className="w-3.5 h-3.5 text-zinc-400" />
                             <span>Bookmark</span>
                           </>
                         )}
                       </button>
-                    </div>
 
-                    <div className="flex items-center gap-2">
                       <a
                         href={job.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="px-3 py-1.5 rounded-stitch bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-semibold flex items-center gap-1 shadow-xs transition-all"
+                        className="px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-semibold flex items-center gap-1.5 transition-colors"
                       >
-                        <span>Apply on Portal</span>
-                        <ExternalLink className="w-3 h-3" />
+                        <span>Careers Site</span>
+                        <ExternalLink className="w-3 h-3 text-zinc-400" />
                       </a>
 
                       <button
                         onClick={() => onSelectJobForTailoring(job)}
-                        className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 text-xs font-bold flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
                         <span>Tailor Resume</span>
                       </button>
+                    </div>
+                  </div>
+
+                  {/* 4-COLUMN PARALLEL HORIZONTAL INTELLIGENCE GRID */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-stretch">
+                    {/* ── COLUMN 1: ROLE & COMPANY OVERVIEW ────────────────────── */}
+                    <div className="bg-white dark:bg-[#151518] border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 flex flex-col justify-between space-y-3 shadow-2xs">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 pb-2 border-b border-zinc-200/80 dark:border-zinc-800">
+                          <div className="w-6 h-6 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                            <Building2 className="w-3.5 h-3.5" />
+                          </div>
+                          <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wide font-mono">
+                            1. Role &amp; Overview
+                          </h4>
+                        </div>
+
+                        {/* Role Domain Summary */}
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold font-mono text-zinc-400 uppercase tracking-wider block">
+                            Domain &amp; Mission:
+                          </span>
+                          <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                            {job.aboutTeam || job.aboutCompany || job.description || 'Engineering organization developing tier-1 software infrastructure.'}
+                          </p>
+                        </div>
+
+                        {/* Parameter Highlights */}
+                        <div className="space-y-1.5 bg-zinc-50 dark:bg-zinc-900/60 p-3 rounded-lg border border-zinc-200/80 dark:border-zinc-800 text-[11px]">
+                          <div className="flex items-center justify-between">
+                            <span className="text-zinc-400 font-mono text-[10px]">Location:</span>
+                            <span className="font-medium text-zinc-800 dark:text-zinc-200 truncate max-w-[170px]">{job.location}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-zinc-400 font-mono text-[10px]">Compensation:</span>
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">{job.salaryRange || 'Competitive Pay'}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-zinc-400 font-mono text-[10px]">Education:</span>
+                            <span className="font-medium text-zinc-800 dark:text-zinc-200 truncate max-w-[170px]">{job.educationRequirements || 'B.S. / M.S. in CS or related'}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-zinc-400 font-mono text-[10px]">Authorization:</span>
+                            <span className="font-medium text-zinc-800 dark:text-zinc-200 truncate max-w-[170px]">{job.sponsorship || 'CPT/OPT / Sponsorship Eligible'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Team Highlights / Standouts */}
+                      {job.teamHighlights && job.teamHighlights.length > 0 && (
+                        <div className="pt-2 border-t border-zinc-200/80 dark:border-zinc-800 space-y-1.5">
+                          <span className="text-[10px] font-bold font-mono text-emerald-700 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                            <Zap className="w-3 h-3" />
+                            <span>Why Team Stands Out</span>
+                          </span>
+                          <div className="space-y-1 text-[11px] text-zinc-700 dark:text-zinc-300">
+                            {job.teamHighlights.slice(0, 2).map((th, i) => (
+                              <div key={i} className="flex items-start gap-1.5 leading-snug">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1.5" />
+                                <span>{th}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── COLUMN 2: CORE RESPONSIBILITIES & IMPACT ─────────────── */}
+                    <div className="bg-white dark:bg-[#151518] border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 flex flex-col justify-between space-y-3 shadow-2xs">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 pb-2 border-b border-zinc-200/80 dark:border-zinc-800">
+                          <div className="w-6 h-6 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                            <Briefcase className="w-3.5 h-3.5" />
+                          </div>
+                          <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wide font-mono">
+                            2. Responsibilities &amp; Impact
+                          </h4>
+                        </div>
+
+                        <span className="text-[10px] font-bold font-mono text-zinc-400 uppercase tracking-wider block">
+                          What You Will Build &amp; Own:
+                        </span>
+
+                        {job.responsibilities && job.responsibilities.length > 0 ? (
+                          <ul className="space-y-2 text-xs text-zinc-700 dark:text-zinc-300">
+                            {job.responsibilities.map((resp, i) => (
+                              <li key={i} className="flex items-start gap-2 leading-relaxed bg-zinc-50 dark:bg-zinc-900/50 p-2 rounded-lg border border-zinc-200/60 dark:border-zinc-800/60">
+                                <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 dark:bg-zinc-400 shrink-0 mt-1.5" />
+                                <span>{resp}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400 italic">
+                            Core engineering deliverables outlined upon initial technical screen.
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Benefits / Total Rewards */}
+                      {job.benefits && job.benefits.length > 0 && (
+                        <div className="pt-2 border-t border-zinc-200/80 dark:border-zinc-800 space-y-1">
+                          <span className="text-[10px] font-bold font-mono text-zinc-400 uppercase tracking-wider block">
+                            Total Rewards &amp; Perks:
+                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {job.benefits.slice(0, 3).map((ben, i) => (
+                              <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700">
+                                🎁 {ben}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── COLUMN 3: TECH STACK & KEYWORD ALIGNMENT ─────────────── */}
+                    <div className="bg-white dark:bg-[#151518] border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 flex flex-col justify-between space-y-3 shadow-2xs">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 pb-2 border-b border-zinc-200/80 dark:border-zinc-800">
+                          <div className="w-6 h-6 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                            <Code2 className="w-3.5 h-3.5" />
+                          </div>
+                          <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wide font-mono">
+                            3. Tech Stack &amp; Skills
+                          </h4>
+                        </div>
+
+                        {/* Skills Tag Matrix */}
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] font-bold font-mono text-zinc-400 uppercase tracking-wider block">
+                            Target Technologies:
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {job.skills && job.skills.length > 0 ? (
+                              job.skills.map(skill => {
+                                const isSkillMatched = matchInfo?.matched.includes(skill);
+                                return (
+                                  <span
+                                    key={skill}
+                                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold border transition-all ${
+                                      isSkillMatched
+                                        ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/30'
+                                        : 'bg-zinc-100 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700'
+                                    }`}
+                                  >
+                                    {isSkillMatched ? `✓ ${skill}` : skill}
+                                  </span>
+                                );
+                              })
+                            ) : (
+                              <span className="text-xs text-zinc-500">General Software Engineering</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Minimum Requirements */}
+                        {job.requirements && job.requirements.length > 0 && (
+                          <div className="space-y-1.5 pt-1">
+                            <span className="text-[10px] font-bold font-mono text-zinc-400 uppercase tracking-wider flex items-center gap-1">
+                              <Target className="w-3 h-3 text-zinc-500" />
+                              <span>Minimum Requirements:</span>
+                            </span>
+                            <ul className="space-y-1 text-[11px] text-zinc-700 dark:text-zinc-300">
+                              {job.requirements.slice(0, 3).map((req, i) => (
+                                <li key={i} className="flex items-start gap-1.5 leading-snug">
+                                  <Check className="w-3 h-3 text-emerald-500 shrink-0 mt-0.5" />
+                                  <span>{req}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Preferred Qualifications */}
+                      {job.preferredQualifications && job.preferredQualifications.length > 0 && (
+                        <div className="pt-2 border-t border-zinc-200/80 dark:border-zinc-800 space-y-1">
+                          <span className="text-[10px] font-bold font-mono text-amber-700 dark:text-amber-400 uppercase tracking-wider block">
+                            Preferred &amp; Bonus:
+                          </span>
+                          <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-snug">
+                            ★ {job.preferredQualifications[0]}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── COLUMN 4: INTERVIEW BLUEPRINT & PREP TIPS ────────────── */}
+                    <div className="bg-white dark:bg-[#151518] border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 flex flex-col justify-between space-y-3 shadow-2xs">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 pb-2 border-b border-zinc-200/80 dark:border-zinc-800">
+                          <div className="w-6 h-6 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                            <Lightbulb className="w-3.5 h-3.5" />
+                          </div>
+                          <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wide font-mono">
+                            4. Interview Blueprint
+                          </h4>
+                        </div>
+
+                        {/* Interview Timeline Steps */}
+                        {job.interviewProcess && job.interviewProcess.length > 0 ? (
+                          <div className="space-y-1.5">
+                            <span className="text-[10px] font-bold font-mono text-zinc-400 uppercase tracking-wider block">
+                              Hiring Pipeline Timeline:
+                            </span>
+                            <div className="space-y-1.5">
+                              {job.interviewProcess.map((step, i) => (
+                                <div key={i} className="flex items-start gap-2 text-[11px] text-zinc-800 dark:text-zinc-200">
+                                  <span className="w-4 h-4 rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 flex items-center justify-center text-[9px] font-mono font-bold shrink-0 mt-0.5">
+                                    {i + 1}
+                                  </span>
+                                  <span className="leading-tight">{step}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-zinc-500">Standard 3-round technical assessment &amp; behavioral review.</p>
+                        )}
+
+                        {/* Insider Prep Tips */}
+                        {job.prepTips && job.prepTips.length > 0 && (
+                          <div className="pt-1.5 space-y-1">
+                            <span className="text-[10px] font-bold font-mono text-amber-700 dark:text-amber-400 uppercase tracking-wider block">
+                              💡 Key Focus Areas:
+                            </span>
+                            <p className="text-[11px] text-zinc-700 dark:text-zinc-300 leading-snug pl-2 border-l-2 border-amber-500">
+                              {job.prepTips[0]}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Hacky AI Pro-Tip Box & Bottom CTA */}
+                      <div className="space-y-2 pt-2 border-t border-zinc-200/80 dark:border-zinc-800">
+                        <div className="p-2.5 rounded-lg bg-zinc-100 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-700 dark:text-zinc-300 leading-snug flex items-start gap-2">
+                          <span className="text-emerald-500 shrink-0 font-bold">⚡</span>
+                          <span>
+                            <strong>Hacky AI Insight:</strong> Emphasize STAR metrics with concrete scale indicators to maximize ATS &amp; recruiter score.
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => onSelectJobForTailoring(job)}
+                            className="flex-1 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            <span>Tailor Now</span>
+                          </button>
+                          <button
+                            onClick={() => toggleExpand(job.id)}
+                            className="py-2 px-2.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-xs font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                            title="Collapse specifications"
+                          >
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -994,185 +1140,314 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
         )}
       </div>
 
-      {/* ── FOCUS MODAL / FULL SCREEN READER ───────────────────────────────── */}
+      {/* ── FOCUS MODAL / EXPANSIVE HORIZONTAL FULL SCREEN READER ─────────── */}
       {focusedJob && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#121215] w-full max-w-2xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-zinc-200 dark:border-zinc-800">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-[#121215] w-full max-w-[1680px] max-h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-zinc-200 dark:border-zinc-800">
             {/* Modal Header */}
-            <div className="px-5 py-4 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
+            <div className="px-6 py-4 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5 min-w-0">
                 <div
                   className={`w-10 h-10 rounded-xl bg-gradient-to-br ${getCompanyAvatarColor(focusedJob.company).bg} ${getCompanyAvatarColor(focusedJob.company).text} flex items-center justify-center font-bold text-sm shrink-0 shadow-xs`}
                 >
                   {focusedJob.company.slice(0, 2).toUpperCase()}
                 </div>
                 <div className="min-w-0">
-                  <span className="font-semibold text-xs text-zinc-500 dark:text-zinc-400 block">
-                    {focusedJob.company}
-                  </span>
-                  <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 truncate">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-xs text-zinc-500 dark:text-zinc-400">
+                      {focusedJob.company}
+                    </span>
+                    {focusedJob.isVerified && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1 shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        Verified
+                      </span>
+                    )}
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
+                      {focusedJob.workModel || 'Hybrid'}
+                    </span>
+                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                      {focusedJob.salaryRange || 'Competitive Pay'}
+                    </span>
+                  </div>
+                  <h3 className="font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100 truncate">
                     {focusedJob.title}
                   </h3>
                 </div>
               </div>
-              <button
-                onClick={() => setFocusedJob(null)}
-                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => handleCopyJobSpec(focusedJob)}
+                  className="px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  {copiedJobId === focusedJob.id ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold">Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-zinc-400" />
+                      <span>Copy Spec</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setFocusedJob(null)}
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                  title="Close specifications"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
-            {/* Modal Body */}
-            <div className="p-5 space-y-4 overflow-y-auto max-h-[calc(90vh-140px)] text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
-              {/* Key Specs Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-zinc-50 dark:bg-zinc-900/60 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 text-[11px]">
-                <div>
-                  <span className="text-zinc-400 font-mono text-[10px] uppercase block">Location</span>
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200 truncate block">
-                    {focusedJob.location}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-zinc-400 font-mono text-[10px] uppercase block">Compensation</span>
-                  <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono block">
-                    {focusedJob.salaryRange || 'Competitive'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-zinc-400 font-mono text-[10px] uppercase block">Education</span>
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200 truncate block">
-                    {focusedJob.educationRequirements || 'B.S. / M.S. CS'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-zinc-400 font-mono text-[10px] uppercase block">Authorization</span>
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200 truncate block">
-                    {focusedJob.sponsorship || 'Available'}
-                  </span>
-                </div>
-              </div>
-
-              {/* About Team */}
-              {focusedJob.aboutTeam && (
-                <div className="space-y-1.5">
-                  <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>About the Role &amp; Product Domain</span>
-                  </h4>
-                  <p className="text-zinc-700 dark:text-zinc-300 text-xs leading-relaxed bg-zinc-50 dark:bg-zinc-900/40 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                    {focusedJob.aboutTeam}
-                  </p>
-                </div>
-              )}
-
-              {/* Key Responsibilities */}
-              {focusedJob.responsibilities && focusedJob.responsibilities.length > 0 && (
-                <div className="space-y-1.5">
-                  <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                    <Briefcase className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>What You Will Build &amp; Own</span>
-                  </h4>
-                  <ul className="space-y-1.5 bg-zinc-50 dark:bg-zinc-900/40 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                    {focusedJob.responsibilities.map((resp, i) => (
-                      <li key={i} className="flex items-start gap-2 text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
-                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 shrink-0 mt-1.5" />
-                        <span>{resp}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Requirements */}
-              {focusedJob.requirements && focusedJob.requirements.length > 0 && (
-                <div className="space-y-1.5">
-                  <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                    <Target className="w-3.5 h-3.5 text-zinc-700 dark:text-zinc-300" />
-                    <span>Eligibility &amp; Required Qualifications</span>
-                  </h4>
-                  <ul className="space-y-1.5 bg-zinc-50 dark:bg-zinc-900/40 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                    {focusedJob.requirements.map((req, i) => (
-                      <li key={i} className="flex items-start gap-2 text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
-                        <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                        <span>{req}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Skills Matrix */}
-              {focusedJob.skills && (
-                <div className="space-y-1.5">
-                  <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                    <Code2 className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>Core Technologies &amp; Required Skills</span>
-                  </h4>
-                  <div className="flex flex-wrap gap-1.5 bg-zinc-50 dark:bg-zinc-900/40 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                    {focusedJob.skills.map(s => (
-                      <span
-                        key={s}
-                        className="px-2.5 py-1 rounded bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 text-xs font-semibold shadow-2xs font-mono"
-                      >
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Interview Guide */}
-              {focusedJob.interviewProcess && focusedJob.interviewProcess.length > 0 && (
-                <div className="space-y-2 bg-amber-50/60 p-3.5 rounded-xl border border-amber-200">
-                  <h4 className="font-headline font-bold text-xs text-amber-900 flex items-center gap-1.5">
-                    <Lightbulb className="w-4 h-4 text-amber-600" />
-                    <span>Complete Interview Pipeline & Insider Tips</span>
-                  </h4>
-                  <div className="space-y-1.5">
-                    {focusedJob.interviewProcess.map((step, i) => (
-                      <div key={i} className="flex items-start gap-2 text-xs text-amber-950">
-                        <span className="w-4 h-4 rounded-full bg-amber-200 text-amber-900 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                              {i + 1}
-                        </span>
-                        <span>{step}</span>
+            {/* Modal Body: 4-COLUMN HORIZONTAL GRID */}
+            <div className="p-6 overflow-y-auto max-h-[calc(92vh-130px)] space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-stretch">
+                
+                {/* Column 1: Role & Company Overview */}
+                <div className="bg-zinc-50 dark:bg-[#151518] border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 flex flex-col justify-between space-y-3.5 shadow-2xs">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-zinc-200/80 dark:border-zinc-800">
+                      <div className="w-6 h-6 rounded bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                        <Building2 className="w-3.5 h-3.5" />
                       </div>
-                    ))}
-                  </div>
-                  {focusedJob.prepTips && focusedJob.prepTips.length > 0 && (
-                    <div className="pt-2 border-t border-amber-200 space-y-1">
-                      <span className="text-[10px] font-bold text-amber-900 uppercase">
-                        💡 Key Topics to Practice:
+                      <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wide font-mono">
+                        1. Role &amp; Overview
+                      </h4>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold font-mono text-zinc-400 uppercase tracking-wider block">
+                        Domain &amp; Mission:
                       </span>
-                      {focusedJob.prepTips.map((tip, i) => (
-                        <p key={i} className="text-xs text-amber-900 pl-2 border-l-2 border-amber-400">
-                          {tip}
-                        </p>
-                      ))}
+                      <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                        {focusedJob.aboutTeam || focusedJob.aboutCompany || focusedJob.description || 'Tier-1 software development and engineering team.'}
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5 bg-white dark:bg-zinc-900/70 p-3 rounded-lg border border-zinc-200/80 dark:border-zinc-800 text-[11px]">
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400 font-mono text-[10px]">Location:</span>
+                        <span className="font-medium text-zinc-800 dark:text-zinc-200 truncate max-w-[170px]">{focusedJob.location}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400 font-mono text-[10px]">Compensation:</span>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">{focusedJob.salaryRange || 'Competitive Pay'}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400 font-mono text-[10px]">Education:</span>
+                        <span className="font-medium text-zinc-800 dark:text-zinc-200 truncate max-w-[170px]">{focusedJob.educationRequirements || 'B.S. / M.S. CS or related'}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400 font-mono text-[10px]">Authorization:</span>
+                        <span className="font-medium text-zinc-800 dark:text-zinc-200 truncate max-w-[170px]">{focusedJob.sponsorship || 'CPT/OPT / Sponsorship Eligible'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {focusedJob.teamHighlights && focusedJob.teamHighlights.length > 0 && (
+                    <div className="pt-2 border-t border-zinc-200/80 dark:border-zinc-800 space-y-1.5">
+                      <span className="text-[10px] font-bold font-mono text-emerald-700 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                        <Zap className="w-3 h-3" />
+                        <span>Why Team Stands Out</span>
+                      </span>
+                      <div className="space-y-1 text-[11px] text-zinc-700 dark:text-zinc-300">
+                        {focusedJob.teamHighlights.slice(0, 2).map((th, i) => (
+                          <div key={i} className="flex items-start gap-1.5 leading-snug">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1.5" />
+                            <span>{th}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
-              )}
+
+                {/* Column 2: Core Responsibilities & Impact */}
+                <div className="bg-zinc-50 dark:bg-[#151518] border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 flex flex-col justify-between space-y-3.5 shadow-2xs">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-zinc-200/80 dark:border-zinc-800">
+                      <div className="w-6 h-6 rounded bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                        <Briefcase className="w-3.5 h-3.5" />
+                      </div>
+                      <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wide font-mono">
+                        2. Responsibilities &amp; Impact
+                      </h4>
+                    </div>
+
+                    <span className="text-[10px] font-bold font-mono text-zinc-400 uppercase tracking-wider block">
+                      What You Will Build &amp; Own:
+                    </span>
+
+                    {focusedJob.responsibilities && focusedJob.responsibilities.length > 0 ? (
+                      <ul className="space-y-2 text-xs text-zinc-700 dark:text-zinc-300">
+                        {focusedJob.responsibilities.map((resp, i) => (
+                          <li key={i} className="flex items-start gap-2 leading-relaxed bg-white dark:bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-200/60 dark:border-zinc-800/60">
+                            <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 dark:bg-zinc-400 shrink-0 mt-1.5" />
+                            <span>{resp}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 italic">
+                        Specific engineering milestones outlined upon preliminary screen.
+                      </p>
+                    )}
+                  </div>
+
+                  {focusedJob.benefits && focusedJob.benefits.length > 0 && (
+                    <div className="pt-2 border-t border-zinc-200/80 dark:border-zinc-800 space-y-1">
+                      <span className="text-[10px] font-bold font-mono text-zinc-400 uppercase tracking-wider block">
+                        Total Rewards &amp; Perks:
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {focusedJob.benefits.slice(0, 3).map((ben, i) => (
+                          <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-zinc-200/70 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700">
+                            🎁 {ben}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Column 3: Tech Stack & Keyword Alignment */}
+                <div className="bg-zinc-50 dark:bg-[#151518] border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 flex flex-col justify-between space-y-3.5 shadow-2xs">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-zinc-200/80 dark:border-zinc-800">
+                      <div className="w-6 h-6 rounded bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                        <Code2 className="w-3.5 h-3.5" />
+                      </div>
+                      <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wide font-mono">
+                        3. Tech Stack &amp; Skills
+                      </h4>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-bold font-mono text-zinc-400 uppercase tracking-wider block">
+                        Target Technologies:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {focusedJob.skills && focusedJob.skills.length > 0 ? (
+                          focusedJob.skills.map(skill => (
+                            <span
+                              key={skill}
+                              className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold border bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border-zinc-200 dark:border-zinc-700"
+                            >
+                              {skill}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-zinc-500">General Software Engineering</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {focusedJob.requirements && focusedJob.requirements.length > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        <span className="text-[10px] font-bold font-mono text-zinc-400 uppercase tracking-wider flex items-center gap-1">
+                          <Target className="w-3 h-3 text-zinc-500" />
+                          <span>Minimum Requirements:</span>
+                        </span>
+                        <ul className="space-y-1 text-[11px] text-zinc-700 dark:text-zinc-300">
+                          {focusedJob.requirements.slice(0, 3).map((req, i) => (
+                            <li key={i} className="flex items-start gap-1.5 leading-snug">
+                              <Check className="w-3 h-3 text-emerald-500 shrink-0 mt-0.5" />
+                              <span>{req}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  {focusedJob.preferredQualifications && focusedJob.preferredQualifications.length > 0 && (
+                    <div className="pt-2 border-t border-zinc-200/80 dark:border-zinc-800 space-y-1">
+                      <span className="text-[10px] font-bold font-mono text-amber-700 dark:text-amber-400 uppercase tracking-wider block">
+                        Preferred &amp; Bonus:
+                      </span>
+                      <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-snug">
+                        ★ {focusedJob.preferredQualifications[0]}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Column 4: Interview Blueprint & Prep Tips */}
+                <div className="bg-zinc-50 dark:bg-[#151518] border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 flex flex-col justify-between space-y-3.5 shadow-2xs">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-zinc-200/80 dark:border-zinc-800">
+                      <div className="w-6 h-6 rounded bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                        <Lightbulb className="w-3.5 h-3.5" />
+                      </div>
+                      <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wide font-mono">
+                        4. Interview Blueprint
+                      </h4>
+                    </div>
+
+                    {focusedJob.interviewProcess && focusedJob.interviewProcess.length > 0 ? (
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] font-bold font-mono text-zinc-400 uppercase tracking-wider block">
+                          Hiring Pipeline Timeline:
+                        </span>
+                        <div className="space-y-1.5">
+                          {focusedJob.interviewProcess.map((step, i) => (
+                            <div key={i} className="flex items-start gap-2 text-[11px] text-zinc-800 dark:text-zinc-200">
+                              <span className="w-4 h-4 rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 flex items-center justify-center text-[9px] font-mono font-bold shrink-0 mt-0.5">
+                                {i + 1}
+                              </span>
+                              <span className="leading-tight">{step}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-zinc-500">Standard 3-round technical assessment &amp; behavioral review.</p>
+                    )}
+
+                    {focusedJob.prepTips && focusedJob.prepTips.length > 0 && (
+                      <div className="pt-1.5 space-y-1">
+                        <span className="text-[10px] font-bold font-mono text-amber-700 dark:text-amber-400 uppercase tracking-wider block">
+                          💡 Key Focus Areas:
+                        </span>
+                        <p className="text-[11px] text-zinc-700 dark:text-zinc-300 leading-snug pl-2 border-l-2 border-amber-500">
+                          {focusedJob.prepTips[0]}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t border-zinc-200/80 dark:border-zinc-800">
+                    <div className="p-2.5 rounded-lg bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-700 dark:text-zinc-300 leading-snug flex items-start gap-2">
+                      <span className="text-emerald-500 shrink-0 font-bold">⚡</span>
+                      <span>
+                        <strong>Hacky AI Insight:</strong> Focus on architectural clarity and past edge-case resolution.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
             </div>
 
-            {/* Modal Footer CTA */}
-            <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
-              <button
-                onClick={() => handleCopyJobSpec(focusedJob)}
-                className="px-3 py-2 rounded-stitch bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all"
-              >
-                <Copy className="w-3.5 h-3.5 text-slate-500" />
-                <span>Copy Spec</span>
-              </button>
+            {/* Modal Footer */}
+            <div className="p-4 px-6 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/60 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono">
+                <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                <span>Verified by ResumeHack Algorithmic Intelligence</span>
+              </div>
 
               <div className="flex items-center gap-2">
                 <a
                   href={focusedJob.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-3.5 py-2 rounded-stitch bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
+                  className="px-4 py-2 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-semibold flex items-center gap-1.5 transition-colors"
                 >
-                  <span>Apply on Site</span>
+                  <span>Apply on Careers Portal</span>
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
 
@@ -1182,7 +1457,7 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
                     setFocusedJob(null);
                     onSelectJobForTailoring(target);
                   }}
-                  className="px-4 py-2 rounded-stitch bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
+                  className="px-5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
                 >
                   <Sparkles className="w-4 h-4" />
                   <span>Tailor Resume</span>

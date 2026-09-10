@@ -1,5 +1,5 @@
 import { supabase } from './supabase-client.js';
-import { ApplicantProfile, ApplicationRecord } from '../types/index.js';
+import { ApplicantProfile, ApplicationRecord, JobPosting } from '../types/index.js';
 
 export interface CloudResume {
   id: string;
@@ -398,3 +398,127 @@ export async function deleteApplication(appId: string): Promise<{ success: boole
     return { success: false, error: err.message || 'Failed to delete application' };
   }
 }
+
+// ── Job Postings Persistence API ─────────────────────────────────────────────
+
+/**
+ * Fetch verified job openings from Supabase job_postings table
+ */
+export async function fetchVerifiedJobPostings(options?: { category?: string; limit?: number }): Promise<JobPosting[]> {
+  try {
+    let query = supabase
+      .from('job_postings')
+      .select('*')
+      .eq('is_verified', true)
+      .eq('status', 'active')
+      .order('updated_at', { ascending: false });
+
+    if (options?.category && options.category !== 'All') {
+      query = query.eq('category', options.category);
+    }
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    } else {
+      query = query.limit(200);
+    }
+
+    const { data, error } = await query;
+    if (error || !data || data.length === 0) return [];
+
+    return data.map((row: any) => ({
+      id: row.id,
+      company: row.company,
+      title: row.title,
+      location: row.location || 'Remote',
+      type: row.type || 'Full-time',
+      source: row.source || 'Direct ATS',
+      sourceType: 'direct_ats',
+      url: row.url,
+      description: row.description || '',
+      salaryRange: row.salary_range || undefined,
+      category: row.category || 'Software Engineering',
+      season: row.season || undefined,
+      workModel: row.work_model || 'Hybrid',
+      experienceLevel: row.experience_level || undefined,
+      isVerified: row.is_verified ?? true,
+      status: row.status ?? 'active',
+      contentHash: row.content_hash || undefined,
+      skills: Array.isArray(row.extracted_skills) ? row.extracted_skills : [],
+      responsibilities: Array.isArray(row.responsibilities) ? row.responsibilities : [],
+      requirements: Array.isArray(row.requirements) ? row.requirements : [],
+      preferredQualifications: Array.isArray(row.preferred_qualifications) ? row.preferred_qualifications : [],
+      updatedAt: row.updated_at,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Save / Upsert verified job postings to Supabase
+ */
+export async function upsertJobPostings(jobs: JobPosting[]): Promise<{ success: boolean; count: number; error?: string }> {
+  try {
+    if (!jobs || jobs.length === 0) return { success: true, count: 0 };
+
+    const payload = jobs.map(j => ({
+      id: j.id,
+      company: j.company,
+      title: j.title,
+      location: j.location || 'Remote',
+      type: j.type || 'Full-time',
+      source: j.source || 'Direct ATS',
+      url: j.url,
+      description: j.description || '',
+      salary_range: j.salaryRange || null,
+      category: j.category || 'Software Engineering',
+      season: j.season || null,
+      work_model: j.workModel || 'Hybrid',
+      experience_level: j.experienceLevel || null,
+      is_verified: j.isVerified ?? true,
+      status: j.status || 'active',
+      content_hash: j.contentHash || null,
+      extracted_skills: j.skills || [],
+      responsibilities: j.responsibilities || [],
+      requirements: j.requirements || [],
+      preferred_qualifications: j.preferredQualifications || [],
+      updated_at: j.updatedAt || new Date().toISOString(),
+    }));
+
+    const chunkSize = 50;
+    let savedCount = 0;
+    for (let i = 0; i < payload.length; i += chunkSize) {
+      const chunk = payload.slice(i, i + chunkSize);
+      const { error } = await supabase
+        .from('job_postings')
+        .upsert(chunk, { onConflict: 'id' });
+      if (error) {
+        console.warn('[Supabase DB] Job upsert note:', error.message);
+      } else {
+        savedCount += chunk.length;
+      }
+    }
+
+    return { success: true, count: savedCount };
+  } catch (err: any) {
+    return { success: false, count: 0, error: err.message || 'Failed to upsert job postings' };
+  }
+}
+
+/**
+ * Sync delta result (new, updated, closed) directly into Supabase
+ */
+export async function syncDeltaToSupabase(delta: {
+  newJobs: JobPosting[];
+  updatedJobs: JobPosting[];
+  closedJobs: JobPosting[];
+}): Promise<{ success: boolean; upserted: number; error?: string }> {
+  try {
+    const toUpsert = [...delta.newJobs, ...delta.updatedJobs, ...delta.closedJobs];
+    const res = await upsertJobPostings(toUpsert);
+    return { success: res.success, upserted: res.count, error: res.error };
+  } catch (err: any) {
+    return { success: false, upserted: 0, error: err.message };
+  }
+}
+
