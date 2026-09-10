@@ -1295,7 +1295,7 @@ export const App: React.FC = () => {
       />
 
       {/* Main Container - Expansive Wide Screen Layout with Reduced Lateral Margins */}
-      <main className="flex-1 w-full max-w-[1780px] mx-auto px-2 sm:px-4 lg:px-6 py-4">
+      <main className={`flex-1 w-full mx-auto ${activeTab === 'canvas' ? 'max-w-[1780px] px-1 sm:px-2 md:px-3 py-1 h-[calc(100vh-64px)] min-h-0 overflow-hidden flex flex-col' : 'max-w-[1780px] px-2 sm:px-4 lg:px-6 py-4'}`}>
         {activeTab === 'home' && (
           <HomePage
             onOpenCanvas={() => {
@@ -1319,7 +1319,7 @@ export const App: React.FC = () => {
         )}
 
         {activeTab === 'canvas' && (
-          <div className="w-full max-w-[1780px] mx-auto px-1 sm:px-2 md:px-4 py-2 animate-in fade-in duration-200">
+          <div className="w-full h-full flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-200">
             <InAppDocumentCanvas
               parsedResume={parsedResume}
               rawText={screenResume?.fullText || parsedResume?.rawText || googleDocs.getMockMasterResume(applicantProfile).fullText}
