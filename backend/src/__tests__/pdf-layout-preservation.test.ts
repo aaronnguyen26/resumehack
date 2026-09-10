@@ -9,6 +9,7 @@ import {
   buildHighFidelityPdfHtml,
   ExtractedPdfLayout,
   PositionedTextItem,
+  isKnownSectionHeader,
 } from "../services/pdf-layout-engine.js";
 import {
   rawTextToHtml,
@@ -431,6 +432,139 @@ describe("PDF Layout Preservation & Design Engine Test Suite", () => {
       expect(result.html).toContain("Cyberdyne Systems — Lead Engineer");
       expect(result.html).toContain("2020 – 2024");
       expect(result.html).toContain("Defended distributed AI infrastructure");
+    });
+  });
+
+  describe("Part 3: Advanced Layout Consistency & Diverse Resume Templates Engine", () => {
+    it("detects right-sidebar 2-column layout and formats main content left and sidebar right", () => {
+      // Main column on left (X: 40 to 360)
+      const leftMainItems: PositionedTextItem[] = [
+        { text: "WORK EXPERIENCE", x: 40, y: 640, width: 140, height: 12 },
+        { text: "Lead Architect — Distributed Systems Corp", x: 40, y: 620, width: 220, height: 11 },
+        { text: "• Built global multi-master database replication cluster", x: 40, y: 600, width: 300, height: 10 },
+        { text: "PROJECTS", x: 40, y: 540, width: 80, height: 12 },
+        { text: "High-Performance RPC Framework", x: 40, y: 520, width: 180, height: 10 },
+      ];
+
+      // Right sidebar on right (X: 410 to 570) at the SAME vertical heights (splitX around 390 / 612 = 63.7%)
+      const rightSidebarItems: PositionedTextItem[] = [
+        { text: "TECHNICAL SKILLS", x: 410, y: 640, width: 110, height: 12 },
+        { text: "• Rust, Go, TypeScript", x: 410, y: 620, width: 130, height: 10 },
+        { text: "• Kafka, Redis, Docker", x: 410, y: 600, width: 120, height: 10 },
+        { text: "EDUCATION", x: 410, y: 540, width: 80, height: 12 },
+        { text: "Stanford University — M.S. CS", x: 410, y: 520, width: 150, height: 10 },
+      ];
+
+      const allItems = [
+        { text: "Alex Rivera", x: 40, y: 720, width: 150, height: 22 },
+        { text: "alex@rivera.dev • San Francisco, CA", x: 40, y: 700, width: 220, height: 10 },
+        ...leftMainItems,
+        ...rightSidebarItems,
+      ];
+
+      const colInfo = detectColumns(allItems, 612);
+      expect(colInfo.columnCount).toBe(2);
+      expect(colInfo.columnBoundaryX).toBeGreaterThanOrEqual(370);
+      expect(colInfo.columnBoundaryX).toBeLessThanOrEqual(410);
+
+      // Verify HTML structure for right-sidebar
+      const rawPdfItems = allItems.map(it => ({
+        str: it.text,
+        transform: [1, 0, 0, 1, it.x, it.y],
+        height: it.height,
+        width: it.width,
+      }));
+      const result = buildHighFidelityPdfHtml(rawPdfItems, 612);
+      expect(result.html).toContain("doc-main-column col-span-8");
+      expect(result.html).toContain("doc-right-sidebar col-span-4");
+      expect(result.html).toContain("border-l");
+    });
+
+    it("does not generate duplicate candidate headers or promote section titles to h1 on page 2+", () => {
+      // Page 2 items starting with a section header at the top
+      const page2Items = [
+        { str: "EDUCATION & CERTIFICATIONS", transform: [1, 0, 0, 1, 40, 740], height: 14, width: 200 },
+        { str: "University of Southern California", transform: [1, 0, 0, 1, 40, 715], height: 11, width: 220 },
+        { str: "June 2024", transform: [1, 0, 0, 1, 480, 715], height: 10, width: 60 },
+        { str: "B.S. in Computer Science • GPA: 3.9", transform: [1, 0, 0, 1, 40, 695], height: 10, width: 250 },
+      ];
+
+      // On Page 2, pageNumber = 2
+      const resultPage2 = buildHighFidelityPdfHtml(page2Items, 612, 792, 2);
+
+      // Page 2 must NOT have doc-candidate-name h1 header
+      expect(resultPage2.html).not.toContain("doc-candidate-name");
+      expect(resultPage2.html).not.toContain("<h1");
+      // Must correctly recognize EDUCATION & CERTIFICATIONS as a section header, not candidate name
+      expect(resultPage2.html).toContain("doc-section-header");
+      expect(resultPage2.html).toContain("EDUCATION &amp; CERTIFICATIONS");
+      expect(resultPage2.html).toContain("University of Southern California");
+      expect(resultPage2.html).toContain("June 2024");
+    });
+
+    it("accurately identifies diverse section header variations via isKnownSectionHeader", () => {
+      // Standard expansions
+      expect(isKnownSectionHeader("RELEVANT WORK EXPERIENCE")).toBe(true);
+      expect(isKnownSectionHeader("CAREER HISTORY")).toBe(true);
+      expect(isKnownSectionHeader("TECHNICAL PROFICIENCIES")).toBe(true);
+      expect(isKnownSectionHeader("EDUCATION & TRAINING")).toBe(true);
+      expect(isKnownSectionHeader("KEY PROJECTS")).toBe(true);
+
+      // Numbered / decorated headers
+      expect(isKnownSectionHeader("1. WORK EXPERIENCE")).toBe(true);
+      expect(isKnownSectionHeader("02. EDUCATION")).toBe(true);
+      expect(isKnownSectionHeader("## TECHNICAL SKILLS")).toBe(true);
+      expect(isKnownSectionHeader("EXPERIENCE:")).toBe(true);
+      expect(isKnownSectionHeader("--- PROJECTS ---")).toBe(true);
+
+      // Spaced-out letter tracking (common in Canva / LaTeX / InDesign resumes)
+      expect(isKnownSectionHeader("E D U C A T I O N")).toBe(true);
+      expect(isKnownSectionHeader("E X P E R I E N C E")).toBe(true);
+      expect(isKnownSectionHeader("S K I L L S")).toBe(true);
+
+      // Non-headers should be rejected
+      expect(isKnownSectionHeader("• Developed cloud native Kubernetes microservices")).toBe(false);
+      expect(isKnownSectionHeader("alex@example.com")).toBe(false);
+      expect(isKnownSectionHeader("https://github.com/developer")).toBe(false);
+    });
+
+    it("correctly handles two-ended split rows with seasons and state abbreviations", () => {
+      const items: PositionedTextItem[] = [
+        { text: "Staff Software Engineer", x: 40, y: 500, width: 160, height: 11 },
+        { text: "Summer 2023 – Present", x: 420, y: 500, width: 140, height: 10 },
+        { text: "Senior Frontend Engineer", x: 40, y: 400, width: 160, height: 11 },
+        { text: "Austin, TX", x: 460, y: 400, width: 80, height: 10 },
+      ];
+
+      expect(detectSplitRows(items, 612)).toBe(true);
+    });
+
+    it("detects LaTeX Computer Modern serif fonts accurately", () => {
+      const latexItems = [
+        { str: "David Hilbert", transform: [1, 0, 0, 1, 40, 720], height: 22, width: 140, fontName: "CMR12" },
+        { str: "hilbert@gottingen.edu", transform: [1, 0, 0, 1, 40, 700], height: 10, width: 160, fontName: "CMR10" },
+        { str: "PUBLICATIONS", transform: [1, 0, 0, 1, 40, 660], height: 12, width: 90, fontName: "CMBX10" },
+        { str: "• Grundlagen der Geometrie", transform: [1, 0, 0, 1, 40, 640], height: 10, width: 220, fontName: "LMRoman10-Regular" },
+      ];
+
+      const layout = detectPdfLayout(latexItems, 612);
+      expect(layout.detectedFontFamily).toBe("serif");
+    });
+
+    it("preserves Word Wingdings and Unicode bullet glyphs with multi-line continuation", () => {
+      const bulletItems = [
+        { str: "EXPERIENCE", transform: [1, 0, 0, 1, 40, 650], height: 12, width: 80 },
+        // Word Wingdings bullet \uF0B7
+        { str: "\uF0B7 Engineered low-latency consensus state machine across distributed", transform: [1, 0, 0, 1, 40, 625], height: 10, width: 400 },
+        // Continuation line of the bullet wrapped onto line below
+        { str: "database nodes yielding 99.999% availability during network splits.", transform: [1, 0, 0, 1, 55, 612], height: 10, width: 380 },
+        // Black circle bullet \u25CF
+        { str: "● Spearheaded migration to containerized microservices architecture.", transform: [1, 0, 0, 1, 40, 590], height: 10, width: 410 },
+      ];
+
+      const result = buildHighFidelityPdfHtml(bulletItems, 612);
+      expect(result.html).toContain("Engineered low-latency consensus state machine across distributed database nodes yielding 99.999% availability during network splits.");
+      expect(result.html).toContain("Spearheaded migration to containerized microservices architecture.");
     });
   });
 });

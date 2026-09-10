@@ -3,7 +3,8 @@ import { isSectionHeaderLine } from './canvas-editor.js';
 import { 
   detectPdfLayout, 
   formatLayoutAwarePdfItems, 
-  ExtractedPdfLayout 
+  ExtractedPdfLayout,
+  isKnownSectionHeader
 } from './pdf-layout-engine.js';
 
 export { detectPdfLayout, formatLayoutAwarePdfItems };
@@ -134,7 +135,9 @@ export function formatExtractedPdfItems(items: Array<{ str?: string; transform?:
         const prev = itemsInLine[i - 1];
         // If there is a noticeable horizontal gap (e.g. Company on left, Date on right)
         const gap = it.x - (prev.x + (prev.width || prev.text.length * 6));
-        if (gap > 28) {
+        const dateRegex = /\b(19\d{2}|20\d{2}|Present|Current|Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?|Spring|Summer|Fall|Autumn|Winter|Remote|Hybrid|CA|NY|WA|TX|MA|IL|FL|NC|VA|GA|CO|PA|OH|MI|NJ|AZ|TN|IN|MD|WI|MN|MO|SC|AL|LA|KY|OR|OK|CT|UT|IA|NV|AR|MS|KS|NM|NE|WV|ID|HI|NH|ME|MT|RI|DE|SD|ND|AK|VT|WY|USA|UK|Vietnam)\b/i;
+        const isDateOrLoc = dateRegex.test(it.text) || /\d{1,2}\/\d{2,4}/.test(it.text) || /[-–—]\s*(?:19\d{2}|20\d{2}|Present)/i.test(it.text);
+        if (gap > 24 || (gap > 12 && isDateOrLoc)) {
           lineStr += '   |   ' + it.text;
         } else {
           lineStr += ' ' + it.text;
@@ -154,15 +157,16 @@ export function formatExtractedPdfItems(items: Array<{ str?: string; transform?:
     }
 
     // If line is a recognized section header, ensure a clean break before it
-    if (isSectionHeaderLine(lineStr)) {
+    if (isKnownSectionHeader(lineStr) || isSectionHeaderLine(lineStr)) {
       if (lines.length > 0 && lines[lines.length - 1] !== '') {
         lines.push('');
       }
     }
 
-    // Normalize bullets at start of line
-    if (/^[•▪▸▹‣◦○*\-]\s+/.test(lineStr) || /^•\s*/.test(lineStr)) {
-      lineStr = '• ' + lineStr.replace(/^[•▪▸▹‣◦○*\-]\s*/, '').trim();
+    // Normalize bullets at start of line with comprehensive Unicode/Wingdings coverage
+    const bulletRegex = /^[\uF0B7\u25CF\u25CB\u25A0\u25AA\u2022\u2023\u2043\u2013\u2014•▪▸▹‣◦○*\-●■◆✦➢✓–—]\s*/;
+    if (bulletRegex.test(lineStr)) {
+      lineStr = '• ' + lineStr.replace(bulletRegex, '').trim();
     }
 
     lines.push(lineStr);
@@ -563,6 +567,10 @@ export async function extractPdfWithLayout(buffer: ArrayBuffer): Promise<{ text:
 
     for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
       const page = await pdfDoc.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 1.0 });
+      const actualWidth = viewport.width || 612;
+      const actualHeight = viewport.height || 792;
+
       const textContent = await page.getTextContent({
         includeMarkedContent: true,
         disableCombineTextItems: false,
@@ -583,7 +591,7 @@ export async function extractPdfWithLayout(buffer: ArrayBuffer): Promise<{ text:
         };
       });
 
-      const formattedResult = formatLayoutAwarePdfItems(enrichedItems);
+      const formattedResult = formatLayoutAwarePdfItems(enrichedItems, actualWidth, actualHeight, pageNum);
       if (!detectedLayout) {
         detectedLayout = formattedResult.layout;
       }

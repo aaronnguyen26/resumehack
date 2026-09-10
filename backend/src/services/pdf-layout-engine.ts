@@ -57,33 +57,96 @@ export interface RawPdfItem {
 }
 
 export const KNOWN_SECTION_HEADERS = [
+  // Work Experience
   'WORK EXPERIENCE',
   'PROFESSIONAL EXPERIENCE',
   'RELEVANT EXPERIENCE',
+  'RELEVANT WORK EXPERIENCE',
   'EMPLOYMENT HISTORY',
   'EMPLOYMENT',
   'EXPERIENCE',
   'WORK HISTORY',
+  'CAREER HISTORY',
+  'PROFESSIONAL BACKGROUND',
+  'EXPERIENCE & EMPLOYMENT',
+  'WORK EXPERIENCE & LEADERSHIP',
+  'SELECTED EXPERIENCE',
+  'INDUSTRY EXPERIENCE',
+  'INTERNSHIP EXPERIENCE',
+  'INTERNSHIPS',
+
+  // Projects
   'FEATURED PROJECTS',
   'TECHNICAL PROJECTS',
   'PERSONAL PROJECTS',
+  'ACADEMIC PROJECTS',
+  'KEY PROJECTS',
+  'SELECTED PROJECTS',
+  'OPEN SOURCE PROJECTS',
+  'PROJECT EXPERIENCE',
+  'SOFTWARE PROJECTS',
   'PROJECTS',
+
+  // Technical & Soft Skills
   'TECHNICAL SKILLS',
   'CORE COMPETENCIES',
   'SKILLS & EXPERTISE',
   'AREAS OF EXPERTISE',
   'SKILLS & INTERESTS',
+  'TECHNICAL PROFICIENCIES',
+  'SKILLS & TECHNOLOGIES',
+  'CORE SKILLS',
+  'KEY SKILLS',
+  'TECHNICAL BACKGROUND',
+  'LANGUAGES & FRAMEWORKS',
+  'PROGRAMMING LANGUAGES',
+  'TOOLS & TECHNOLOGIES',
+  'LANGUAGES & TOOLS',
+  'TECHNICAL TOOLKIT',
+  'SKILLS & ABILITIES',
   'SKILLS',
+
+  // Education & Academics
   'EDUCATION & CREDENTIALS',
   'EDUCATION',
   'ACADEMIC BACKGROUND',
+  'EDUCATION & TRAINING',
+  'EDUCATION AND TRAINING',
+  'ACADEMIC HISTORY',
+  'DEGREES & EDUCATION',
+  'EDUCATION & HONORS',
+  'COURSEWORK',
+  'RELEVANT COURSEWORK',
+
+  // Certifications & Licenses
   'CERTIFICATIONS',
   'LICENSES & CERTIFICATIONS',
   'CERTIFICATES',
+  'CREDENTIALS',
+  'LICENSES',
+
+  // Honors & Awards
   'HONORS & AWARDS',
+  'AWARDS & HONORS',
+  'HONORS',
   'AWARDS',
+  'HONORS & ACHIEVEMENTS',
+  'SCHOLARSHIPS',
+  'AWARDS & SCHOLARSHIPS',
+  'ACHIEVEMENTS',
+
+  // Research & Publications
   'PUBLICATIONS',
   'PATENTS',
+  'RESEARCH EXPERIENCE',
+  'RESEARCH',
+  'RESEARCH & PUBLICATIONS',
+  'PUBLICATIONS & PRESENTATIONS',
+  'PRESENTATIONS',
+  'TALKS',
+  'CONFERENCE PRESENTATIONS',
+
+  // Leadership & Extracurricular
   'LEADERSHIP',
   'ACTIVITIES',
   'EXTRACURRICULAR ACTIVITIES',
@@ -91,11 +154,79 @@ export const KNOWN_SECTION_HEADERS = [
   'COMMUNITY INVOLVEMENT',
   'VOLUNTEERING',
   'VOLUNTEER EXPERIENCE',
+  'LEADERSHIP & INVOLVEMENT',
+  'LEADERSHIP & SERVICE',
+  'CAMPUS INVOLVEMENT',
+  'COLLEGIATE ACTIVITIES',
+  'ORGANIZATIONS',
+  'AFFILIATIONS',
+  'PROFESSIONAL AFFILIATIONS',
+  'MEMBERSHIPS',
+
+  // Summary & Profile
   'SUMMARY',
   'PROFESSIONAL SUMMARY',
   'EXECUTIVE SUMMARY',
   'PROFILE',
+  'ABOUT ME',
+  'ABOUT',
+  'CAREER OBJECTIVE',
+  'OBJECTIVE',
+  'PROFESSIONAL OBJECTIVE',
+  'QUALIFICATIONS',
+  'SUMMARY OF QUALIFICATIONS',
+  'HIGHLIGHTS OF QUALIFICATIONS',
+
+  // Languages & Interests
+  'LANGUAGES',
+  'SPOKEN LANGUAGES',
+  'FOREIGN LANGUAGES',
+  'INTERESTS',
+  'PERSONAL INTERESTS',
+  'HOBBIES',
+
+  // Specialized
+  'MILITARY SERVICE',
+  'MILITARY EXPERIENCE',
+  'SECURITY CLEARANCES',
+  'CLEARANCES',
 ];
+
+/**
+ * Universal, robust section header tester recognizing formatting styles across diverse PDF templates:
+ * - Direct known headers
+ * - Numbered/bulleted headers e.g. "1. WORK EXPERIENCE", "• EDUCATION"
+ * - Spaced letter tracking e.g. "E D U C A T I O N"
+ * - Decorated headers with trailing colons, dashes e.g. "EXPERIENCE:", "--- SKILLS ---"
+ */
+export function isKnownSectionHeader(rawText: string): boolean {
+  if (!rawText) return false;
+  const trimmed = rawText.trim();
+  if (!trimmed || trimmed.length > 55) return false;
+  if (trimmed.includes('@') || /https?:\/\//i.test(trimmed) || /linkedin\.com|github\.com/i.test(trimmed)) return false;
+
+  // Clean off leading numbers, bullets, dashes, icons e.g. "1. ", "01. ", "## ", "--- ", "• "
+  const cleaned = trimmed
+    .replace(/^[\p{Emoji}\p{Symbol}\s#0-9.\-_|=•▪▸▹‣◦○*–—●■◆✦➢✓\uF0B7\u25CF\u25CB\u25A0\u25AA\u2022\u2023\u2043\u2013\u2014]+/u, '')
+    .replace(/[:\-–—_.=\s]+$/, '')
+    .trim()
+    .toUpperCase();
+
+  if (!cleaned) return false;
+
+  if (KNOWN_SECTION_HEADERS.includes(cleaned)) return true;
+
+  // Spaced-out letters e.g. "E D U C A T I O N"
+  const noSpaces = cleaned.replace(/\s+/g, '');
+  if (KNOWN_SECTION_HEADERS.some(h => h.replace(/\s+/g, '') === noSpaces)) return true;
+
+  // Regex match for standard combinations e.g. "EXPERIENCE & PROJECTS", "TECHNICAL SKILLS & TOOLS"
+  if (/^(WORK\s+EXPERIENCE|PROFESSIONAL\s+EXPERIENCE|RELEVANT\s+EXPERIENCE|EMPLOYMENT|EXPERIENCE|PROJECTS|TECHNICAL\s+PROJECTS|SKILLS|TECHNICAL\s+SKILLS|EDUCATION|CERTIFICATIONS|PUBLICATIONS|LEADERSHIP|SUMMARY|AWARDS|HONORS|ACTIVITIES|VOLUNTEERING|COURSEWORK|LANGUAGES|INTERESTS)(?:\s*(?:&|AND|\/|\+)\s*[A-Z\s]+)?$/i.test(cleaned)) {
+    return true;
+  }
+
+  return false;
+}
 
 /**
  * Converts raw PDF.js items into normalized PositionedTextItem models with typography flags.
@@ -164,9 +295,9 @@ export function detectColumns(
     return { columnCount: 1 };
   }
 
-  // Check candidate boundaries between 22% and 52% of page width
-  const minSplitX = pageWidth * 0.22;
-  const maxSplitX = pageWidth * 0.52;
+  // Check candidate boundaries between 20% and 80% of page width (supports left sidebar, 50/50, and right sidebar)
+  const minSplitX = pageWidth * 0.20;
+  const maxSplitX = pageWidth * 0.80;
 
   let maxSeparationScore = 0;
   let minSplitForMaxScore = 0;
@@ -274,8 +405,8 @@ export function detectHeaderAlignment(
 export function detectSplitRows(items: PositionedTextItem[], pageWidth = 612): boolean {
   if (items.length < 2) return false;
 
-  // Look for items sharing the same Y level (within 3.5px) where one is on left and one is on right
-  const dateRegex = /\b(19\d{2}|20\d{2}|Present|Current|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i;
+  // Look for items sharing the same Y level (within 4.2px) where one is on left and one is on right
+  const dateRegex = /\b(19\d{2}|20\d{2}|Present|Current|Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?|Spring|Summer|Fall|Autumn|Winter|Remote|Hybrid|CA|NY|WA|TX|MA|IL|FL|NC|VA|GA|CO|PA|OH|MI|NJ|AZ|TN|IN|MD|WI|MN|MO|SC|AL|LA|KY|OR|OK|CT|UT|IA|NV|AR|MS|KS|NM|NE|WV|ID|HI|NH|ME|MT|RI|DE|SD|ND|AK|VT|WY|USA|UK|Vietnam)\b/i;
   let splitRowMatches = 0;
 
   for (let i = 0; i < items.length; i++) {
@@ -285,8 +416,9 @@ export function detectSplitRows(items: PositionedTextItem[], pageWidth = 612): b
     for (let j = 0; j < items.length; j++) {
       if (i === j) continue;
       const itemB = items[j];
-      if (Math.abs(itemA.y - itemB.y) <= 3.5 && itemB.x >= pageWidth * 0.55) {
-        if (dateRegex.test(itemB.text) || itemB.text.includes(',') || itemB.text.includes('|')) {
+      const maxDelta = Math.max(4.2, (itemA.height || 10) * 0.42);
+      if (Math.abs(itemA.y - itemB.y) <= maxDelta && itemB.x >= pageWidth * 0.52) {
+        if (dateRegex.test(itemB.text) || itemB.text.includes(',') || itemB.text.includes('|') || /\d{1,2}\/\d{2,4}/.test(itemB.text) || /[-–—]/.test(itemB.text)) {
           splitRowMatches++;
           if (splitRowMatches >= 2) return true;
         }
@@ -353,13 +485,13 @@ export function detectPdfLayout(
   // 6. Section divider style
   const sectionDivider: SectionDividerStyle = detectedPreset === 'minimal' ? 'minimal' : 'line';
 
-  // 7. Font family detection
+  // 7. Font family detection (including LaTeX Computer Modern and common publishing fonts)
   let detectedFontFamily: 'serif' | 'sans' | 'mono' = 'sans';
   let serifCount = 0;
   let monoCount = 0;
   for (const it of items) {
     const fn = (it.fontName || '').toLowerCase();
-    if (/times|georgia|garamond|serif|cambria|palatino|baskerville|minion|roman|charter|pt serif|merriweather/i.test(fn)) {
+    if (/times|georgia|garamond|serif|cambria|palatino|baskerville|minion|roman|charter|pt serif|merriweather|cmr|cmbx|cmti|computermodern|latin modern|lmroman/i.test(fn)) {
       serifCount++;
     } else if (/courier|mono|consolas|menlo|source code|fira code/i.test(fn)) {
       monoCount++;
@@ -437,7 +569,8 @@ export interface HighFidelityPdfResult {
 export function buildHighFidelityPdfHtml(
   rawItems: RawPdfItem[],
   pageWidth = 612,
-  pageHeight = 792
+  pageHeight = 792,
+  pageNumber = 1
 ): HighFidelityPdfResult {
   const items = normalizePdfItems(rawItems);
   const layout = detectPdfLayout(rawItems, pageWidth);
@@ -492,6 +625,8 @@ export function buildHighFidelityPdfHtml(
     let segIsBold = Boolean(group[0].isBold);
     let segIsItalic = Boolean(group[0].isItalic);
 
+    const dateRegex = /\b(19\d{2}|20\d{2}|Present|Current|Online|Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?|Spring|Summer|Fall|Autumn|Winter|Remote|Hybrid|CA|NY|WA|TX|MA|IL|FL|NC|VA|GA|CO|PA|OH|MI|NJ|AZ|TN|IN|MD|WI|MN|MO|SC|AL|LA|KY|OR|OK|CT|UT|IA|NV|AR|MS|KS|NM|NE|WV|ID|HI|NH|ME|MT|RI|DE|SD|ND|AK|VT|WY|USA|UK|Vietnam|City|Freshman|Senior|Junior|Sophomore)\b/i;
+
     for (let i = 0; i < group.length; i++) {
       const it = group[i];
       if (i === 0) {
@@ -502,8 +637,8 @@ export function buildHighFidelityPdfHtml(
         const prevWidth = prev.width > 0 ? prev.width : prev.text.length * ((prev.fontSize || 10) * 0.52);
         const gap = it.x - (prev.x + prevWidth);
 
-        const isDateOrLoc = /\b(19\d{2}|20\d{2}|Present|Current|Online|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|CA|NY|Vietnam|City|Freshman)\b/i.test(it.text);
-        const isSplitGap = (gap >= 20 && it.x >= pageWidth * 0.40) || (gap >= 12 && isDateOrLoc && it.x >= pageWidth * 0.35);
+        const isDateOrLoc = dateRegex.test(it.text) || /\d{1,2}\/\d{2,4}/.test(it.text) || /[-–—]\s*(?:19\d{2}|20\d{2}|Present)/i.test(it.text);
+        const isSplitGap = (gap >= 18 && it.x >= pageWidth * 0.38) || (gap >= 10 && isDateOrLoc && it.x >= pageWidth * 0.35);
 
         // Wide gap or explicit date/location item indicates two-ended split
         if (isSplitGap) {
@@ -588,65 +723,87 @@ export function buildHighFidelityPdfHtml(
 
     const lines: VisualLine[] = [];
     let currentGroup: PositionedTextItem[] = [];
-    let currentY: number | null = null;
+    let baseY: number | null = null;
 
     for (const item of sorted) {
-      if (currentY === null || Math.abs(item.y - currentY) <= Math.max(3.2, (item.height || 10) * 0.35)) {
+      const itemTolerance = Math.max(3.8, (item.height || 10) * 0.38);
+      if (baseY === null || Math.abs(item.y - baseY) <= itemTolerance) {
         currentGroup.push(item);
-        currentY = item.y;
+        if (baseY === null) {
+          baseY = item.y;
+        }
       } else {
-        const line = flushGroupToLine(currentGroup, currentY);
+        const line = flushGroupToLine(currentGroup, baseY);
         if (line) lines.push(line);
         currentGroup = [item];
-        currentY = item.y;
+        baseY = item.y;
       }
     }
     if (currentGroup.length > 0) {
-      const line = flushGroupToLine(currentGroup, currentY);
+      const line = flushGroupToLine(currentGroup, baseY);
       if (line) lines.push(line);
     }
 
     return lines;
   };
 
-  // Identify top candidate header region: items above the first section header
-  const isHeaderExcluded = (text: string) => /^(WORK\s+EXPERIENCE|EXPERIENCE|EDUCATION|SKILLS|TECHNICAL\s+SKILLS|PROJECTS|SUMMARY|PUBLICATIONS|CERTIFICATIONS|LEADERSHIP|RELEVANT\s+EXPERIENCE)$/i.test(text.trim().replace(/[:\-–—]+$/, ''));
-  
-  let firstSecHeaderY: number | null = null;
-  for (const it of items) {
-    if (isHeaderExcluded(it.text)) {
-      if (firstSecHeaderY === null || it.y > firstSecHeaderY) {
-        firstSecHeaderY = it.y;
+  let candidateName = '';
+  let contactText = '';
+  let headerHtml = '';
+  let bodyItems = items;
+
+  if (pageNumber === 1) {
+    // Identify top candidate header region: items above the first section header
+    let firstSecHeaderY: number | null = null;
+    for (const it of items) {
+      if (isKnownSectionHeader(it.text)) {
+        if (firstSecHeaderY === null || it.y > firstSecHeaderY) {
+          firstSecHeaderY = it.y;
+        }
       }
     }
-  }
 
-  const maxY = Math.max(...items.map(it => it.y));
-  const headerThreshold = firstSecHeaderY !== null ? firstSecHeaderY : (maxY - 80);
-  const headerItems = items.filter(it => it.y > headerThreshold && !isHeaderExcluded(it.text));
-  const bodyItems = items.filter(it => !headerItems.includes(it));
+    const maxY = Math.max(...items.map(it => it.y));
+    const headerThreshold = firstSecHeaderY !== null ? firstSecHeaderY : (maxY - 80);
+    const headerItems = items.filter(it => it.y > headerThreshold && !isKnownSectionHeader(it.text));
+    bodyItems = items.filter(it => !headerItems.includes(it));
 
-  const topLines = clusterItemsIntoVisualLines(headerItems.length > 0 ? headerItems : items.slice(0, 2));
-  let nameLine = topLines[0];
-  for (const l of topLines) {
-    if (l.fontSize > (nameLine?.fontSize || 0)) {
-      nameLine = l;
+    const topLines = clusterItemsIntoVisualLines(headerItems.length > 0 ? headerItems : items.slice(0, 2));
+    let nameLine = topLines[0];
+    for (const l of topLines) {
+      if (l.fontSize > (nameLine?.fontSize || 0)) {
+        nameLine = l;
+      }
     }
-  }
 
-  const candidateName = nameLine?.segments.map(s => s.text).join(' ') || nameLine?.rawText || 'Candidate';
-  const headerContactLines = topLines.filter(l => l !== nameLine);
-  const contactText = headerContactLines.map(l => l.segments.map(s => s.text).join(' • ')).join(' • ');
+    candidateName = nameLine?.segments.map(s => s.text).join(' ') || nameLine?.rawText || 'Candidate';
+    const headerContactLines = topLines.filter(l => l !== nameLine);
+    contactText = headerContactLines.map(l => l.segments.map(s => s.text).join(' • ')).join(' • ');
+
+    const headerClass = layout.headerAlignment === 'center'
+      ? `doc-header text-center pb-2 mb-3`
+      : layout.headerAlignment === 'split'
+      ? `doc-header flex flex-col sm:flex-row sm:items-end justify-between pb-2 mb-3 gap-2`
+      : `doc-header text-left pb-2 mb-3`;
+
+    headerHtml = `
+      <div class="${headerClass}">
+        <div>
+          <h1 class="doc-candidate-name font-bold text-2xl sm:text-3xl tracking-tight text-zinc-950 dark:text-white pb-1">${escapeHtml(candidateName)}</h1>
+        </div>
+        ${contactText ? `<p class="doc-contact-info text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">${escapeHtml(contactText)}</p>` : ''}
+      </div>
+    `.trim();
+  }
 
   // Helper for section headers
   const isSectionHeader = (line: VisualLine): boolean => {
     const txt = line.rawText.trim();
     if (!txt || txt.length > 55) return false;
-    if (/^[•▪▸▹‣◦○*\-]\s*/.test(txt)) return false;
+    if (/^[•▪▸▹‣◦○*\-–—●■◆✦➢✓\uF0B7\u25CF\u25CB\u25A0\u25AA\u2022\u2023\u2043\u2013\u2014]\s*/.test(txt)) return false;
     if (txt.includes('@') || /linkedin\.com|github\.com|http/i.test(txt)) return false;
 
-    const upper = txt.replace(/[:\-–—]+$/, '').trim().toUpperCase();
-    if (/^(WORK\s+EXPERIENCE|EXPERIENCE|EMPLOYMENT\s+HISTORY|PROFESSIONAL\s+EXPERIENCE|PROJECTS|FEATURED\s+PROJECTS|TECHNICAL\s+PROJECTS|EDUCATION|ACADEMIC\s+BACKGROUND|TECHNICAL\s+SKILLS|SKILLS|CORE\s+COMPETENCIES|CERTIFICATIONS|PUBLICATIONS|AWARDS|HONORS|VOLUNTEERING|LEADERSHIP|SUMMARY|PROFESSIONAL\s+SUMMARY|RELEVANT\s+EXPERIENCE|SKILLS\s+&\s+INTERESTS)$/i.test(upper)) {
+    if (isKnownSectionHeader(txt)) {
       return true;
     }
 
@@ -699,6 +856,8 @@ export function buildHighFidelityPdfHtml(
     const htmlParts: string[] = [];
     const textLines: string[] = [];
 
+    const bulletRegex = /^[\uF0B7\u25CF\u25CB\u25A0\u25AA\u2022\u2023\u2043\u2013\u2014•▪▸▹‣◦○*\-●■◆✦➢✓–—]\s*/;
+
     for (const sec of sections) {
       let secHtml = `<div class="doc-section mb-4">`;
       if (sec.header) {
@@ -730,11 +889,13 @@ export function buildHighFidelityPdfHtml(
         const lineText = l.rawText.trim();
         if (!lineText) continue;
 
-        const isBulletStart = /^[•▪▸▹‣◦○*\-]\s+/.test(lineText) || /^•\s*/.test(lineText);
+        const isBulletStart = bulletRegex.test(lineText);
         if (isBulletStart) {
-          const cleanB = lineText.replace(/^[•▪▸▹‣◦○*\-]\s*/, '').trim();
-          currentBullets.push(cleanB);
-          lastBulletY = l.y;
+          const cleanB = lineText.replace(bulletRegex, '').trim();
+          if (cleanB) {
+            currentBullets.push(cleanB);
+            lastBulletY = l.y;
+          }
           continue;
         }
 
@@ -742,7 +903,7 @@ export function buildHighFidelityPdfHtml(
         // a section header, split entry header, bold title, or separated by a large vertical gap,
         // it is a continuation of the previous bullet point wrapped onto a new line in the PDF.
         const isSplitHeader = l.segments.length >= 2;
-        const isNewJobTitle = (l.isBold && l.fontSize >= layout.fontScale.bodyFontSize) || 
+        const isNewJobTitle = (l.isBold && l.fontSize >= layout.fontScale.bodyFontSize + 0.5) || 
                               (l.isBold && lineText.length < 50 && !/^[a-z,;.]/.test(lineText));
         const isLargeVerticalGap = lastBulletY !== null && Math.abs(lastBulletY - l.y) > (l.fontSize || 10) * 2.2;
 
@@ -799,22 +960,6 @@ export function buildHighFidelityPdfHtml(
     };
   };
 
-  // Build Document Header
-  const headerClass = layout.headerAlignment === 'center'
-    ? `doc-header text-center pb-2 mb-3`
-    : layout.headerAlignment === 'split'
-    ? `doc-header flex flex-col sm:flex-row sm:items-end justify-between pb-2 mb-3 gap-2`
-    : `doc-header text-left pb-2 mb-3`;
-
-  const headerHtml = `
-    <div class="${headerClass}">
-      <div>
-        <h1 class="doc-candidate-name font-bold text-2xl sm:text-3xl tracking-tight text-zinc-950 dark:text-white pb-1">${escapeHtml(candidateName)}</h1>
-      </div>
-      ${contactText ? `<p class="doc-contact-info text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">${escapeHtml(contactText)}</p>` : ''}
-    </div>
-  `.trim();
-
   // Multi-column layout:
   if (layout.columnCount === 2 && layout.columnBoundaryX) {
     const splitX = layout.columnBoundaryX;
@@ -831,17 +976,30 @@ export function buildHighFidelityPdfHtml(
     const splitRatio = splitX / pageWidth;
     let col1Span = 'col-span-4';
     let col2Span = 'col-span-8';
-    if (splitRatio > 0.55) {
+    let isRightSidebar = false;
+
+    if (splitRatio > 0.58) {
+      // Main content on left (col1), sidebar on right (col2)
       col1Span = 'col-span-8';
       col2Span = 'col-span-4';
+      isRightSidebar = true;
     } else if (splitRatio >= 0.42 && splitRatio <= 0.58) {
       col1Span = 'col-span-6';
       col2Span = 'col-span-6';
     }
 
-    // Left column is always col1 (x < splitX), Right column is always col2 (x >= splitX)
-    // preserving exact spatial layout and orientation of the original PDF.
-    const twoColumnHtml = `
+    const twoColumnHtml = isRightSidebar
+      ? `
+      <div class="doc-two-column-layout grid grid-cols-12 gap-5 mt-2">
+        <main class="doc-main-column ${col1Span} space-y-4">
+          ${col1Formatted.html}
+        </main>
+        <aside class="doc-right-sidebar ${col2Span} border-l border-zinc-200 dark:border-zinc-800 pl-4 space-y-4">
+          ${col2Formatted.html}
+        </aside>
+      </div>
+    `.trim()
+      : `
       <div class="doc-two-column-layout grid grid-cols-12 gap-5 mt-2">
         <aside class="doc-left-column ${col1Span} border-r border-zinc-200 dark:border-zinc-800 pr-4 space-y-4">
           ${col1Formatted.html}
@@ -853,11 +1011,11 @@ export function buildHighFidelityPdfHtml(
     `.trim();
 
     // For ATS reading order, prioritize the column containing experience/projects
-    const isCol2Main = /experience|work history|employment|projects/i.test(col2Formatted.text);
+    const isCol2Main = !isRightSidebar && /experience|work history|employment|projects/i.test(col2Formatted.text);
     const primaryText = isCol2Main ? col2Formatted.text : col1Formatted.text;
     const secondaryText = isCol2Main ? col1Formatted.text : col2Formatted.text;
 
-    const fullHtml = `${headerHtml}\n${twoColumnHtml}`;
+    const fullHtml = headerHtml ? `${headerHtml}\n${twoColumnHtml}` : twoColumnHtml;
     const fullText = [
       candidateName,
       contactText,
@@ -865,7 +1023,7 @@ export function buildHighFidelityPdfHtml(
       primaryText,
       '',
       secondaryText,
-    ].join('\n').trim();
+    ].filter(Boolean).join('\n').trim();
 
     return {
       html: fullHtml,
@@ -877,8 +1035,8 @@ export function buildHighFidelityPdfHtml(
   // Single-column layout:
   const bodyLines = clusterItemsIntoVisualLines(bodyItems);
   const bodyFormatted = formatLinesToHtmlSections(bodyLines);
-  const fullHtml = `${headerHtml}\n${bodyFormatted.html}`.trim();
-  const fullText = [candidateName, contactText, '', bodyFormatted.text].join('\n').trim();
+  const fullHtml = headerHtml ? `${headerHtml}\n${bodyFormatted.html}`.trim() : bodyFormatted.html.trim();
+  const fullText = [candidateName, contactText, '', bodyFormatted.text].filter(Boolean).join('\n').trim();
 
   return {
     html: fullHtml,
@@ -894,13 +1052,15 @@ export function buildHighFidelityPdfHtml(
  */
 export function formatLayoutAwarePdfItems(
   rawItems: RawPdfItem[],
-  pageWidth = 612
+  pageWidth = 612,
+  pageHeight = 792,
+  pageNumber = 1
 ): {
   text: string;
   layout: ExtractedPdfLayout;
   html?: string;
 } {
-  const result = buildHighFidelityPdfHtml(rawItems, pageWidth);
+  const result = buildHighFidelityPdfHtml(rawItems, pageWidth, pageHeight, pageNumber);
   return {
     text: result.text,
     layout: result.layout,

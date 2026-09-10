@@ -1,4 +1,5 @@
 import { ApplicantProfile } from '../types/index.js';
+import { isKnownSectionHeader } from './pdf-layout-engine.js';
 
 export function escapeHtml(text: string): string {
   if (!text) return '';
@@ -80,18 +81,20 @@ const SECTION_HEADER_TEST_REGEX = new RegExp(
 
 export function isSectionHeaderLine(line: string): boolean {
   const trimmed = line.trim();
-  if (!trimmed || trimmed.length > 50) return false;
+  if (!trimmed || trimmed.length > 55) return false;
   // Must not be a bullet line
-  if (/^[•▪▸▹‣◦○*\-]\s*/.test(trimmed)) return false;
+  if (/^[\uF0B7\u25CF\u25CB\u25A0\u25AA\u2022\u2023\u2043\u2013\u2014•▪▸▹‣◦○*\-●■◆✦➢✓–—]\s*/.test(trimmed)) return false;
   // Must not contain an email or link
   if (trimmed.includes('@') || /https?:\/\//i.test(trimmed) || /linkedin\.com/i.test(trimmed) || /github\.com/i.test(trimmed)) return false;
   
+  if (isKnownSectionHeader(trimmed)) return true;
+
   // Clean off trailing colons or underline characters
   const clean = trimmed.replace(/[:\-–—]+$/, '').trim().toUpperCase();
   if (KNOWN_SECTION_HEADERS.includes(clean)) return true;
 
   // Regex check for variations e.g. "1. WORK EXPERIENCE" or "## EXPERIENCE"
-  const stripped = clean.replace(/^[#0-9.\s]+/, '').trim();
+  const stripped = clean.replace(/^[\p{Emoji}\p{Symbol}\s#0-9.\-_|•▪▸▹‣◦○*–—]+/u, '').trim();
   if (KNOWN_SECTION_HEADERS.includes(stripped)) return true;
 
   // Pattern check: uppercase phrases matching standard resume sections
@@ -114,26 +117,27 @@ export function isSidebarSection(header: string): boolean {
 export function isJobMetaLine(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) return false;
-  if (/^[•▪▸▹‣◦○*\-]\s*/.test(trimmed)) return false;
+  if (/^[\uF0B7\u25CF\u25CB\u25A0\u25AA\u2022\u2023\u2043\u2013\u2014•▪▸▹‣◦○*\-●■◆✦➢✓–—]\s*/.test(trimmed)) return false;
 
   const hasYear = /\b(19\d{2}|20\d{2})\b/.test(trimmed);
   const hasPresent = /\b(present|current)\b/i.test(trimmed);
-  const hasDateRange = hasYear && (hasPresent || /[-–—|/]/.test(trimmed));
-  const hasLocation = /\b(Remote|Hybrid|San Francisco|New York|Seattle|Austin|Boston|Chicago|Los Angeles|CA|NY|WA|TX|MA|IL|USA)\b/i.test(trimmed);
-  const hasEmploymentType = /\b(Full-time|Part-time|Contract|Internship|Intern)\b/i.test(trimmed);
+  const hasMonthOrSeason = /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?|Spring|Summer|Fall|Autumn|Winter)\b/i.test(trimmed);
+  const hasDateRange = (hasYear || hasMonthOrSeason) && (hasPresent || /[-–—|/]/.test(trimmed) || /\d{4}/.test(trimmed));
+  const hasLocation = /\b(Remote|Hybrid|San Francisco|New York|Seattle|Austin|Boston|Chicago|Los Angeles|CA|NY|WA|TX|MA|IL|FL|NC|VA|GA|CO|PA|OH|MI|NJ|AZ|TN|IN|MD|WI|MN|MO|SC|AL|LA|KY|OR|OK|CT|UT|IA|NV|AR|MS|KS|NM|NE|WV|ID|HI|NH|ME|MT|RI|DE|SD|ND|AK|VT|WY|USA|UK|Vietnam|City)\b/i.test(trimmed);
+  const hasEmploymentType = /\b(Full-time|Part-time|Contract|Internship|Intern|Fellow|Apprentice)\b/i.test(trimmed);
 
   return (hasDateRange && (hasLocation || hasEmploymentType || trimmed.includes('|') || trimmed.includes(','))) ||
-         (hasDateRange && trimmed.length < 50) ||
-         ((hasLocation || hasEmploymentType) && trimmed.includes('|'));
+         (hasDateRange && trimmed.length < 60) ||
+         ((hasLocation || hasEmploymentType) && (trimmed.includes('|') || trimmed.includes(',')));
 }
 
 export function isBulletLine(line: string): boolean {
   const trimmed = line.trim();
-  return /^[•▪▸▹‣◦○*\-]\s+/.test(trimmed) || /^•\s*/.test(trimmed);
+  return /^[\uF0B7\u25CF\u25CB\u25A0\u25AA\u2022\u2023\u2043\u2013\u2014•▪▸▹‣◦○*\-●■◆✦➢✓–—]\s*/.test(trimmed);
 }
 
 export function cleanBulletLine(line: string): string {
-  return line.trim().replace(/^[•▪▸▹‣◦○*\-]\s*/, '').trim();
+  return line.trim().replace(/^[\uF0B7\u25CF\u25CB\u25A0\u25AA\u2022\u2023\u2043\u2013\u2014•▪▸▹‣◦○*\-●■◆✦➢✓–—]\s*/, '').trim();
 }
 
 /**
