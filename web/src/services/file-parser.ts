@@ -1,11 +1,20 @@
 import { ApplicantProfile } from '../types/index.js';
 import { isSectionHeaderLine } from './canvas-editor.js';
+import { 
+  detectPdfLayout, 
+  formatLayoutAwarePdfItems, 
+  ExtractedPdfLayout 
+} from './pdf-layout-engine.js';
+
+export { detectPdfLayout, formatLayoutAwarePdfItems };
+export type { ExtractedPdfLayout };
 
 export interface FileParseResult {
   text: string;
   fileName: string;
   fileType: 'pdf' | 'docx' | 'text' | 'unknown';
   charCount: number;
+  layout?: ExtractedPdfLayout;
 }
 
 /**
@@ -526,9 +535,9 @@ export async function getPdfJsLib(): Promise<any> {
 }
 
 /**
- * Master multi-tiered client-side PDF text extraction engine.
+ * Master multi-tiered client-side PDF text extraction engine with layout preservation.
  */
-export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
+export async function extractPdfWithLayout(buffer: ArrayBuffer): Promise<{ text: string; layout: ExtractedPdfLayout }> {
   // Tier 1: Try PDF.js with in-memory worker handler
   try {
     const pdfjsLib = await getPdfJsLib();
@@ -547,6 +556,7 @@ export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
 
     const pdfDoc = await loadingTask.promise;
     const pageTexts: string[] = [];
+    let detectedLayout: ExtractedPdfLayout | null = null;
 
     for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
       const page = await pdfDoc.getPage(pageNum);
@@ -554,7 +564,13 @@ export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
         includeMarkedContent: true,
         disableCombineTextItems: false,
       });
-      let pageFormatted = formatExtractedPdfItems(textContent.items as any[]);
+
+      const formattedResult = formatLayoutAwarePdfItems(textContent.items as any[]);
+      if (!detectedLayout) {
+        detectedLayout = formattedResult.layout;
+      }
+      let pageFormatted = formattedResult.text;
+
       // Secondary fallback: if coordinate layout dropped strings, join raw str items directly
       if (!pageFormatted.trim() && textContent.items && textContent.items.length > 0) {
         pageFormatted = (textContent.items as any[])
@@ -570,7 +586,10 @@ export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
 
     const fullResult = pageTexts.join('\n\n').trim();
     if (fullResult.length >= 25) {
-      return normalizeExtractedResumeText(fullResult);
+      return {
+        text: normalizeExtractedResumeText(fullResult),
+        layout: detectedLayout || detectPdfLayout([]),
+      };
     }
   } catch (err) {
     console.warn('[FileParser] PDF.js extraction note, trying stream fallback:', err);
@@ -580,7 +599,10 @@ export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
   try {
     const streamResult = await extractTextFromPdfDecompressionFallback(buffer);
     if (streamResult.trim().length >= 25) {
-      return normalizeExtractedResumeText(streamResult);
+      return {
+        text: normalizeExtractedResumeText(streamResult),
+        layout: detectPdfLayout([]),
+      };
     }
   } catch (err) {
     console.warn('[FileParser] Tier 2 stream decompression note:', err);
@@ -588,7 +610,15 @@ export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
 
   // Tier 3: Legacy raw pattern scanner
   const rawScanned = extractTextFromPdfArrayBufferLegacy(buffer);
-  return normalizeExtractedResumeText(rawScanned);
+  return {
+    text: normalizeExtractedResumeText(rawScanned),
+    layout: detectPdfLayout([]),
+  };
+}
+
+export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
+  const result = await extractPdfWithLayout(buffer);
+  return result.text;
 }
 
 /**
@@ -651,8 +681,8 @@ export async function parseUploadedResumeFile(file: File): Promise<FileParseResu
 
   if (extension === 'pdf') {
     const buffer = await file.arrayBuffer();
-    const extracted = await extractTextFromPdf(buffer);
-    const cleaned = extracted.trim();
+    const { text, layout } = await extractPdfWithLayout(buffer);
+    const cleaned = text.trim();
     if (!cleaned) {
       throw new Error(
         'Could not extract text from this PDF. The document may be a scanned image without selectable text, or is password-protected. Please upload a searchable PDF or paste your resume text into the canvas.'
@@ -664,6 +694,7 @@ export async function parseUploadedResumeFile(file: File): Promise<FileParseResu
       fileName,
       fileType: 'pdf',
       charCount: cleaned.length,
+      layout,
     };
   }
 

@@ -35,15 +35,19 @@ import {
   PanelRightOpen,
   CheckCircle2,
   Cloud,
+  LayoutGrid,
+  Columns,
 } from 'lucide-react';
 import { ParsedResume } from '../services/resume-parser.js';
 import { parseUploadedResumeFile } from '../services/file-parser.js';
+import type { ExtractedPdfLayout } from '../services/file-parser.js';
 import { 
   rawTextToHtml, 
   extractTextFromDoc, 
   generateSectionHtml, 
-  escapeHtml 
+  escapeHtml,
 } from '../services/canvas-editor.js';
+import type { ResumeLayoutOptions } from '../services/canvas-editor.js';
 import { TailoredBulletDiff, ApplicantProfile, ScrapedJobData, TailorResumeResponse } from '../types/index.js';
 import { HackyAiAtsPanel } from './HackyAiAtsPanel.js';
 
@@ -138,6 +142,53 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   const [showGuides, setShowGuides] = useState<boolean>(true);
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(true);
 
+  // ── Layout Preservation & Visual Architecture State ───────────────────────
+  const [layoutOptions, setLayoutOptions] = useState<ResumeLayoutOptions>(() => {
+    try {
+      const saved = localStorage.getItem('user_resume_layout');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch {}
+    return {
+      preset: 'classic',
+      headerAlignment: 'left',
+      sectionDivider: 'line',
+      columnLayout: 'single',
+    };
+  });
+
+  const handleUpdateLayout = useCallback((newOptions: Partial<ResumeLayoutOptions>) => {
+    setLayoutOptions(prev => {
+      const updated: ResumeLayoutOptions = { ...prev, ...newOptions };
+      if (newOptions.preset) {
+        if (newOptions.preset === 'modern') {
+          updated.headerAlignment = newOptions.headerAlignment || 'center';
+          updated.columnLayout = newOptions.columnLayout || 'single';
+          updated.sectionDivider = newOptions.sectionDivider || 'line';
+        } else if (newOptions.preset === 'two_column') {
+          updated.columnLayout = 'two_column';
+        } else if (newOptions.preset === 'minimal') {
+          updated.sectionDivider = 'minimal';
+          updated.headerAlignment = newOptions.headerAlignment || 'left';
+        } else if (newOptions.preset === 'classic') {
+          updated.headerAlignment = 'left';
+          updated.columnLayout = 'single';
+          updated.sectionDivider = 'line';
+        }
+      }
+      try {
+        localStorage.setItem('user_resume_layout', JSON.stringify(updated));
+      } catch {}
+      if (editorRef.current) {
+        const currentText = extractTextFromDoc(editorRef.current) || rawText;
+        editorRef.current.innerHTML = rawTextToHtml(currentText, applicantProfile, updated);
+      }
+      return updated;
+    });
+  }, [applicantProfile, rawText]);
+
   // ── Auto-Save Telemetry ──────────────────────────────────────────────────
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [lastSavedTime, setLastSavedTime] = useState<string>('Just now');
@@ -154,12 +205,12 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   useEffect(() => {
     setRawEditText(rawText);
     if (editorRef.current && rawText !== lastSyncedTextRef.current) {
-      editorRef.current.innerHTML = rawTextToHtml(rawText, applicantProfile);
+      editorRef.current.innerHTML = rawTextToHtml(rawText, applicantProfile, layoutOptions);
       lastSyncedTextRef.current = rawText;
       setHistory([rawText]);
       setHistoryIndex(0);
     }
-  }, [rawText, applicantProfile]);
+  }, [rawText, applicantProfile, layoutOptions]);
 
   // Synchronize documentTitle prop into local state when external title changes
   useEffect(() => {
@@ -171,10 +222,10 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   // Initial load of HTML into contentEditable on mount
   useEffect(() => {
     if (editorRef.current && !editorRef.current.innerHTML.trim()) {
-      editorRef.current.innerHTML = rawTextToHtml(rawText, applicantProfile);
+      editorRef.current.innerHTML = rawTextToHtml(rawText, applicantProfile, layoutOptions);
       lastSyncedTextRef.current = rawText;
     }
-  }, []);
+  }, [applicantProfile, layoutOptions, rawText]);
 
   const pushState = useCallback((newText: string) => {
     setHistory((prev) => {
@@ -244,7 +295,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
       lastSyncedTextRef.current = targetText;
       onUpdateResumeText(targetText);
       if (editorRef.current) {
-        editorRef.current.innerHTML = rawTextToHtml(targetText, applicantProfile);
+        editorRef.current.innerHTML = rawTextToHtml(targetText, applicantProfile, layoutOptions);
       }
     }
   };
@@ -256,7 +307,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
       lastSyncedTextRef.current = targetText;
       onUpdateResumeText(targetText);
       if (editorRef.current) {
-        editorRef.current.innerHTML = rawTextToHtml(targetText, applicantProfile);
+        editorRef.current.innerHTML = rawTextToHtml(targetText, applicantProfile, layoutOptions);
       }
     }
   };
@@ -365,7 +416,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
         let currentText = extractTextFromDoc(editorRef.current);
         if (currentText.includes(diff.originalText)) {
           currentText = currentText.replace(diff.originalText, replacementText);
-          editorRef.current.innerHTML = rawTextToHtml(currentText, applicantProfile);
+          editorRef.current.innerHTML = rawTextToHtml(currentText, applicantProfile, layoutOptions);
           handleEditorInput();
         }
       }
@@ -429,25 +480,42 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     }
   };
 
-  // PDF File Upload Handler
+  // PDF File Upload Handler with Layout Preservation
   const handleCanvasFileUpload = async (file: File) => {
     setIsExtractingPdf(true);
-    setUploadFeedback(`Extracting text and layout from ${file.name}…`);
+    setUploadFeedback(`Extracting text and original design layout from ${file.name}…`);
     try {
       isUserTypingRef.current = false;
       let extractedText = '';
+      let detectedLayout: ExtractedPdfLayout | undefined;
+
+      const parsed = await parseUploadedResumeFile(file);
+      extractedText = parsed.text;
+      detectedLayout = parsed.layout;
+
       if (onUploadFile) {
-        const res: unknown = await onUploadFile(file);
-        if (typeof res === 'string' && res.trim()) {
-          extractedText = res.trim();
-        }
+        try {
+          const res: unknown = await onUploadFile(file);
+          if (typeof res === 'string' && res.trim()) {
+            extractedText = res.trim();
+          }
+        } catch {}
       }
-      if (!extractedText) {
-        const parsed = await parseUploadedResumeFile(file);
-        extractedText = parsed.text;
-      }
+
+      const newLayout: ResumeLayoutOptions = detectedLayout ? {
+        preset: detectedLayout.detectedPreset,
+        headerAlignment: detectedLayout.headerAlignment,
+        sectionDivider: detectedLayout.sectionDivider,
+        columnLayout: detectedLayout.columnCount === 2 ? 'two_column' : 'single',
+      } : layoutOptions;
+
+      setLayoutOptions(newLayout);
+      try {
+        localStorage.setItem('user_resume_layout', JSON.stringify(newLayout));
+      } catch {}
+
       if (extractedText && editorRef.current) {
-        editorRef.current.innerHTML = rawTextToHtml(extractedText, applicantProfile);
+        editorRef.current.innerHTML = rawTextToHtml(extractedText, applicantProfile, newLayout);
         lastSyncedTextRef.current = extractedText;
         setHistory([extractedText]);
         setHistoryIndex(0);
@@ -458,12 +526,21 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
       }
       setDocTitle(file.name);
       onUpdateDocumentTitle?.(file.name);
-      setUploadFeedback(`✓ Successfully extracted "${file.name}" into canvas`);
+
+      const layoutDescriptor = detectedLayout?.columnCount === 2
+        ? 'Two-Column Sidebar'
+        : detectedLayout?.headerAlignment === 'center'
+        ? 'Centered Executive'
+        : detectedLayout?.hasSplitRows
+        ? 'Classic Tech (Split Dates)'
+        : 'Single-Column';
+
+      setUploadFeedback(`✓ Extracted "${file.name}" preserving original ${layoutDescriptor} design`);
     } catch (err: any) {
       setUploadFeedback(`⚠️ Upload failed: ${err.message || 'Could not parse format'}`);
     } finally {
       setIsExtractingPdf(false);
-      setTimeout(() => setUploadFeedback(null), 4000);
+      setTimeout(() => setUploadFeedback(null), 5000);
     }
   };
 
@@ -959,6 +1036,83 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
 
           <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-1 hidden sm:block"></div>
 
+          {/* Visual Layout & Architecture Preset */}
+          <div className="flex items-center">
+            <select
+              value={layoutOptions.preset || 'classic'}
+              onChange={(e) => handleUpdateLayout({ preset: e.target.value as any })}
+              className="h-7 px-2 text-xs font-medium rounded-md bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none cursor-pointer"
+              title="Resume Visual Design & Architecture Preset"
+            >
+              <option value="classic">Layout: Classic Tech (Split Dates)</option>
+              <option value="modern">Layout: Modern Executive (Centered)</option>
+              <option value="two_column">Layout: Two-Column (Sidebar)</option>
+              <option value="minimal">Layout: Minimalist (Clean)</option>
+            </select>
+          </div>
+
+          {/* Columns Toggle (1-Col vs 2-Col) */}
+          <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5 hidden sm:flex">
+            <button
+              type="button"
+              onMouseDown={preventFocusLoss}
+              onClick={() => handleUpdateLayout({ columnLayout: 'single' })}
+              className={`px-1.5 py-0.5 text-[10px] font-bold rounded transition-colors ${
+                (layoutOptions.columnLayout || 'single') === 'single'
+                  ? 'bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-2xs'
+                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+              }`}
+              title="Single Column Layout"
+            >
+              1-Col
+            </button>
+            <button
+              type="button"
+              onMouseDown={preventFocusLoss}
+              onClick={() => handleUpdateLayout({ columnLayout: 'two_column' })}
+              className={`px-1.5 py-0.5 text-[10px] font-bold rounded transition-colors ${
+                layoutOptions.columnLayout === 'two_column'
+                  ? 'bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-2xs'
+                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+              }`}
+              title="Two-Column Sidebar Layout"
+            >
+              2-Col
+            </button>
+          </div>
+
+          {/* Header Alignment Toggle */}
+          <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5 hidden md:flex">
+            <button
+              type="button"
+              onMouseDown={preventFocusLoss}
+              onClick={() => handleUpdateLayout({ headerAlignment: 'left' })}
+              className={`px-1.5 py-0.5 text-[10px] font-bold rounded transition-colors ${
+                (layoutOptions.headerAlignment || 'left') === 'left'
+                  ? 'bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-2xs'
+                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+              }`}
+              title="Left-Aligned Header"
+            >
+              Left
+            </button>
+            <button
+              type="button"
+              onMouseDown={preventFocusLoss}
+              onClick={() => handleUpdateLayout({ headerAlignment: 'center' })}
+              className={`px-1.5 py-0.5 text-[10px] font-bold rounded transition-colors ${
+                layoutOptions.headerAlignment === 'center'
+                  ? 'bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-2xs'
+                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+              }`}
+              title="Centered Header"
+            >
+              Center
+            </button>
+          </div>
+
+          <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-1 hidden sm:block"></div>
+
           {/* Insert Section Quick Dropdown */}
           <div className="relative group/insert">
             <button
@@ -1097,7 +1251,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
                       onUpdateResumeText(rawEditText);
                       pushState(rawEditText);
                       if (editorRef.current) {
-                        editorRef.current.innerHTML = rawTextToHtml(rawEditText, applicantProfile);
+                        editorRef.current.innerHTML = rawTextToHtml(rawEditText, applicantProfile, layoutOptions);
                       }
                       setIsRawEditing(false);
                     }}
