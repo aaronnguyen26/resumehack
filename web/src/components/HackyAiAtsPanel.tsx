@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Award, 
   ShieldCheck, 
@@ -23,10 +23,23 @@ import {
   RefreshCw,
   Lightbulb,
   ArrowRight,
-  ExternalLink
+  ExternalLink,
+  Key,
+  Zap,
+  RotateCcw,
+  CheckCheck,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { AtsScorerService } from '../services/ats-scorer.js';
 import { TriVariantService, FramingVariantId } from '../services/tri-variant.js';
+import { 
+  GeminiRecommendationService, 
+  GeminiPersonalizedRecommendation, 
+  getStoredGeminiApiKey, 
+  setStoredGeminiApiKey,
+  testGeminiApiKey 
+} from '../services/gemini-recommendations.js';
 import { 
   AtsScoreReport, 
   KeywordMatch, 
@@ -50,6 +63,7 @@ export interface HackyAiAtsPanelProps {
   onApplyAllDiffs?: () => void;
   onInsertKeyword: (keyword: string) => void;
   onInsertBullet?: (bulletText: string, sectionHint?: string) => void;
+  onReplaceBulletText?: (originalText: string, newText: string) => void;
   onClose?: () => void;
   lineCount: number;
   maxRecommendedLines: number;
@@ -89,6 +103,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
   onApplyAllDiffs,
   onInsertKeyword,
   onInsertBullet,
+  onReplaceBulletText,
   onClose,
   lineCount,
   maxRecommendedLines,
@@ -102,6 +117,18 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
   const [customJobTitle, setCustomJobTitle] = useState(currentJob?.title || targetRole);
   const [customJobCompany, setCustomJobCompany] = useState(currentJob?.company || 'Target Tech Co');
   const [appliedItemIds, setAppliedItemIds] = useState<Record<string, boolean>>({});
+
+  // ── Gemini Recommendation Pipeline State ─────────────────────────────────
+  const [geminiApiKey, setGeminiApiKey] = useState<string>(() => getStoredGeminiApiKey());
+  const [apiKeyInput, setApiKeyInput] = useState<string>(() => getStoredGeminiApiKey());
+  const [isKeyConfigOpen, setIsKeyConfigOpen] = useState(false);
+  const [isTestingKey, setIsTestingKey] = useState(false);
+  const [keyFeedback, setKeyFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isGeneratingRecs, setIsGeneratingRecs] = useState(false);
+  const [geminiRecommendations, setGeminiRecommendations] = useState<GeminiPersonalizedRecommendation[]>([]);
+  const [recSource, setRecSource] = useState<'gemini' | 'heuristic_fallback'>('heuristic_fallback');
+  const [recModelUsed, setRecModelUsed] = useState<string>('gemini-2.0-flash');
+  const [selectedRecCategory, setSelectedRecCategory] = useState<string>('all');
 
   const triVariantService = useMemo(() => new TriVariantService(), []);
   const [globalVariant, setGlobalVariant] = useState<'primary' | FramingVariantId>('primary');
@@ -209,128 +236,123 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
     return atsReport.keywords.filter(k => k.foundInResume);
   }, [atsReport.keywords]);
 
-  // ── Hacky AI Recommendations Engine ──────────────────────────────────────
-  const recommendations: AiRecommendationItem[] = useMemo(() => {
-    const items: AiRecommendationItem[] = [];
+  // ── Gemini Recommendation Engine Pipeline ────────────────────────────────
+  const geminiService = useMemo(() => new GeminiRecommendationService(geminiApiKey), [geminiApiKey]);
 
-    // 1. Missing Critical Keywords (Highest Impact)
-    if (missingKeywords.length > 0) {
+  const handleGenerateRecommendations = useCallback(async (forcedKey?: string) => {
+    setIsGeneratingRecs(true);
+    try {
+      const activeKey = forcedKey !== undefined ? forcedKey : geminiApiKey;
+      const result = await geminiService.generateRecommendations({
+        resumeText: resumeText || 'Software Engineer Candidate',
+        jobDescription: currentJob?.description,
+        targetRole,
+        apiKey: activeKey,
+      });
+
+      setGeminiRecommendations(result.recommendations);
+      setRecSource(result.source);
+      if (result.modelUsed) setRecModelUsed(result.modelUsed);
+    } catch (err) {
+      console.error('[HackyAiAtsPanel] Recommendation generation failed:', err);
+    } finally {
+      setIsGeneratingRecs(false);
+    }
+  }, [resumeText, currentJob?.description, targetRole, geminiApiKey, geminiService]);
+
+  useEffect(() => {
+    handleGenerateRecommendations();
+  }, [resumeText, currentJob?.description, targetRole]);
+
+  const handleSaveApiKey = async () => {
+    const trimmed = apiKeyInput.trim();
+    if (!trimmed) {
+      setStoredGeminiApiKey('');
+      setGeminiApiKey('');
+      setKeyFeedback({ type: 'success', message: 'API key removed. Using smart personalized fallback.' });
+      setIsKeyConfigOpen(false);
+      handleGenerateRecommendations('');
+      return;
+    }
+
+    setIsTestingKey(true);
+    setKeyFeedback(null);
+    const testResult = await testGeminiApiKey(trimmed);
+    setIsTestingKey(false);
+
+    if (testResult.valid) {
+      setStoredGeminiApiKey(trimmed);
+      setGeminiApiKey(trimmed);
+      setKeyFeedback({ type: 'success', message: 'Gemini 2.0 connected successfully!' });
+      setIsKeyConfigOpen(false);
+      handleGenerateRecommendations(trimmed);
+    } else {
+      setKeyFeedback({ type: 'error', message: testResult.error || 'Invalid Gemini API key.' });
+    }
+  };
+
+  const handleApplyBulletRecommendation = (rec: GeminiPersonalizedRecommendation) => {
+    if (onReplaceBulletText && rec.originalText) {
+      onReplaceBulletText(rec.originalText, rec.improvedText);
+    } else if (onInsertBullet) {
+      onInsertBullet(rec.improvedText, rec.sectionHint);
+    }
+    setAppliedItemIds(prev => ({ ...prev, [rec.id]: true }));
+  };
+
+  // Combined recommendations (Gemini + missing keywords from rubric + layout budget warning)
+  const allRecommendations: GeminiPersonalizedRecommendation[] = useMemo(() => {
+    const list: GeminiPersonalizedRecommendation[] = [...geminiRecommendations];
+
+    // Ensure target role missing keywords from active rubric are present if not covered
+    if (missingKeywords.length > 0 && !list.some(r => r.category === 'missing_skills')) {
       const topMissing = missingKeywords.slice(0, 4).map(k => k.keyword);
-      items.push({
+      list.unshift({
         id: 'rec-missing-keywords',
-        category: 'keywords',
+        category: 'missing_skills',
         title: `Target Role Missing Keywords (${missingKeywords.length})`,
         impactPts: Math.min(20, missingKeywords.length * 4),
         priority: 'critical',
-        description: `Automated ATS filters screen for specific skills from the job description. Your resume is currently missing core requirements like ${topMissing.join(', ')}.`,
+        sectionHint: 'skills',
+        originalText: 'Technical skills list currently lacks key target technologies.',
+        improvedText: `• Core Technical Competencies: Proficient in ${topMissing.join(', ')} with production deployment experience.`,
+        critique: `Automated ATS filters screen for specific skills from the job description. Your resume is missing core requirements: ${topMissing.join(', ')}.`,
+        reasoning: 'Directly matching job keywords in the skills section dramatically improves initial ATS parser passes.',
         suggestedKeywords: topMissing,
         suggestedActionLabel: 'Insert Missing Skills',
       });
     }
 
-    // 2. Production & Scale Signals
-    const prodAudit = atsReport.productionExperienceAudit;
-    const prodKeywords = prodAudit?.productionKeywordsFound || [];
-    const prodScore = prodAudit?.score ?? atsReport.breakdown.productionExperienceScore ?? 80;
-    if (prodScore < 80 || prodKeywords.length < 3) {
-      items.push({
-        id: 'rec-production-scale',
-        category: 'production',
-        title: 'Low Production & Cloud Infrastructure Signals',
-        impactPts: 12,
-        priority: 'critical',
-        description: 'Tier-1 engineering screens look for evidence of real-world scale (Kubernetes, AWS/GCP, Docker, Redis caching, CI/CD pipelines, and high-availability SLAs).',
-        suggestedBullets: [
-          '• Architected containerized microservices using Docker & Kubernetes on AWS, maintaining 99.99% uptime SLAs.',
-          '• Built automated CI/CD deployment pipelines with zero-downtime rolling releases, reducing deploy latency by 65%.'
-        ],
-        suggestedActionLabel: 'Insert Production Bullet',
-        sectionHint: 'experience'
-      });
-    }
-
-    // 3. Quantifiable STAR Metrics
-    const quantStats = atsReport.quantificationStats;
-    const metricsCount = quantStats?.quantifiedBullets ?? 0;
-    const metricsPercentage = quantStats?.percentage ?? atsReport.breakdown.starImpactScore ?? 75;
-    if (metricsCount < 4 || metricsPercentage < 80) {
-      items.push({
-        id: 'rec-star-metrics',
-        category: 'star',
-        title: 'Enhance Quantifiable STAR Metrics (Results & Latency)',
-        impactPts: 15,
-        priority: 'high',
-        description: `Only ${metricsCount} quantifiable metrics detected. Resumes in the top 5% feature concrete percentages, latency drops (P99 ms), dollar values, or user volume.`,
-        suggestedBullets: [
-          '• Optimized PostgreSQL database query execution plans and Redis caching, cutting P99 latency by 54% across 100,000+ daily active users.',
-          '• Engineered distributed Go processing pipelines processing 15M+ daily transactions with sub-30ms response times.'
-        ],
-        suggestedActionLabel: 'Insert Quantifiable Bullet',
-        sectionHint: 'experience'
-      });
-    }
-
-    // 4. Independent Systems Projects & Live Proof
-    const projAudit = atsReport.selfProjectsAudit;
-    if (projAudit && projAudit.tutorialFlags && projAudit.tutorialFlags.length > 0) {
-      items.push({
-        id: 'rec-tutorial-penalty',
-        category: 'projects',
-        title: 'Generic Tutorial Phrasing Detected (-25 pt penalty)',
-        impactPts: 20,
-        priority: 'critical',
-        description: `Hacky AI detected common tutorial phrasing ("${projAudit.tutorialFlags.join(', ')}"). Automated filters downgrade clone projects. Reframe around custom protocols, concurrency, or caching architecture.`,
-        suggestedBullets: [
-          '• Reframe project title: "Distributed Key-Value Engine with Raft Consensus & Persistent WAL Storage"',
-          '• Highlight systems design: "Implemented concurrent read replicas and custom eviction policies reducing memory footprint by 40%."'
-        ],
-        suggestedActionLabel: 'Reframe Project Bullets',
-        sectionHint: 'projects'
-      });
-    } else if (projAudit && !projAudit.hasWorkingLinks) {
-      items.push({
-        id: 'rec-project-links',
-        category: 'projects',
-        title: 'Missing Live Project / GitHub Repository Links',
-        impactPts: 10,
-        priority: 'medium',
-        description: 'Hacky AI awards a verified technical proof bonus for working GitHub URLs and live demo links to substantiate engineering claims.',
-        suggestedBullets: [
-          '• GitHub: github.com/yourhandle/systems-project — Live Demo: https://systems-project-demo.com'
-        ],
-        suggestedActionLabel: 'Add Repository Link',
-        sectionHint: 'projects'
-      });
-    }
-
-    // 5. Page Budget & ATS Layout Optimization
+    // Page budget overflow warning if applicable
     if (pageBudgetPercentage > 100) {
-      items.push({
+      list.push({
         id: 'rec-page-overflow',
-        category: 'budget',
+        category: 'production_scale',
         title: `Page 2 Overflow Warning (+${Math.abs(linesRemaining)} lines)`,
         impactPts: 8,
         priority: 'high',
-        description: `Document is ${lineCount}/${maxRecommendedLines} lines (${pageBudgetPercentage}%). Overflowing onto Page 2 introduces parsing risks with automated ATS scanners. Trim bullet wrapping or select 0.5" compact margins.`,
+        sectionHint: 'experience',
+        originalText: `Document is currently ${lineCount}/${maxRecommendedLines} lines (${pageBudgetPercentage}%).`,
+        improvedText: 'Trim bullet wrapping or select 0.5" compact margins to fit cleanly onto 1 page.',
+        critique: `Document is ${lineCount}/${maxRecommendedLines} lines (${pageBudgetPercentage}%). Overflowing onto Page 2 introduces parsing risks with automated ATS scanners.`,
+        reasoning: 'Single-page resumes maintain the highest recruiter dwell time and prevent split-page parsing errors.',
         suggestedActionLabel: 'Optimal 1-Page Layout Recommended',
       });
     }
 
-    return items;
-  }, [missingKeywords, atsReport, pageBudgetPercentage, lineCount, maxRecommendedLines, linesRemaining]);
+    return list;
+  }, [geminiRecommendations, missingKeywords, pageBudgetPercentage, lineCount, maxRecommendedLines, linesRemaining]);
+
+  const filteredRecommendations = useMemo(() => {
+    if (selectedRecCategory === 'all') return allRecommendations;
+    return allRecommendations.filter(r => r.category === selectedRecCategory);
+  }, [allRecommendations, selectedRecCategory]);
 
   // Calculate potential score uplift with Hacky AI
   const potentialScore = useMemo(() => {
-    const totalUplift = recommendations.reduce((sum, r) => sum + r.impactPts, 0);
+    const totalUplift = allRecommendations.reduce((sum, r) => sum + r.impactPts, 0);
     return Math.min(99, score + totalUplift);
-  }, [score, recommendations]);
-
-  const handleApplyBulletRecommendation = (recId: string, bulletText: string, sectionHint?: 'experience' | 'projects' | 'skills') => {
-    if (onInsertBullet) {
-      onInsertBullet(bulletText, sectionHint);
-      setAppliedItemIds(prev => ({ ...prev, [`${recId}-${bulletText.slice(0, 15)}`]: true }));
-    }
-  };
+  }, [score, allRecommendations]);
 
   return (
     <aside className="w-full md:w-84 lg:w-96 bg-white dark:bg-[#121215] border-l border-zinc-200 dark:border-[#27272A] flex flex-col shrink-0 shadow-sm transition-all duration-200">
@@ -373,9 +395,9 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
           }`}
         >
           <span>AI Recommendations</span>
-          {recommendations.length > 0 && (
+          {allRecommendations.length > 0 && (
             <span className="inline-flex items-center justify-center px-1.5 py-0.2 ml-1 text-[9px] font-mono bg-emerald-500 text-white rounded-full">
-              {recommendations.length}
+              {allRecommendations.length}
             </span>
           )}
         </button>
@@ -467,145 +489,299 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
               </div>
 
               <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-relaxed pt-1 border-t border-zinc-200 dark:border-zinc-800/80">
-                Accepting the recommendations below will optimize your resume against automated ATS filters and elevate your profile into the top 5% tier-1 hiring bar.
+                Accepting the personalized recommendations below will optimize your resume against automated ATS filters and elevate your profile into the top 5% tier-1 hiring bar.
               </p>
             </div>
+
+            {/* Gemini Intelligence Header & Key Connector */}
+            <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  {recSource === 'gemini' ? (
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                      <Zap className="w-3 h-3 text-emerald-500" />
+                      <span>{recModelUsed || 'Gemini 2.0'} Active</span>
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-700 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-zinc-400" />
+                      <span>Personalized Heuristics</span>
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateRecommendations()}
+                    disabled={isGeneratingRecs}
+                    className="px-2 py-1 text-[11px] font-mono font-medium rounded-md bg-white dark:bg-[#121215] border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                    title="Re-run deep personalization analysis"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isGeneratingRecs ? 'animate-spin' : ''}`} />
+                    <span>Re-analyze</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsKeyConfigOpen(!isKeyConfigOpen)}
+                    className="px-2 py-1 text-[11px] font-mono font-medium rounded-md bg-white dark:bg-[#121215] border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Configure Google Gemini API Key"
+                  >
+                    <Key className="w-3 h-3 text-amber-500" />
+                    <span>{geminiApiKey ? 'API Key' : 'Connect Key'}</span>
+                    {isKeyConfigOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Collapsible Gemini API Key Form */}
+              {isKeyConfigOpen && (
+                <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800/80 space-y-2 animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-mono font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1">
+                      <span>Google Gemini API Key</span>
+                      <span className="text-zinc-400 font-normal">(Free at Google AI Studio)</span>
+                    </label>
+                    <a
+                      href="https://aistudio.google.com/app/apikey"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:underline flex items-center gap-0.5"
+                    >
+                      <span>Get Free Key</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  </div>
+
+                  <div className="flex gap-1.5">
+                    <input
+                      type="password"
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      placeholder="Paste AIzaSy... key"
+                      className="flex-1 px-2.5 py-1.5 text-xs font-mono rounded-md bg-white dark:bg-[#121215] border border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveApiKey}
+                      disabled={isTestingKey}
+                      className="px-3 py-1.5 text-xs font-mono font-bold rounded-md bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-zinc-100 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {isTestingKey ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                      <span>{isTestingKey ? 'Testing...' : 'Save'}</span>
+                    </button>
+                  </div>
+
+                  {keyFeedback && (
+                    <div className={`text-[10px] font-mono p-1.5 rounded ${
+                      keyFeedback.type === 'success'
+                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                        : 'bg-red-500/10 text-red-700 dark:text-red-400 border border-red-500/20'
+                    }`}>
+                      {keyFeedback.message}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Category Filter Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[10px] font-mono no-scrollbar">
+              {[
+                { id: 'all', label: `All (${allRecommendations.length})` },
+                { id: 'star_quantification', label: 'STAR & Metrics' },
+                { id: 'systems_depth', label: 'Systems Depth' },
+                { id: 'action_verbs', label: 'Action Verbs' },
+                { id: 'missing_skills', label: 'Missing Skills' },
+                { id: 'production_scale', label: 'Production' },
+              ].map(pill => (
+                <button
+                  key={pill.id}
+                  type="button"
+                  onClick={() => setSelectedRecCategory(pill.id)}
+                  className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-colors cursor-pointer ${
+                    selectedRecCategory === pill.id
+                      ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 font-bold shadow-xs'
+                      : 'bg-zinc-100 dark:bg-zinc-800/80 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200 border border-zinc-200/80 dark:border-zinc-700/60'
+                  }`}
+                >
+                  {pill.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Generating Indicator */}
+            {isGeneratingRecs && (
+              <div className="p-4 rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] flex items-center justify-center gap-2.5 text-xs font-mono text-zinc-600 dark:text-zinc-400 animate-pulse">
+                <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
+                <span>Running Gemini deep resume personalization...</span>
+              </div>
+            )}
 
             {/* Recommendations List */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono uppercase font-bold text-zinc-600 dark:text-zinc-300 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>Actionable Improvements ({recommendations.length})</span>
+                  <span>Personalized Improvements ({filteredRecommendations.length})</span>
                 </span>
-                <span className="text-[10px] font-mono text-zinc-400">Real-Time Scoring</span>
+                <span className="text-[10px] font-mono text-zinc-400">STAR & ATS Aligned</span>
               </div>
 
-              {recommendations.map((rec) => (
-                <div 
-                  key={rec.id}
-                  className="p-3.5 rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] space-y-2.5 shadow-xs"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border uppercase ${
-                          rec.priority === 'critical'
-                            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
-                            : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border-zinc-300 dark:border-zinc-700'
-                        }`}>
-                          {rec.category}
-                        </span>
-                        <span className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">
-                          +{rec.impactPts} pts
-                        </span>
-                      </div>
-                      <h4 className="text-xs font-bold text-zinc-950 dark:text-zinc-100 leading-snug pt-0.5">
-                        {rec.title}
-                      </h4>
-                    </div>
-                  </div>
+              {filteredRecommendations.map((rec) => {
+                const isApplied = appliedItemIds[rec.id];
 
-                  <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                    {rec.description}
-                  </p>
-
-                  {/* Missing Keywords Action Chips */}
-                  {rec.suggestedKeywords && rec.suggestedKeywords.length > 0 && (
-                    <div className="space-y-1.5 pt-1">
-                      <span className="text-[10px] font-mono text-zinc-500">1-Click Insert into Skills:</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {rec.suggestedKeywords.map((kw, kIdx) => {
-                          const isAdded = appliedItemIds[`${rec.id}-${kw}`];
-                          return (
-                            <button
-                              key={kIdx}
-                              type="button"
-                              onClick={() => {
-                                onInsertKeyword(kw);
-                                setAppliedItemIds(prev => ({ ...prev, [`${rec.id}-${kw}`]: true }));
-                              }}
-                              disabled={isAdded}
-                              className={`px-2 py-1 rounded text-[10px] font-mono flex items-center gap-1 transition-all cursor-pointer ${
-                                isAdded
-                                  ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
-                                  : 'bg-white dark:bg-[#121215] hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 shadow-2xs'
-                              }`}
-                            >
-                              {isAdded ? <Check className="w-2.5 h-2.5 text-emerald-500" /> : <Plus className="w-2.5 h-2.5" />}
-                              <span>{kw}</span>
-                              {isAdded && <span className="text-[9px] font-bold">Added</span>}
-                            </button>
-                          );
-                        })}
+                return (
+                  <div 
+                    key={rec.id}
+                    className="p-3.5 rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] space-y-3 shadow-xs transition-all duration-200"
+                  >
+                    {/* Header Row */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border uppercase ${
+                            rec.priority === 'critical'
+                              ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'
+                              : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border-zinc-300 dark:border-zinc-700'
+                          }`}>
+                            {rec.priority}
+                          </span>
+                          <span className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">
+                            +{rec.impactPts} pts
+                          </span>
+                          <span className="text-[9px] font-mono text-zinc-500 uppercase">
+                            [{rec.sectionHint}]
+                          </span>
+                        </div>
+                        <h4 className="text-xs font-bold text-zinc-950 dark:text-zinc-100 leading-snug">
+                          {rec.title}
+                        </h4>
                       </div>
                     </div>
-                  )}
 
-                  {/* Suggested Bullets with 1-Click Insert */}
-                  {rec.suggestedBullets && rec.suggestedBullets.length > 0 && (
-                    <div className="space-y-2 pt-1 border-t border-zinc-200 dark:border-zinc-800/80">
-                      <span className="text-[10px] font-mono text-zinc-500">Suggested Hacky AI Enhancement:</span>
-                      {rec.suggestedBullets.map((bullet, bIdx) => {
-                        const key = `${rec.id}-${bullet.slice(0, 15)}`;
-                        const isApplied = appliedItemIds[key];
-                        return (
-                          <div 
-                            key={bIdx}
-                            className="p-2.5 rounded-lg bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] space-y-2"
-                          >
-                            <div className="text-[11px] text-zinc-900 dark:text-zinc-100 leading-snug font-medium">
-                              {bullet}
-                            </div>
-                            {onInsertBullet && (
+                    {/* Diagnostic Critique Box */}
+                    <div className="p-2.5 rounded-lg bg-zinc-100/70 dark:bg-[#121215] border border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                      <strong className="text-zinc-900 dark:text-zinc-200">Why Hacky flagged this: </strong>
+                      {rec.critique}
+                    </div>
+
+                    {/* Interactive Before & After Visual Comparison Box */}
+                    <div className="space-y-2 pt-0.5">
+                      {/* Before: Current In Your Resume */}
+                      {rec.originalText && (
+                        <div className="p-2.5 rounded-lg bg-zinc-100 dark:bg-[#121215] border border-zinc-200 dark:border-zinc-800 space-y-1">
+                          <div className="text-[10px] font-mono uppercase font-bold text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 dark:bg-zinc-500" />
+                            <span>Current In Your Resume:</span>
+                          </div>
+                          <div className="text-[11px] text-zinc-700 dark:text-zinc-300 font-mono italic leading-snug">
+                            "{rec.originalText}"
+                          </div>
+                        </div>
+                      )}
+
+                      {/* After: Elevated Hacky AI Rewrite */}
+                      {rec.improvedText && (
+                        <div className="p-2.5 rounded-lg bg-emerald-500/5 dark:bg-emerald-500/5 border border-emerald-500/20 space-y-1">
+                          <div className="text-[10px] font-mono uppercase font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-emerald-500" />
+                            <span>Suggested Hacky AI Enhancement:</span>
+                          </div>
+                          <div className="text-[11px] text-zinc-950 dark:text-zinc-50 font-medium leading-snug">
+                            {rec.improvedText}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Missing Keywords Action Chips */}
+                    {rec.suggestedKeywords && rec.suggestedKeywords.length > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        <span className="text-[10px] font-mono text-zinc-500">1-Click Insert into Skills:</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {rec.suggestedKeywords.map((kw, kIdx) => {
+                            const isAdded = appliedItemIds[`${rec.id}-${kw}`];
+                            return (
                               <button
+                                key={kIdx}
                                 type="button"
-                                onClick={() => handleApplyBulletRecommendation(rec.id, bullet, rec.sectionHint)}
-                                disabled={isApplied}
-                                className={`w-full py-1.5 px-2.5 text-[11px] font-bold rounded-md flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
-                                  isApplied
+                                onClick={() => {
+                                  onInsertKeyword(kw);
+                                  setAppliedItemIds(prev => ({ ...prev, [`${rec.id}-${kw}`]: true }));
+                                }}
+                                disabled={isAdded}
+                                className={`px-2 py-1 rounded text-[10px] font-mono flex items-center gap-1 transition-all cursor-pointer ${
+                                  isAdded
                                     ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
-                                    : 'bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950'
+                                    : 'bg-white dark:bg-[#121215] hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 shadow-2xs'
                                 }`}
                               >
-                                {isApplied ? (
-                                  <>
-                                    <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                    <span>Applied to Document (+{rec.impactPts} pts)</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Plus className="w-3.5 h-3.5" />
-                                    <span>{rec.suggestedActionLabel || 'Apply to Document'}</span>
-                                  </>
-                                )}
+                                {isAdded ? <Check className="w-2.5 h-2.5 text-emerald-500" /> : <Plus className="w-2.5 h-2.5" />}
+                                <span>{kw}</span>
+                                {isAdded && <span className="text-[9px] font-bold">Added</span>}
                               </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
-                  {/* 1-Page Budget Progress bar inside recommendation card if budget overflow */}
-                  {rec.category === 'budget' && (
-                    <div className="space-y-1.5 pt-1">
-                      <div className="flex items-center justify-between text-[11px] font-mono">
-                        <span className="text-zinc-700 dark:text-zinc-300">Document Line Count:</span>
-                        <span className={pageBudgetPercentage <= 100 ? 'text-emerald-500 font-bold' : 'text-amber-500 font-bold'}>
-                          {lineCount} / {maxRecommendedLines} lines ({pageBudgetPercentage}%)
-                        </span>
-                      </div>
-                      <div className="w-full bg-zinc-200 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full transition-all duration-300 ${pageBudgetPercentage <= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                          style={{ width: `${Math.min(100, pageBudgetPercentage)}%` }}
-                        />
-                      </div>
+                    {/* 1-Click Replace in Resume Button */}
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleApplyBulletRecommendation(rec)}
+                        disabled={isApplied}
+                        className={`w-full py-2 px-3 text-[11px] font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
+                          isApplied
+                            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                            : 'bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950'
+                        }`}
+                      >
+                        {isApplied ? (
+                          <>
+                            <CheckCheck className="w-3.5 h-3.5 text-emerald-500" />
+                            <span>Applied to Document (+{rec.impactPts} pts)</span>
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>{rec.suggestedActionLabel || 'Replace in Resume'}</span>
+                          </>
+                        )}
+                      </button>
                     </div>
-                  )}
-                </div>
-              ))}
+
+                    {/* Reasoning Footer */}
+                    {rec.reasoning && (
+                      <div className="text-[10px] font-mono text-zinc-500 pt-0.5 leading-relaxed">
+                        💡 {rec.reasoning}
+                      </div>
+                    )}
+
+                    {/* 1-Page Budget Progress bar inside recommendation card if budget overflow */}
+                    {rec.id === 'rec-page-overflow' && (
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex items-center justify-between text-[11px] font-mono">
+                          <span className="text-zinc-700 dark:text-zinc-300">Document Line Count:</span>
+                          <span className={pageBudgetPercentage <= 100 ? 'text-emerald-500 font-bold' : 'text-amber-500 font-bold'}>
+                            {lineCount} / {maxRecommendedLines} lines ({pageBudgetPercentage}%)
+                          </span>
+                        </div>
+                        <div className="w-full bg-zinc-200 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-300 ${pageBudgetPercentage <= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                            style={{ width: `${Math.min(100, pageBudgetPercentage)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
 
               {/* Verified Layout Guard / Capacity Box */}
               <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] space-y-2.5">
@@ -643,7 +819,6 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                 </div>
               </div>
             </div>
-          </div>
         )}
 
         {/* ── TAB 2: SCORECARD & 6-DIMENSIONAL MATRIX ──────────────────────── */}

@@ -870,6 +870,66 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     }
   };
 
+  // Replace an existing bullet in the document canvas with elevated AI recommendation
+  const handleReplaceBulletText = (originalText: string, newText: string) => {
+    if (!editorRef.current) return;
+
+    const cleanOriginal = originalText.replace(/^[•\-\*\u2022\u2023\u25E6\u2043\u2219▪▸⁃\s]+/, '').trim();
+    const cleanNew = newText.replace(/^[•\-\*\u2022\u2023\u25E6\u2043\u2219▪▸⁃\s]+/, '').trim();
+
+    // 1. Direct DOM traversal through <li> elements for exact precision
+    const listItems = Array.from(editorRef.current.querySelectorAll('li'));
+    let replaced = false;
+
+    for (const li of listItems) {
+      const liText = (li.textContent || '').trim();
+      if (
+        liText.includes(cleanOriginal) ||
+        cleanOriginal.includes(liText) ||
+        (cleanOriginal.length > 25 && liText.includes(cleanOriginal.slice(0, 25)))
+      ) {
+        li.innerHTML = `<span class="bg-emerald-500/20 text-emerald-950 dark:text-emerald-100 transition-colors duration-1000">${escapeHtml(cleanNew)}</span>`;
+        replaced = true;
+        break;
+      }
+    }
+
+    // 2. Second attempt: Check paragraph elements or innerHTML text match
+    if (!replaced) {
+      const paragraphs = Array.from(editorRef.current.querySelectorAll('p'));
+      for (const p of paragraphs) {
+        const pText = (p.textContent || '').trim();
+        if (pText.includes(cleanOriginal) || cleanOriginal.includes(pText)) {
+          const bulletGlyph = pText.startsWith('•') ? '• ' : pText.startsWith('-') ? '- ' : '';
+          p.innerHTML = `${bulletGlyph}<span class="bg-emerald-500/20 text-emerald-950 dark:text-emerald-100 transition-colors duration-1000">${escapeHtml(cleanNew)}</span>`;
+          replaced = true;
+          break;
+        }
+      }
+    }
+
+    // 3. Third attempt: innerHTML string replacement
+    if (!replaced) {
+      const currentHtml = editorRef.current.innerHTML;
+      const targetEscaped = escapeHtml(cleanOriginal);
+      if (currentHtml.includes(targetEscaped)) {
+        editorRef.current.innerHTML = currentHtml.replace(
+          targetEscaped,
+          `<span class="bg-emerald-500/20 text-emerald-950 dark:text-emerald-100 transition-colors duration-1000">${escapeHtml(cleanNew)}</span>`
+        );
+        replaced = true;
+      }
+    }
+
+    // 4. Fallback: if bullet was not found in document, append it cleanly
+    if (!replaced) {
+      handleInsertBulletIntoDoc(cleanNew);
+      return;
+    }
+
+    handleEditorInput();
+  };
+
   // PDF File Upload Handler with Layout Preservation
   const handleCanvasFileUpload = async (file: File) => {
     setIsExtractingPdf(true);
@@ -2400,6 +2460,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
               }}
               onInsertKeyword={handleInsertKeywordIntoDoc}
               onInsertBullet={handleInsertBulletIntoDoc}
+              onReplaceBulletText={handleReplaceBulletText}
               onClose={() => setIsInspectorOpen(false)}
               lineCount={lineCount}
               maxRecommendedLines={maxRecommendedLines}

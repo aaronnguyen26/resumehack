@@ -8,6 +8,7 @@ import {
   ApplicationRecord,
 } from '../types/index.js';
 import { getAiSettings } from './ai-tailor.js';
+import { generatePersonalizedFallbackRecommendations } from './gemini-recommendations.js';
 
 export class HackyChatbotService {
   /**
@@ -160,9 +161,32 @@ export class HackyChatbotService {
       recommendations.push(`Line budget warning (~${lineCount} lines). Target 48–52 lines for 1 clean page`);
     }
 
+    // Incorporate deeply personalized recommendations from candidate actual bullets
+    const personalized = generatePersonalizedFallbackRecommendations(
+      resumeText,
+      context.currentJob?.description,
+      context.targetRole
+    );
+
+    for (const pRec of personalized.recommendations.slice(0, 2)) {
+      if (pRec.originalText && pRec.originalText.length > 15) {
+        recommendations.unshift(
+          `${pRec.title}: Upgrade "${pRec.originalText.slice(0, 45)}..." with quantifiable metrics & active leadership verbs`
+        );
+      } else {
+        recommendations.unshift(pRec.title);
+      }
+    }
+
     if (recommendations.length === 0) {
       recommendations.push('Run Closed-Loop ATS tailoring against your target role in Document Canvas');
     }
+
+    const topRecSection = personalized.recommendations.length > 0 && personalized.recommendations[0].originalText
+      ? `**Top Personalized Recommendation:** ${personalized.recommendations[0].title}\n` +
+        `• *Original:* "${personalized.recommendations[0].originalText.slice(0, 65)}..."\n` +
+        `• *Elevated Rewrite:* ${personalized.recommendations[0].improvedText}`
+      : `**Top Recommendation:** ${recommendations[0]}`;
 
     const text =
       `Here is how your resume is currently looking: 🦉\n\n` +
@@ -170,7 +194,7 @@ export class HackyChatbotService {
       `• **Quantified Impact:** **${metricsCount}** verified metrics found\n` +
       `• **Technical Stack:** ${detectedSkills.length > 0 ? detectedSkills.slice(0, 5).join(', ') : 'Add skills section'}\n` +
       `• **Page Budget:** ~${lineCount} lines (${lineCount <= 52 ? 'Fits 1 page ✅' : 'Exceeds 1 page ⚠️'})\n\n` +
-      `**Top Recommendation:** ${recommendations[0]}`;
+      topRecSection;
 
     const dataCard: ChatDataCard = {
       type: 'resume_summary',

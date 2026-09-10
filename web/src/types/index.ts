@@ -554,4 +554,6 @@ export interface ChatbotContext {
   applications?: ApplicationRecord[];
   jobs?: JobPosting[];
   activeTab?: string;
+  currentJob?: any;
+  targetRole?: string;
 }
