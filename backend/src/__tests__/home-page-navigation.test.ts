@@ -172,14 +172,19 @@ describe('Home Page Navigation & Dedicated Workspace Separation Contracts', () =
       expect(content).toContain('h-16');
       expect(content).toContain('px-4 sm:px-8 lg:px-12');
       expect(content).toContain('gap-6');
+      expect(content).toContain('grid grid-cols-5');
 
-      // Check all tabs are present in Navbar
+      // Check all 5 top-level tabs are present in Navbar
       expect(content).toContain('<span>Home</span>');
       expect(content).toContain('<span>Document Canvas</span>');
       expect(content).toContain('<span>Discovery</span>');
       expect(content).toContain('<span>Tracker</span>');
       expect(content).toContain('<span>Profile</span>');
-      expect(content).toContain('<span>Settings</span>');
+
+      // Check Settings is compacted under Profile
+      const profilePath = path.resolve(__dirname, '../../../web/src/components/ProfileTab.tsx');
+      const profileContent = fs.readFileSync(profilePath, 'utf8');
+      expect(profileContent).toContain('<span>Preferences & Settings</span>');
     });
 
     it('Guarantees zero purple and zero blue colors in both light and dark modes', async () => {

@@ -30,8 +30,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   return (
     <header className="sticky top-0 z-50 h-16 bg-white/95 dark:bg-[#09090B]/95 backdrop-blur-md border-b border-zinc-200 dark:border-[#27272A] px-4 sm:px-8 lg:px-12 flex items-center justify-between gap-6 w-full text-zinc-950 dark:text-zinc-50 transition-colors duration-200 select-none">
-      {/* 6 Navigation Pages Equally Spaced Across the Navigation Bar */}
-      <nav className="w-full grid grid-cols-6 gap-2 sm:gap-4 lg:gap-6 h-full items-center" role="tablist" aria-label="Main Navigation">
+      {/* 5 Navigation Pages Equally Spaced Across the Navigation Bar */}
+      <nav className="w-full grid grid-cols-5 gap-2 sm:gap-4 lg:gap-6 h-full items-center" role="tablist" aria-label="Main Navigation">
         <button
           role="tab"
           aria-selected={activeTab === 'home'}
@@ -95,30 +95,16 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         <button
           role="tab"
-          aria-selected={activeTab === 'profile'}
+          aria-selected={activeTab === 'profile' || activeTab === 'settings'}
           onClick={() => setActiveTab('profile')}
           className={`h-10 px-2 sm:px-4 rounded-xl text-xs font-medium inline-flex items-center justify-center gap-2 transition-all w-full text-center cursor-pointer ${
-            activeTab === 'profile'
+            activeTab === 'profile' || activeTab === 'settings'
               ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs'
               : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
           }`}
         >
           <User className="w-4 h-4 shrink-0" />
           <span>Profile</span>
-        </button>
-
-        <button
-          role="tab"
-          aria-selected={activeTab === 'settings'}
-          onClick={() => setActiveTab('settings')}
-          className={`h-10 px-2 sm:px-4 rounded-xl text-xs font-medium inline-flex items-center justify-center gap-2 transition-all w-full text-center cursor-pointer ${
-            activeTab === 'settings'
-              ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs'
-              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-[#18181B]'
-          }`}
-        >
-          <Settings className="w-4 h-4 shrink-0" />
-          <span>Settings</span>
         </button>
       </nav>
 

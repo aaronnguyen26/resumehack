@@ -4,7 +4,6 @@ import { HomePage } from './components/HomePage.js';
 import { InAppDocumentCanvas } from './components/InAppDocumentCanvas.js';
 import { DiscoveryTab } from './components/DiscoveryTab.js';
 import { TrackerTab } from './components/TrackerTab.js';
-import { SettingsTab } from './components/SettingsTab.js';
 import { ProfileTab } from './components/ProfileTab.js';
 import { PreFlightApplyModal } from './components/PreFlightApplyModal.js';
 import { OnboardingModal } from './components/OnboardingModal.js';
@@ -24,6 +23,7 @@ import {
   getStoredApplicantProfile,
   saveStoredApplicantProfile,
   DEFAULT_APPLICANT_PROFILE,
+  isProfileComplete,
   isNewUser,
   getStoredSettings,
   saveStoredSettings,
@@ -123,6 +123,8 @@ export const App: React.FC = () => {
   // Supabase Auth & Cloud Persistence State
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isAuthMandatory, setIsAuthMandatory] = useState<boolean>(false);
+  const [profileInitialSection, setProfileInitialSection] = useState<'profile' | 'vault' | 'settings'>('profile');
   const [isCloudManagerOpen, setIsCloudManagerOpen] = useState<boolean>(false);
   const [userCloudResumes, setUserCloudResumes] = useState<CloudResume[]>([]);
   const [activeCloudResumeId, setActiveCloudResumeId] = useState<string | null>(null);
@@ -169,7 +171,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Listen to Supabase auth session
+  // Listen to Supabase auth session & Gate Unauthenticated New Users
   useEffect(() => {
     let isMounted = true;
 
@@ -178,9 +180,21 @@ export const App: React.FC = () => {
       if (user) {
         setCurrentUser(user);
         await syncUserDataFromCloud(user.id);
+        const cloudProfile = await fetchUserProfile(user.id);
+        const localProfile = await getStoredApplicantProfile();
+        const effective = cloudProfile || localProfile;
+        if (!effective || !isProfileComplete(effective)) {
+          setIsOnboardingOpen(true);
+        }
+      } else {
+        // Gating: New users must sign in first!
+        setIsAuthMandatory(true);
+        setIsAuthModalOpen(true);
       }
     }).catch(err => {
       console.warn('[Supabase] Init session check:', err);
+      setIsAuthMandatory(true);
+      setIsAuthModalOpen(true);
     });
 
     const { data: { subscription } } = onAuthStateChange(async (user) => {
@@ -235,7 +249,10 @@ export const App: React.FC = () => {
       const requestedTab = params.get('tab');
       if (requestedTab === 'match') {
         setActiveTab('canvas');
-      } else if (requestedTab && ['home', 'canvas', 'discovery', 'tracker', 'profile', 'settings'].includes(requestedTab)) {
+      } else if (requestedTab === 'settings') {
+        setActiveTab('profile');
+        setProfileInitialSection('settings');
+      } else if (requestedTab && ['home', 'canvas', 'discovery', 'tracker', 'profile'].includes(requestedTab)) {
         setActiveTab(requestedTab as NavTab);
       }
     }
@@ -247,14 +264,9 @@ export const App: React.FC = () => {
       if (mode) setWorkspaceMode(mode);
     });
 
-    // Load applicant profile and strictly require onboarding if not completed or incomplete
+    // Load applicant profile
     getStoredApplicantProfile().then((profile) => {
       setApplicantProfile(profile);
-      isNewUser().then((needsOnboarding) => {
-        if (needsOnboarding) {
-          setIsOnboardingOpen(true);
-        }
-      });
     });
 
     // Check saved masterDocId from settings if Option 1 was previously connected
@@ -890,10 +902,42 @@ export const App: React.FC = () => {
 
   const handleAuthSuccess = async (user: AuthUser) => {
     setCurrentUser(user);
+    setIsAuthMandatory(false);
     setIsAuthModalOpen(false);
-    setAppliedStatus(`✓ Signed in to Supabase Cloud (${user.email})`);
-    await syncUserDataFromCloud(user.id);
-    setTimeout(() => setAppliedStatus(null), 3500);
+
+    // 1. Fetch user profile from Supabase
+    const cloudProfile = await fetchUserProfile(user.id);
+    if (cloudProfile && isProfileComplete(cloudProfile)) {
+      // Returning user with complete profile!
+      setApplicantProfile(cloudProfile);
+      await saveStoredApplicantProfile(cloudProfile);
+      await saveStoredSettings({
+        userId: user.id,
+        userEmail: user.email || cloudProfile.email,
+        candidateName: `${cloudProfile.firstName} ${cloudProfile.lastName}`.trim(),
+      });
+      await syncUserDataFromCloud(user.id);
+      setAppliedStatus(`✓ Welcome back, ${cloudProfile.firstName}!`);
+      setTimeout(() => setAppliedStatus(null), 3500);
+    } else {
+      // User must fill in the onboarding process!
+      const initial: ApplicantProfile = {
+        ...DEFAULT_APPLICANT_PROFILE,
+        ...(cloudProfile || {}),
+        firstName: cloudProfile?.firstName || user.firstName || '',
+        lastName: cloudProfile?.lastName || user.lastName || '',
+        email: user.email || cloudProfile?.email || '',
+        fullName: `${cloudProfile?.firstName || user.firstName || ''} ${cloudProfile?.lastName || user.lastName || ''}`.trim(),
+      };
+      setApplicantProfile(initial);
+      await saveStoredApplicantProfile(initial);
+      await saveStoredSettings({
+        userId: user.id,
+        userEmail: user.email,
+        candidateName: initial.fullName,
+      });
+      setIsOnboardingOpen(true);
+    }
   };
 
   const handleSaveCurrentResumeToCloud = async (customTitle?: string) => {
@@ -998,15 +1042,76 @@ export const App: React.FC = () => {
       setActiveCloudResumeId(null);
       setAppliedStatus('✓ Signed out of Supabase Cloud');
       setTimeout(() => setAppliedStatus(null), 3000);
+      // Gating: Require signing in again
+      setIsAuthMandatory(true);
+      setIsAuthModalOpen(true);
     } catch (err) {
       console.error('[Supabase] Sign out error:', err);
     }
+  };
+
+  const handleOnboardingComplete = async (savedProfile: ApplicantProfile) => {
+    setApplicantProfile(savedProfile);
+    setIsOnboardingOpen(false);
+    setActiveTab('home');
+
+    // 1. Persist to local storage
+    await saveStoredApplicantProfile(savedProfile);
+
+    // 2. Update settings to ensure referring to the correct user all the time
+    const fullName = `${savedProfile.firstName} ${savedProfile.lastName}`.trim();
+    await saveStoredSettings({
+      candidateName: fullName,
+      targetTitle: savedProfile.targetRole,
+      userId: currentUser?.id,
+      userEmail: savedProfile.email || currentUser?.email,
+    });
+
+    // 3. Update Supabase profile under the authenticated user's ID
+    if (currentUser) {
+      await upsertUserProfile(currentUser.id, {
+        firstName: savedProfile.firstName,
+        lastName: savedProfile.lastName,
+        email: savedProfile.email || currentUser.email,
+        phone: savedProfile.phone,
+        location: savedProfile.location,
+        targetRole: savedProfile.targetRole,
+        skills: savedProfile.skills,
+        school: savedProfile.school,
+        degree: savedProfile.degree,
+        major: savedProfile.major,
+        gpa: savedProfile.gpa,
+        gradMonthYear: savedProfile.gradMonthYear,
+        workAuthorization: savedProfile.workAuthorization,
+        requiresVisaSponsorship: savedProfile.requiresVisaSponsorship,
+        githubUrl: savedProfile.githubUrl,
+        linkedinUrl: savedProfile.linkedinUrl,
+        portfolioUrl: savedProfile.portfolioUrl,
+      });
+
+      setCurrentUser({
+        ...currentUser,
+        firstName: savedProfile.firstName,
+        lastName: savedProfile.lastName,
+        email: savedProfile.email || currentUser.email,
+      });
+    }
+
+    setAppliedStatus(`✓ Onboarding completed! Welcome, ${savedProfile.firstName}.`);
+    setTimeout(() => setAppliedStatus(null), 4000);
   };
 
   const handleUpdateApplicantProfile = async (updated: ApplicantProfile) => {
     setApplicantProfile(updated);
     try {
       await saveStoredApplicantProfile(updated);
+      const fullName = `${updated.firstName} ${updated.lastName}`.trim();
+      await saveStoredSettings({
+        candidateName: fullName,
+        targetTitle: updated.targetRole,
+        userId: currentUser?.id,
+        userEmail: updated.email || currentUser?.email,
+      });
       if (currentUser) {
         await upsertUserProfile(currentUser.id, {
           firstName: updated.firstName,
@@ -1026,6 +1131,12 @@ export const App: React.FC = () => {
           githubUrl: updated.githubUrl,
           linkedinUrl: updated.linkedinUrl,
           portfolioUrl: updated.portfolioUrl,
+        });
+        setCurrentUser({
+          ...currentUser,
+          firstName: updated.firstName,
+          lastName: updated.lastName,
+          email: updated.email || currentUser.email,
         });
       }
     } catch (e) {
@@ -1188,18 +1299,16 @@ export const App: React.FC = () => {
             connectedDocTitle={screenResume?.title}
             workspaceMode={workspaceMode}
             currentUser={currentUser}
-            onOpenAuthModal={() => setIsAuthModalOpen(true)}
+            onOpenAuthModal={() => {
+              setIsAuthMandatory(false);
+              setIsAuthModalOpen(true);
+            }}
             onSignOut={handleSignOut}
             cloudResumesCount={userCloudResumes.length}
             onOpenCloudManager={() => setIsCloudManagerOpen(true)}
-          />
-        )}
-
-        {activeTab === 'settings' && (
-          <SettingsTab
-            currentThemeMode={themeMode}
+            themeMode={themeMode}
             onThemeChange={handleThemeChange}
-            onReopenOnboarding={() => setIsOnboardingOpen(true)}
+            initialSection={profileInitialSection}
           />
         )}
       </main>
@@ -1240,20 +1349,20 @@ export const App: React.FC = () => {
       {isOnboardingOpen && (
         <OnboardingModal
           initialProfile={applicantProfile}
-          onComplete={(savedProfile) => {
-            setApplicantProfile(savedProfile);
-            setIsOnboardingOpen(false);
-            // Land on uncluttered Home page where user can select Option 1 or Option 2
-            setActiveTab('home');
-          }}
+          onComplete={handleOnboardingComplete}
         />
       )}
 
       {/* Supabase Authentication Modal */}
       <AuthModal
         isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
+        onClose={() => {
+          if (!isAuthMandatory) {
+            setIsAuthModalOpen(false);
+          }
+        }}
         onAuthSuccess={handleAuthSuccess}
+        isMandatory={isAuthMandatory}
       />
 
       {/* Supabase Cloud Resume Manager Modal */}

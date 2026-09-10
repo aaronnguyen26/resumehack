@@ -14,6 +14,11 @@ export interface StoredSettings {
   googleClientSecret?: string;
   googleTokenExpiresAt?: number;
   googleUserEmail?: string;
+  userId?: string;
+  userEmail?: string;
+  onePageLineBudgetGuard?: boolean;
+  triVariantFraming?: boolean;
+  themeMode?: 'light' | 'dark' | 'system';
 }
 
 export const EMBEDDED_GOOGLE_ACCESS_TOKEN = '';
@@ -29,6 +34,11 @@ const DEFAULT_SETTINGS: StoredSettings = {
   // Internal OAuth client ID — managed by the extension, never exposed to users.
   googleClientId: '412130143258-4b1t8drhkii7hqagt7sdvd8n3qmchl8i.apps.googleusercontent.com',
   googleUserEmail: undefined,
+  userId: undefined,
+  userEmail: undefined,
+  onePageLineBudgetGuard: true,
+  triVariantFraming: true,
+  themeMode: 'system',
 };
 
 export async function getGoogleAccessToken(): Promise<string | undefined> {
