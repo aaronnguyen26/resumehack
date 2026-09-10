@@ -1,4 +1,5 @@
 import { ApplicantProfile } from '../types/index.js';
+import { isSectionHeaderLine } from './canvas-editor.js';
 
 export interface FileParseResult {
   text: string;
@@ -69,7 +70,7 @@ TECHNICAL SKILLS
 /**
  * Formats positioned text items from PDF.js into ordered lines and sections.
  */
-export function formatExtractedPdfItems(items: Array<{ str?: string; transform?: number[]; height?: number }>): string {
+export function formatExtractedPdfItems(items: Array<{ str?: string; transform?: number[]; height?: number; width?: number }>): string {
   if (!items || items.length === 0) return '';
 
   interface PositionedItem {
@@ -77,6 +78,7 @@ export function formatExtractedPdfItems(items: Array<{ str?: string; transform?:
     x: number;
     y: number;
     height: number;
+    width: number;
   }
 
   const positioned: PositionedItem[] = [];
@@ -90,6 +92,7 @@ export function formatExtractedPdfItems(items: Array<{ str?: string; transform?:
       x: transform[4] || 0,
       y: transform[5] || 0,
       height: item.height || Math.abs(transform[3]) || 10,
+      width: item.width || 0,
     });
   }
 
@@ -107,33 +110,67 @@ export function formatExtractedPdfItems(items: Array<{ str?: string; transform?:
   let currentY: number | null = null;
   let lastLineY: number | null = null;
 
+  const flushLine = (itemsInLine: PositionedItem[]) => {
+    if (itemsInLine.length === 0) return;
+    itemsInLine.sort((a, b) => a.x - b.x);
+
+    let lineStr = '';
+    for (let i = 0; i < itemsInLine.length; i++) {
+      const it = itemsInLine[i];
+      if (i === 0) {
+        lineStr = it.text;
+      } else {
+        const prev = itemsInLine[i - 1];
+        // If there is a noticeable horizontal gap (e.g. Company on left, Date on right)
+        const gap = it.x - (prev.x + (prev.width || prev.text.length * 6));
+        if (gap > 28) {
+          lineStr += '   |   ' + it.text;
+        } else {
+          lineStr += ' ' + it.text;
+        }
+      }
+    }
+
+    lineStr = lineStr.replace(/\s+/g, ' ').trim();
+    if (!lineStr) return;
+
+    // Check if vertical distance indicates a new paragraph or section break
+    const lineHeight = itemsInLine[0]?.height || 10;
+    if (lastLineY !== null && Math.abs(lastLineY - (currentY || 0)) > lineHeight * 1.5) {
+      if (lines.length > 0 && lines[lines.length - 1] !== '') {
+        lines.push('');
+      }
+    }
+
+    // If line is a recognized section header, ensure a clean break before it
+    if (isSectionHeaderLine(lineStr)) {
+      if (lines.length > 0 && lines[lines.length - 1] !== '') {
+        lines.push('');
+      }
+    }
+
+    // Normalize bullets at start of line
+    if (/^[•▪▸▹‣◦○*\-]\s+/.test(lineStr) || /^•\s*/.test(lineStr)) {
+      lineStr = '• ' + lineStr.replace(/^[•▪▸▹‣◦○*\-]\s*/, '').trim();
+    }
+
+    lines.push(lineStr);
+    lastLineY = currentY;
+  };
+
   for (const item of positioned) {
     if (currentY === null || Math.abs(item.y - currentY) <= 3.5) {
       currentLine.push(item);
       currentY = item.y;
     } else {
-      currentLine.sort((a, b) => a.x - b.x);
-      const lineStr = currentLine.map((i) => i.text).join(' ').replace(/\s+/g, ' ').trim();
-
-      // Check if vertical distance indicates a new paragraph or section break
-      if (lastLineY !== null && Math.abs(lastLineY - currentY) > (currentLine[0]?.height || 10) * 1.7) {
-        lines.push('');
-      }
-
-      if (lineStr.length > 0) {
-        lines.push(lineStr);
-        lastLineY = currentY;
-      }
-
+      flushLine(currentLine);
       currentLine = [item];
       currentY = item.y;
     }
   }
 
   if (currentLine.length > 0) {
-    currentLine.sort((a, b) => a.x - b.x);
-    const lineStr = currentLine.map((i) => i.text).join(' ').replace(/\s+/g, ' ').trim();
-    if (lineStr.length > 0) lines.push(lineStr);
+    flushLine(currentLine);
   }
 
   return lines.join('\n');
@@ -159,15 +196,57 @@ export function normalizeExtractedResumeText(text: string): string {
     // Normalize quotes
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
-    // Collapse multiple blank lines
+    // Collapse excessive blank lines
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
 /**
- * Extracts plain text from decompressed PDF operators.
+ * Helper to decode PDF hex string e.g. "<00480065006C006C006F>" or "<48656C6C6F>"
  */
-function extractTextFromOperatorStream(streamText: string): string {
+export function decodePdfHexString(hex: string): string {
+  const cleanHex = hex.replace(/\s+/g, '');
+  if (!cleanHex || cleanHex.length % 2 !== 0) return '';
+
+  // Check if 2-byte UTF-16BE / UCS-2 encoding (common in modern PDF font subsets)
+  if (cleanHex.length >= 4 && cleanHex.length % 4 === 0 && (cleanHex.startsWith('00') || cleanHex.toLowerCase().startsWith('feff'))) {
+    let result = '';
+    const startIndex = cleanHex.toLowerCase().startsWith('feff') ? 4 : 0;
+    for (let i = startIndex; i < cleanHex.length; i += 4) {
+      const code = parseInt(cleanHex.substring(i, i + 4), 16);
+      if (code >= 32 && code <= 126) {
+        result += String.fromCharCode(code);
+      } else if (code === 10 || code === 13) {
+        result += '\n';
+      } else if (code === 8226 || code === 8211 || code === 8212) {
+        result += '• ';
+      } else {
+        result += ' ';
+      }
+    }
+    const trimmed = result.trim();
+    if (trimmed.length > 0) return trimmed;
+  }
+
+  // 1-byte ASCII / Latin1 fallback
+  let ascii = '';
+  for (let i = 0; i < cleanHex.length; i += 2) {
+    const code = parseInt(cleanHex.substring(i, i + 2), 16);
+    if (code >= 32 && code <= 126) {
+      ascii += String.fromCharCode(code);
+    } else if (code === 10 || code === 13) {
+      ascii += '\n';
+    } else {
+      ascii += ' ';
+    }
+  }
+  return ascii.trim();
+}
+
+/**
+ * Extracts plain text from decompressed PDF operators (supporting both ASCII and hex glyphs).
+ */
+export function extractTextFromOperatorStream(streamText: string): string {
   const lines: string[] = [];
   const btRegex = /BT[\s\S]*?ET/g;
   let match: RegExpExecArray | null;
@@ -176,14 +255,22 @@ function extractTextFromOperatorStream(streamText: string): string {
     const block = match[0];
     let blockText = '';
 
-    // (Text) Tj
+    // (Text) Tj, ', or "
     const tjRegex = /\(([^)]+)\)\s*(?:Tj|'|")/g;
     let tjMatch: RegExpExecArray | null;
     while ((tjMatch = tjRegex.exec(block)) !== null) {
       blockText += tjMatch[1] + ' ';
     }
 
-    // [(Item1) 20 (Item2)] TJ
+    // <Hex> Tj
+    const hexTjRegex = /<([0-9a-fA-F\s]+)>\s*(?:Tj|'|")/g;
+    let hexMatch: RegExpExecArray | null;
+    while ((hexMatch = hexTjRegex.exec(block)) !== null) {
+      const decoded = decodePdfHexString(hexMatch[1]);
+      if (decoded) blockText += decoded + ' ';
+    }
+
+    // Array TJ: [(Item1) 20 <Hex>] TJ
     const arrayRegex = /\[(.*?)\]\s*TJ/g;
     let arrMatch: RegExpExecArray | null;
     while ((arrMatch = arrayRegex.exec(block)) !== null) {
@@ -193,6 +280,13 @@ function extractTextFromOperatorStream(streamText: string): string {
       while ((innerMatch = innerTjRegex.exec(inner)) !== null) {
         blockText += innerMatch[1] + ' ';
       }
+
+      const innerHexRegex = /<([0-9a-fA-F\s]+)>/g;
+      let innerHexMatch: RegExpExecArray | null;
+      while ((innerHexMatch = innerHexRegex.exec(inner)) !== null) {
+        const decoded = decodePdfHexString(innerHexMatch[1]);
+        if (decoded) blockText += decoded + ' ';
+      }
     }
 
     if (blockText.trim().length > 0) {
@@ -200,6 +294,7 @@ function extractTextFromOperatorStream(streamText: string): string {
         .replace(/\\([()\\])/g, '$1')
         .replace(/\\r/g, '\n')
         .replace(/\\n/g, '\n')
+        .replace(/\s+/g, ' ')
         .trim();
       if (cleaned.length > 0) lines.push(cleaned);
     }
@@ -209,21 +304,13 @@ function extractTextFromOperatorStream(streamText: string): string {
 }
 
 /**
- * Decompresses a Flate byte stream using native browser DecompressionStream.
+ * Decompresses a Flate byte stream using native browser DecompressionStream or Node zlib.
  */
 async function decompressFlateBytes(bytes: Uint8Array): Promise<string> {
-  if (typeof DecompressionStream === 'undefined') return '';
-  try {
-    const ds = new DecompressionStream('deflate');
-    const writer = ds.writable.getWriter();
-    writer.write(bytes as any);
-    writer.close();
-    const response = new Response(ds.readable);
-    const buf = await response.arrayBuffer();
-    return new TextDecoder('latin1').decode(buf);
-  } catch {
+  // Browser native DecompressionStream support
+  if (typeof DecompressionStream !== 'undefined') {
     try {
-      const ds = new DecompressionStream('deflate-raw');
+      const ds = new DecompressionStream('deflate');
       const writer = ds.writable.getWriter();
       writer.write(bytes as any);
       writer.close();
@@ -231,9 +318,38 @@ async function decompressFlateBytes(bytes: Uint8Array): Promise<string> {
       const buf = await response.arrayBuffer();
       return new TextDecoder('latin1').decode(buf);
     } catch {
-      return '';
+      try {
+        const ds = new DecompressionStream('deflate-raw');
+        const writer = ds.writable.getWriter();
+        writer.write(bytes as any);
+        writer.close();
+        const response = new Response(ds.readable);
+        const buf = await response.arrayBuffer();
+        return new TextDecoder('latin1').decode(buf);
+      } catch {}
     }
   }
+
+  // Node.js environment fallback (e.g. Vitest test runner)
+  try {
+    const globalObj = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : {});
+    const nodeRequire = (globalObj as any).require;
+    const nodeBuffer = (globalObj as any).Buffer;
+    if (typeof nodeRequire === 'function' && nodeBuffer) {
+      const zlib = nodeRequire('zlib');
+      if (zlib) {
+        try {
+          const buf = zlib.inflateSync(nodeBuffer.from(bytes));
+          return buf.toString('latin1');
+        } catch {
+          const buf = zlib.inflateRawSync(nodeBuffer.from(bytes));
+          return buf.toString('latin1');
+        }
+      }
+    }
+  } catch {}
+
+  return '';
 }
 
 /**
@@ -293,6 +409,13 @@ function extractTextFromPdfArrayBufferLegacy(buffer: ArrayBuffer): string {
       blockText += tjMatch[1] + ' ';
     }
 
+    const hexTjRegex = /<([0-9a-fA-F\s]+)>\s*(?:Tj|'|")/g;
+    let hexMatch: RegExpExecArray | null;
+    while ((hexMatch = hexTjRegex.exec(block)) !== null) {
+      const decoded = decodePdfHexString(hexMatch[1]);
+      if (decoded) blockText += decoded + ' ';
+    }
+
     const arrayRegex = /\[(.*?)\]\s*TJ/g;
     let arrMatch: RegExpExecArray | null;
     while ((arrMatch = arrayRegex.exec(block)) !== null) {
@@ -301,6 +424,12 @@ function extractTextFromPdfArrayBufferLegacy(buffer: ArrayBuffer): string {
       let innerMatch: RegExpExecArray | null;
       while ((innerMatch = innerTjRegex.exec(inner)) !== null) {
         blockText += innerMatch[1] + ' ';
+      }
+      const innerHexRegex = /<([0-9a-fA-F\s]+)>/g;
+      let innerHexMatch: RegExpExecArray | null;
+      while ((innerHexMatch = innerHexRegex.exec(inner)) !== null) {
+        const decoded = decodePdfHexString(innerHexMatch[1]);
+        if (decoded) blockText += decoded + ' ';
       }
     }
 
@@ -328,27 +457,71 @@ function extractTextFromPdfArrayBufferLegacy(buffer: ArrayBuffer): string {
   return lines.join('\n');
 }
 
+let pdfjsLibCache: any = null;
+
+/**
+ * Safely loads and initializes PDF.js with an in-memory worker handler, eliminating CORS,
+ * worker script resolution, and bundler packaging issues across browser and Node.js.
+ */
+export async function getPdfJsLib(): Promise<any> {
+  if (typeof window === 'undefined') {
+    try {
+      delete (globalThis as any).pdfjsWorker;
+    } catch {}
+  }
+  if (pdfjsLibCache) return pdfjsLibCache;
+
+  try {
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
+    // In browser environments without worker URLs, register worker module to globalThis for in-memory fake worker
+    if (typeof window !== 'undefined') {
+      try {
+        const workerModule = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
+        (globalThis as any).pdfjsWorker = workerModule;
+      } catch {}
+    }
+
+    pdfjsLibCache = pdfjsLib;
+    return pdfjsLibCache;
+  } catch (err) {
+    // Secondary fallback for standard distribution
+    try {
+      const pdfjsLib = await import('pdfjs-dist');
+      if (typeof window !== 'undefined') {
+        try {
+          const workerModule = await import('pdfjs-dist/build/pdf.worker.mjs');
+          (globalThis as any).pdfjsWorker = workerModule;
+        } catch {}
+      }
+
+      pdfjsLibCache = pdfjsLib;
+      return pdfjsLibCache;
+    } catch (fallbackErr) {
+      console.warn('[FileParser] Could not initialize pdfjs-dist:', fallbackErr);
+      throw fallbackErr;
+    }
+  }
+}
+
 /**
  * Master multi-tiered client-side PDF text extraction engine.
  */
 export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
-  // Tier 1: Try pdfjs-dist
+  // Tier 1: Try PDF.js with in-memory worker handler
   try {
-    const pdfjsLib = await import('pdfjs-dist');
-    if (typeof window !== 'undefined' && 'Worker' in window && !pdfjsLib.GlobalWorkerOptions?.workerSrc) {
-      try {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-          'pdfjs-dist/build/pdf.worker.mjs',
-          import.meta.url
-        ).toString();
-      } catch {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '6.3.289'}/build/pdf.worker.min.mjs`;
-      }
-    }
+    const pdfjsLib = await getPdfJsLib();
+
+    // Ensure byte buffer is an isolated, non-pooled ArrayBuffer to allow zero-copy postMessage transfers
+    const uint8 = new Uint8Array(buffer);
+    const isolatedData = new Uint8Array(uint8.byteLength);
+    isolatedData.set(uint8);
 
     const loadingTask = pdfjsLib.getDocument({
-      data: new Uint8Array(buffer),
+      data: isolatedData,
       useSystemFonts: true,
+      disableFontFace: true,
+      verbosity: 0,
     });
 
     const pdfDoc = await loadingTask.promise;
@@ -356,7 +529,10 @@ export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
 
     for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
       const page = await pdfDoc.getPage(pageNum);
-      const textContent = await page.getTextContent();
+      const textContent = await page.getTextContent({
+        includeMarkedContent: true,
+        disableCombineTextItems: false,
+      });
       const pageFormatted = formatExtractedPdfItems(textContent.items as any[]);
       if (pageFormatted.trim()) {
         pageTexts.push(pageFormatted.trim());
@@ -364,20 +540,22 @@ export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
     }
 
     const fullResult = pageTexts.join('\n\n').trim();
-    if (fullResult.length >= 40) {
+    if (fullResult.length >= 25) {
       return normalizeExtractedResumeText(fullResult);
     }
   } catch (err) {
-    console.warn('[FileParser] PDF.js extraction note, falling back to stream decoder:', err);
+    console.warn('[FileParser] PDF.js extraction note, trying stream fallback:', err);
   }
 
-  // Tier 2: Stream decompressor
+  // Tier 2: Stream decompressor with hex glyph decoding
   try {
     const streamResult = await extractTextFromPdfDecompressionFallback(buffer);
-    if (streamResult.trim().length >= 40) {
+    if (streamResult.trim().length >= 25) {
       return normalizeExtractedResumeText(streamResult);
     }
-  } catch {}
+  } catch (err) {
+    console.warn('[FileParser] Tier 2 stream decompression note:', err);
+  }
 
   // Tier 3: Legacy raw pattern scanner
   const rawScanned = extractTextFromPdfArrayBufferLegacy(buffer);

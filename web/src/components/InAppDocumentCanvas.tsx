@@ -153,9 +153,11 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   // Synchronize history when rawText changes externally (e.g. file upload or reset)
   useEffect(() => {
     setRawEditText(rawText);
-    if (!isUserTypingRef.current && editorRef.current && rawText !== lastSyncedTextRef.current) {
+    if (editorRef.current && rawText !== lastSyncedTextRef.current) {
       editorRef.current.innerHTML = rawTextToHtml(rawText, applicantProfile);
       lastSyncedTextRef.current = rawText;
+      setHistory([rawText]);
+      setHistoryIndex(0);
     }
   }, [rawText, applicantProfile]);
 
@@ -425,13 +427,17 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     setIsExtractingPdf(true);
     setUploadFeedback(`Extracting text and layout from ${file.name}…`);
     try {
+      isUserTypingRef.current = false;
       if (onUploadFile) {
         await onUploadFile(file);
       } else {
         const parsed = await parseUploadedResumeFile(file);
         if (editorRef.current) {
           editorRef.current.innerHTML = rawTextToHtml(parsed.text, applicantProfile);
-          handleEditorInput();
+          lastSyncedTextRef.current = parsed.text;
+          setHistory([parsed.text]);
+          setHistoryIndex(0);
+          onUpdateResumeText(parsed.text);
         }
       }
       setDocTitle(file.name);

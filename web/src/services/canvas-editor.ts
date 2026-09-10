@@ -21,7 +21,105 @@ export function unescapeHtml(text: string): string {
 }
 
 /**
+ * Known resume section header titles.
+ */
+export const KNOWN_SECTION_HEADERS = [
+  'WORK EXPERIENCE',
+  'PROFESSIONAL EXPERIENCE',
+  'EMPLOYMENT HISTORY',
+  'EMPLOYMENT',
+  'EXPERIENCE',
+  'WORK HISTORY',
+  'FEATURED PROJECTS',
+  'TECHNICAL PROJECTS',
+  'PERSONAL PROJECTS',
+  'PROJECTS',
+  'TECHNICAL SKILLS',
+  'CORE COMPETENCIES',
+  'SKILLS & EXPERTISE',
+  'AREAS OF EXPERTISE',
+  'SKILLS',
+  'EDUCATION & CREDENTIALS',
+  'EDUCATION',
+  'ACADEMIC BACKGROUND',
+  'CERTIFICATIONS',
+  'LICENSES & CERTIFICATIONS',
+  'CERTIFICATES',
+  'HONORS & AWARDS',
+  'AWARDS',
+  'PUBLICATIONS',
+  'PATENTS',
+  'LEADERSHIP',
+  'ACTIVITIES',
+  'EXTRACURRICULAR ACTIVITIES',
+  'EXTRACURRICULAR',
+  'VOLUNTEER EXPERIENCE',
+  'VOLUNTEER',
+  'PROFESSIONAL SUMMARY',
+  'EXECUTIVE SUMMARY',
+  'SUMMARY',
+  'ABOUT ME',
+  'OBJECTIVE',
+  'LANGUAGES',
+];
+
+const SECTION_HEADER_TEST_REGEX = new RegExp(
+  `^(?:${KNOWN_SECTION_HEADERS.map(h => h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')).join('|')})[:\\s]*$`,
+  'i'
+);
+
+export function isSectionHeaderLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.length > 50) return false;
+  // Must not be a bullet line
+  if (/^[•▪▸▹‣◦○*\-]\s*/.test(trimmed)) return false;
+  // Must not contain an email or link
+  if (trimmed.includes('@') || /https?:\/\//i.test(trimmed) || /linkedin\.com/i.test(trimmed) || /github\.com/i.test(trimmed)) return false;
+  
+  // Clean off trailing colons or underline characters
+  const clean = trimmed.replace(/[:\-–—]+$/, '').trim().toUpperCase();
+  if (KNOWN_SECTION_HEADERS.includes(clean)) return true;
+
+  // Regex check for variations e.g. "1. WORK EXPERIENCE" or "## EXPERIENCE"
+  const stripped = clean.replace(/^[#0-9.\s]+/, '').trim();
+  if (KNOWN_SECTION_HEADERS.includes(stripped)) return true;
+
+  // Pattern check: uppercase phrases matching standard resume sections
+  if (SECTION_HEADER_TEST_REGEX.test(trimmed) || SECTION_HEADER_TEST_REGEX.test(stripped)) {
+    return true;
+  }
+
+  return false;
+}
+
+export function isJobMetaLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  if (/^[•▪▸▹‣◦○*\-]\s*/.test(trimmed)) return false;
+
+  const hasYear = /\b(19\d{2}|20\d{2})\b/.test(trimmed);
+  const hasPresent = /\b(present|current)\b/i.test(trimmed);
+  const hasDateRange = hasYear && (hasPresent || /[-–—|/]/.test(trimmed));
+  const hasLocation = /\b(Remote|Hybrid|San Francisco|New York|Seattle|Austin|Boston|Chicago|Los Angeles|CA|NY|WA|TX|MA|IL|USA)\b/i.test(trimmed);
+  const hasEmploymentType = /\b(Full-time|Part-time|Contract|Internship|Intern)\b/i.test(trimmed);
+
+  return (hasDateRange && (hasLocation || hasEmploymentType || trimmed.includes('|') || trimmed.includes(','))) ||
+         (hasDateRange && trimmed.length < 50) ||
+         ((hasLocation || hasEmploymentType) && trimmed.includes('|'));
+}
+
+export function isBulletLine(line: string): boolean {
+  const trimmed = line.trim();
+  return /^[•▪▸▹‣◦○*\-]\s+/.test(trimmed) || /^•\s*/.test(trimmed);
+}
+
+export function cleanBulletLine(line: string): string {
+  return line.trim().replace(/^[•▪▸▹‣◦○*\-]\s*/, '').trim();
+}
+
+/**
  * Converts plain text resume into clean, semantically structured editable HTML.
+ * Resilient against both single-newline (\n) and multi-newline (\n\n) extracted text.
  * The resulting HTML is directly editable via contentEditable like Google Docs.
  */
 export function rawTextToHtml(rawText: string, applicantProfile?: Partial<ApplicantProfile>): string {
@@ -60,61 +158,91 @@ export function rawTextToHtml(rawText: string, applicantProfile?: Partial<Applic
     `.trim();
   }
 
-  const paragraphs = rawText.split(/\n\s*\n/);
+  const allLines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (allLines.length === 0) return '';
+
+  // Step 1: Detect indices of all section header lines
+  const sectionHeaderIndices: number[] = [];
+  allLines.forEach((line, idx) => {
+    if (isSectionHeaderLine(line)) {
+      sectionHeaderIndices.push(idx);
+    }
+  });
+
   const htmlParts: string[] = [];
 
-  paragraphs.forEach((para, pIdx) => {
-    const lines = para.split('\n').map(l => l.trim()).filter(Boolean);
-    if (lines.length === 0) return;
+  // Step 2: Extract Header Block (Candidate Name + Contact Details before first section)
+  let headerLines: string[] = [];
+  if (sectionHeaderIndices.length > 0) {
+    headerLines = allLines.slice(0, sectionHeaderIndices[0]);
+  } else {
+    // If no section headers detected, treat the first 1-2 lines as header
+    headerLines = allLines.slice(0, Math.min(2, allLines.length));
+  }
 
-    // Header paragraph (Candidate Name + Contact Details)
-    if (pIdx === 0) {
-      const name = lines[0];
-      const contact = lines.slice(1).join(' • ');
-      htmlParts.push(`
-        <div class="doc-header text-center pb-3 mb-4 border-b border-zinc-200 dark:border-zinc-800">
-          <h1 class="doc-candidate-name font-headline font-bold text-2xl sm:text-3xl tracking-tight text-zinc-950 dark:text-white pb-1">${escapeHtml(name)}</h1>
-          ${contact ? `<p class="doc-contact-info text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">${escapeHtml(contact)}</p>` : ''}
-        </div>
-      `.trim());
-      return;
-    }
+  if (headerLines.length > 0) {
+    const candidateName = headerLines[0];
+    const contactLines = headerLines.slice(1);
+    const contactInfo = contactLines.join(' • ');
 
-    const firstLine = lines[0];
-    const isSectionHeader = /^(summary|professional summary|work experience|experience|projects|featured projects|education|technical skills|skills|leadership|awards|certifications|extracurricular)/i.test(firstLine);
+    htmlParts.push(`
+      <div class="doc-header text-center pb-3 mb-4 border-b border-zinc-200 dark:border-zinc-800">
+        <h1 class="doc-candidate-name font-headline font-bold text-2xl sm:text-3xl tracking-tight text-zinc-950 dark:text-white pb-1">${escapeHtml(candidateName)}</h1>
+        ${contactInfo ? `<p class="doc-contact-info text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">${escapeHtml(contactInfo)}</p>` : ''}
+      </div>
+    `.trim());
+  }
 
-    if (isSectionHeader) {
+  // Step 3: Extract & Format Each Section
+  if (sectionHeaderIndices.length > 0) {
+    for (let i = 0; i < sectionHeaderIndices.length; i++) {
+      const headerIdx = sectionHeaderIndices[i];
+      const nextHeaderIdx = (i + 1 < sectionHeaderIndices.length) ? sectionHeaderIndices[i + 1] : allLines.length;
+      const sectionHeader = allLines[headerIdx];
+      const sectionLines = allLines.slice(headerIdx + 1, nextHeaderIdx);
+
       let sectionHtml = `
         <div class="doc-section mb-4">
-          <h2 class="doc-section-header font-mono font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 border-b border-zinc-200 dark:border-zinc-800 pb-1 mt-4 mb-2">${escapeHtml(firstLine)}</h2>
+          <h2 class="doc-section-header font-mono font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 border-b border-zinc-200 dark:border-zinc-800 pb-1 mt-4 mb-2">${escapeHtml(sectionHeader)}</h2>
       `.trim();
 
-      const remainingLines = lines.slice(1);
       let currentBulletGroup: string[] = [];
 
       const flushBullets = () => {
         if (currentBulletGroup.length > 0) {
           sectionHtml += `<ul class="doc-bullets list-disc pl-5 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200">`;
           currentBulletGroup.forEach(b => {
-            sectionHtml += `<li>${escapeHtml(b)}</li>`;
+            const skillCatMatch = b.match(/^([A-Za-z0-9\s&/-]+):(\s+.+)$/);
+            if (skillCatMatch && /skills|technologies|competencies/i.test(sectionHeader)) {
+              sectionHtml += `<li><strong>${escapeHtml(skillCatMatch[1])}:</strong>${escapeHtml(skillCatMatch[2])}</li>`;
+            } else {
+              sectionHtml += `<li>${escapeHtml(b)}</li>`;
+            }
           });
           sectionHtml += `</ul>`;
           currentBulletGroup = [];
         }
       };
 
-      remainingLines.forEach(line => {
-        const isBullet = /^[•\-*]\s*/.test(line);
-        if (isBullet) {
-          const clean = line.replace(/^[•\-*]\s*/, '');
-          currentBulletGroup.push(clean);
+      sectionLines.forEach(line => {
+        if (isBulletLine(line)) {
+          currentBulletGroup.push(cleanBulletLine(line));
+        } else if (/skills|technologies|competencies/i.test(sectionHeader) && line.includes(':')) {
+          flushBullets();
+          const colonIdx = line.indexOf(':');
+          const category = line.substring(0, colonIdx).trim();
+          const items = line.substring(colonIdx + 1).trim();
+          sectionHtml += `<ul class="doc-bullets list-disc pl-5 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200">`;
+          sectionHtml += `<li><strong>${escapeHtml(category)}:</strong> ${escapeHtml(items)}</li>`;
+          sectionHtml += `</ul>`;
         } else {
           flushBullets();
-          const isMeta = /(\d{4}|present|remote|full-time|part-time|[A-Z]{2}\s*\|)/i.test(line);
-          if (isMeta) {
+          if (isJobMetaLine(line)) {
             sectionHtml += `<p class="doc-job-meta text-xs text-zinc-500 dark:text-zinc-400 italic mb-1.5">${escapeHtml(line)}</p>`;
-          } else {
+          } else if (line.length <= 90 && !line.endsWith('.')) {
             sectionHtml += `<p class="doc-job-title font-bold text-xs text-zinc-900 dark:text-zinc-100 mt-2 mb-0.5">${escapeHtml(line)}</p>`;
+          } else {
+            sectionHtml += `<p class="doc-text text-xs text-zinc-800 dark:text-zinc-200 my-1 leading-relaxed">${escapeHtml(line)}</p>`;
           }
         }
       });
@@ -122,38 +250,37 @@ export function rawTextToHtml(rawText: string, applicantProfile?: Partial<Applic
       flushBullets();
       sectionHtml += `</div>`;
       htmlParts.push(sectionHtml);
-    } else {
-      // General paragraph
-      let paraHtml = `<div class="doc-block mb-3">`;
-      let currentBulletGroup: string[] = [];
-
-      const flushBullets = () => {
-        if (currentBulletGroup.length > 0) {
-          paraHtml += `<ul class="doc-bullets list-disc pl-5 space-y-1 my-1 text-xs text-zinc-800 dark:text-zinc-200">`;
-          currentBulletGroup.forEach(b => {
-            paraHtml += `<li>${escapeHtml(b)}</li>`;
-          });
-          paraHtml += `</ul>`;
-          currentBulletGroup = [];
-        }
-      };
-
-      lines.forEach(line => {
-        const isBullet = /^[•\-*]\s*/.test(line);
-        if (isBullet) {
-          const clean = line.replace(/^[•\-*]\s*/, '');
-          currentBulletGroup.push(clean);
-        } else {
-          flushBullets();
-          paraHtml += `<p class="doc-text text-xs text-zinc-800 dark:text-zinc-200 my-1">${escapeHtml(line)}</p>`;
-        }
-      });
-
-      flushBullets();
-      paraHtml += `</div>`;
-      htmlParts.push(paraHtml);
     }
-  });
+  } else if (allLines.length > headerLines.length) {
+    // Fallback: render remaining unstructured lines
+    const remainingLines = allLines.slice(headerLines.length);
+    let generalHtml = `<div class="doc-block mb-3">`;
+    let currentBulletGroup: string[] = [];
+
+    const flushBullets = () => {
+      if (currentBulletGroup.length > 0) {
+        generalHtml += `<ul class="doc-bullets list-disc pl-5 space-y-1 my-1 text-xs text-zinc-800 dark:text-zinc-200">`;
+        currentBulletGroup.forEach(b => {
+          generalHtml += `<li>${escapeHtml(b)}</li>`;
+        });
+        generalHtml += `</ul>`;
+        currentBulletGroup = [];
+      }
+    };
+
+    remainingLines.forEach(line => {
+      if (isBulletLine(line)) {
+        currentBulletGroup.push(cleanBulletLine(line));
+      } else {
+        flushBullets();
+        generalHtml += `<p class="doc-text text-xs text-zinc-800 dark:text-zinc-200 my-1">${escapeHtml(line)}</p>`;
+      }
+    });
+
+    flushBullets();
+    generalHtml += `</div>`;
+    htmlParts.push(generalHtml);
+  }
 
   return htmlParts.join('\n');
 }
