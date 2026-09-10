@@ -1572,7 +1572,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   );
 
   return (
-    <div className="flex flex-col h-full w-full bg-zinc-50 dark:bg-[#09090B] text-zinc-900 dark:text-zinc-100 transition-colors duration-200 select-none overflow-hidden min-h-0 rounded-xl border border-zinc-200/80 dark:border-[#27272A] shadow-xs">
+    <div className="flex flex-col h-full max-h-full w-full bg-zinc-50 dark:bg-[#09090B] text-zinc-900 dark:text-zinc-100 transition-colors duration-200 select-none overflow-hidden min-h-0 rounded-xl border border-zinc-200/80 dark:border-[#27272A] shadow-xs">
       {/* Hidden File Input for PDF Upload */}
       <input
         ref={fileInputRef}
@@ -1872,9 +1872,9 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
       </header>
 
       {/* ── MAIN WORKSPACE VIEWPORT (Left Canvas Column + Right Inspector) ─────── */}
-      <div className="flex-1 flex flex-col lg:flex-row items-stretch justify-start relative overflow-hidden min-h-0 h-full">
+      <div className="flex-1 flex flex-col lg:flex-row items-stretch justify-start relative overflow-hidden min-h-0 h-full max-h-full">
         {/* ── LEFT DOCUMENT CANVAS WORKSPACE (Toolbar + Paper Stage) ───────── */}
-        <div className="flex-1 flex flex-col min-w-0 bg-zinc-100/70 dark:bg-[#0c0c0e] relative h-full min-h-0 overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 bg-zinc-100/70 dark:bg-[#0c0c0e] relative h-full max-h-full min-h-0 overflow-hidden">
           {/* ── GOOGLE DOCS-STYLE FORMATTING TOOLBAR (Strictly Scoped to Document Canvas) ── */}
           <nav 
             aria-label="Document Formatting Controls" 
@@ -2880,7 +2880,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
           )}
 
           {/* Paper Stage Container */}
-          <div className="flex-1 overflow-y-auto min-h-0 p-3 sm:p-5 md:p-6 lg:p-8 flex flex-col items-center justify-start relative">
+          <div className="flex-1 overflow-y-auto min-h-0 h-full max-h-full p-3 sm:p-5 md:p-6 lg:p-8 flex flex-col items-center justify-start relative overscroll-contain">
             {elevateFeedback && (
               <div className="w-full max-w-[816px] mb-3 px-4 py-2 bg-emerald-950/80 text-emerald-200 border border-emerald-800/80 rounded-xl text-xs font-mono flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-top-1">
                 <div className="flex items-center gap-2">
@@ -2983,7 +2983,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
         {isInspectorOpen && !isZenMode && (
           <aside
             aria-label="Hacky AI ATS Inspector"
-            className="w-full lg:w-[380px] xl:w-[410px] h-80 sm:h-96 lg:h-full shrink-0 border-t lg:border-t-0 lg:border-l border-zinc-200 dark:border-[#27272A] bg-white dark:bg-[#121215] flex flex-col min-h-0 overflow-hidden"
+            className="w-full lg:w-[380px] xl:w-[410px] h-80 sm:h-96 lg:h-full lg:max-h-full shrink-0 border-t lg:border-t-0 lg:border-l border-zinc-200 dark:border-[#27272A] bg-white dark:bg-[#121215] flex flex-col min-h-0 overflow-hidden"
           >
             <HackyAiAtsPanel
               resumeText={rawEditText || rawText}

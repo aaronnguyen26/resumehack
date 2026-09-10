@@ -1277,7 +1277,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen flex flex-col bg-[#FAFAFA] dark:bg-[#09090B] text-zinc-900 dark:text-zinc-100 transition-colors duration-200 ${isDark ? 'dark' : ''}`}>
+    <div className={`flex flex-col bg-[#FAFAFA] dark:bg-[#09090B] text-zinc-900 dark:text-zinc-100 transition-colors duration-200 ${isDark ? 'dark' : ''} ${activeTab === 'canvas' ? 'h-screen max-h-screen overflow-hidden' : 'min-h-screen'}`}>
       {/* Top Navigation Bar */}
       <Navbar
         activeTab={activeTab}
@@ -1295,7 +1295,7 @@ export const App: React.FC = () => {
       />
 
       {/* Main Container - Expansive Wide Screen Layout with Reduced Lateral Margins */}
-      <main className={`flex-1 w-full mx-auto ${activeTab === 'canvas' ? 'max-w-[1780px] px-1 sm:px-2 md:px-3 py-1 h-[calc(100vh-64px)] min-h-0 overflow-hidden flex flex-col' : 'max-w-[1780px] px-2 sm:px-4 lg:px-6 py-4'}`}>
+      <main className={`flex-1 w-full mx-auto ${activeTab === 'canvas' ? 'max-w-[1780px] px-1 sm:px-2 md:px-3 py-1 h-[calc(100vh-64px)] max-h-[calc(100vh-64px)] min-h-0 overflow-hidden flex flex-col' : 'max-w-[1780px] px-2 sm:px-4 lg:px-6 py-4'}`}>
         {activeTab === 'home' && (
           <HomePage
             onOpenCanvas={() => {
@@ -1319,7 +1319,7 @@ export const App: React.FC = () => {
         )}
 
         {activeTab === 'canvas' && (
-          <div className="w-full h-full flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-200">
+          <div className="w-full h-full max-h-full flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-200">
             <InAppDocumentCanvas
               parsedResume={parsedResume}
               rawText={screenResume?.fullText || parsedResume?.rawText || googleDocs.getMockMasterResume(applicantProfile).fullText}

@@ -355,7 +355,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
   }, [score, allRecommendations]);
 
   return (
-    <aside className="w-full h-full bg-white dark:bg-[#121215] flex flex-col shrink-0 min-h-0 overflow-hidden transition-all duration-200">
+    <aside className="w-full h-full max-h-full bg-white dark:bg-[#121215] flex flex-col shrink-0 min-h-0 overflow-hidden transition-all duration-200">
       {/* Panel Header */}
       <div className="p-4 border-b border-zinc-200 dark:border-[#27272A] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
@@ -432,7 +432,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
       </div>
 
       {/* Tab Panels */}
-      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto min-h-0 h-full max-h-full p-4 space-y-4 overscroll-contain">
         {/* ── TAB 1: AI RECOMMENDATIONS (Primary Tab to Improve ATS Score) ───── */}
         {activeTab === 'recommendations' && (
           <div className="space-y-4 animate-in fade-in duration-150">
