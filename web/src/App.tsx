@@ -483,6 +483,18 @@ export const App: React.FC = () => {
 
       try {
         localStorage.setItem('user_custom_resume', parsedFile.text);
+        if (parsedFile.html) {
+          localStorage.setItem('user_custom_resume_html', parsedFile.html);
+        }
+        if (parsedFile.layout) {
+          const layoutConfig = {
+            preset: parsedFile.layout.detectedPreset,
+            headerAlignment: parsedFile.layout.headerAlignment,
+            sectionDivider: parsedFile.layout.sectionDivider,
+            columnLayout: parsedFile.layout.columnCount === 2 ? 'two_column' : 'single',
+          };
+          localStorage.setItem('user_resume_layout', JSON.stringify(layoutConfig));
+        }
       } catch {}
 
       setActiveTab('canvas');

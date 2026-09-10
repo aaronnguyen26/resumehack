@@ -15,6 +15,8 @@ export interface FileParseResult {
   fileType: 'pdf' | 'docx' | 'text' | 'unknown';
   charCount: number;
   layout?: ExtractedPdfLayout;
+  html?: string;
+  pdfBuffer?: ArrayBuffer;
 }
 
 /**
@@ -537,7 +539,7 @@ export async function getPdfJsLib(): Promise<any> {
 /**
  * Master multi-tiered client-side PDF text extraction engine with layout preservation.
  */
-export async function extractPdfWithLayout(buffer: ArrayBuffer): Promise<{ text: string; layout: ExtractedPdfLayout }> {
+export async function extractPdfWithLayout(buffer: ArrayBuffer): Promise<{ text: string; layout: ExtractedPdfLayout; html?: string }> {
   // Tier 1: Try PDF.js with in-memory worker handler
   try {
     const pdfjsLib = await getPdfJsLib();
@@ -556,6 +558,7 @@ export async function extractPdfWithLayout(buffer: ArrayBuffer): Promise<{ text:
 
     const pdfDoc = await loadingTask.promise;
     const pageTexts: string[] = [];
+    const pageHtmls: string[] = [];
     let detectedLayout: ExtractedPdfLayout | null = null;
 
     for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
@@ -570,6 +573,9 @@ export async function extractPdfWithLayout(buffer: ArrayBuffer): Promise<{ text:
         detectedLayout = formattedResult.layout;
       }
       let pageFormatted = formattedResult.text;
+      if (formattedResult.html) {
+        pageHtmls.push(formattedResult.html);
+      }
 
       // Secondary fallback: if coordinate layout dropped strings, join raw str items directly
       if (!pageFormatted.trim() && textContent.items && textContent.items.length > 0) {
@@ -585,10 +591,12 @@ export async function extractPdfWithLayout(buffer: ArrayBuffer): Promise<{ text:
     }
 
     const fullResult = pageTexts.join('\n\n').trim();
+    const fullHtml = pageHtmls.join('\n<hr class="doc-page-break my-8 border-zinc-200 dark:border-zinc-800" />\n');
     if (fullResult.length >= 25) {
       return {
         text: normalizeExtractedResumeText(fullResult),
         layout: detectedLayout || detectPdfLayout([]),
+        html: fullHtml || undefined,
       };
     }
   } catch (err) {
@@ -681,7 +689,7 @@ export async function parseUploadedResumeFile(file: File): Promise<FileParseResu
 
   if (extension === 'pdf') {
     const buffer = await file.arrayBuffer();
-    const { text, layout } = await extractPdfWithLayout(buffer);
+    const { text, layout, html } = await extractPdfWithLayout(buffer);
     const cleaned = text.trim();
     if (!cleaned) {
       throw new Error(
@@ -695,6 +703,8 @@ export async function parseUploadedResumeFile(file: File): Promise<FileParseResu
       fileType: 'pdf',
       charCount: cleaned.length,
       layout,
+      html,
+      pdfBuffer: buffer,
     };
   }
 

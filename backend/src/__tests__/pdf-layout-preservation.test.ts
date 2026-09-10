@@ -6,6 +6,7 @@ import {
   detectPdfLayout,
   formatLayoutAwarePdfItems,
   normalizePdfItems,
+  buildHighFidelityPdfHtml,
   ExtractedPdfLayout,
   PositionedTextItem,
 } from "../services/pdf-layout-engine.js";
@@ -328,6 +329,108 @@ describe("PDF Layout Preservation & Design Engine Test Suite", () => {
       const layout = detectPdfLayout(rawPdfItems, 612);
       expect(layout.columnCount).toBe(2);
       expect(layout.detectedPreset).toBe("two_column");
+    });
+  });
+
+  describe("Part 7: High-Fidelity PDF HTML & Exact Side-by-Side Preservation", () => {
+    it("preserves wrapped multi-line bullet points without fragmenting into separate paragraphs", () => {
+      const rawPdfItems = [
+        { str: "David Mitchell", transform: [1, 0, 0, 1, 40, 720], height: 24, width: 150 },
+        { str: "david@mitchell.dev • Austin, TX", transform: [1, 0, 0, 1, 40, 700], height: 10, width: 180 },
+        { str: "WORK EXPERIENCE", transform: [1, 0, 0, 1, 40, 660], height: 12, width: 120 },
+        { str: "Meta — Senior Software Engineer", transform: [1, 0, 0, 1, 40, 638], height: 11, width: 180 },
+        { str: "2021 – Present", transform: [1, 0, 0, 1, 440, 638], height: 10, width: 80 },
+        // Bullet point line 1
+        { str: "• Spearheaded migration from monolithic services to gRPC event-driven", transform: [1, 0, 0, 1, 40, 618], height: 10, width: 340 },
+        // Bullet point line 2 (wrapped continuation without bullet glyph)
+        { str: "microservices, slashing P99 API latency by 42% across 14 services.", transform: [1, 0, 0, 1, 52, 604], height: 10, width: 320 },
+        // Bullet point 2 line 1
+        { str: "• Designed fault-tolerant Kafka stream consumers processing 45k events/sec.", transform: [1, 0, 0, 1, 40, 584], height: 10, width: 380 },
+      ];
+
+      const result = buildHighFidelityPdfHtml(rawPdfItems, 612);
+
+      // Verify that bullet 1 is a single continuous <li> element, NOT broken into <p>
+      expect(result.html).toContain("doc-bullets");
+      expect(result.html).toContain("Spearheaded migration from monolithic services to gRPC event-driven microservices, slashing P99 API latency by 42% across 14 services.");
+      
+      // Verify no orphaned paragraphs inside the bullet list
+      const bulletsMatch = result.html.match(/<ul class="doc-bullets[^>]*>([\s\S]*?)<\/ul>/);
+      expect(bulletsMatch).toBeTruthy();
+      expect(bulletsMatch![1]).not.toContain("<p");
+
+      // Verify plaintext ATS lines retain the bullet
+      expect(result.text).toContain("• Spearheaded migration from monolithic services to gRPC event-driven microservices, slashing P99 API latency by 42% across 14 services.");
+    });
+
+    it("preserves left-to-right column spatial orientation in two-column layouts", () => {
+      const rawPdfItems = [
+        { str: "Jane Developer", transform: [1, 0, 0, 1, 40, 720], height: 24, width: 140 },
+        // Left Column (X: 40 to 160) - Sidebar
+        { str: "SKILLS", transform: [1, 0, 0, 1, 40, 640], height: 12, width: 50 },
+        { str: "• TypeScript, React", transform: [1, 0, 0, 1, 40, 620], height: 10, width: 100 },
+        { str: "• Go, Docker", transform: [1, 0, 0, 1, 40, 600], height: 10, width: 80 },
+        // Right Column (X: 220 to 550) - Main Content
+        { str: "EXPERIENCE", transform: [1, 0, 0, 1, 220, 640], height: 12, width: 90 },
+        { str: "Google — Senior Engineer", transform: [1, 0, 0, 1, 220, 620], height: 11, width: 150 },
+        { str: "• Built distributed caching engine", transform: [1, 0, 0, 1, 220, 600], height: 10, width: 220 },
+      ];
+
+      const result = buildHighFidelityPdfHtml(rawPdfItems, 612);
+
+      // Verify that left column rendered on the left, right column rendered on the right
+      expect(result.html).toContain("doc-two-column-layout");
+      expect(result.html).toContain("doc-left-column col-span-4");
+      expect(result.html).toContain("doc-right-column col-span-8");
+
+      // Verify left column contains SKILLS, right column contains EXPERIENCE
+      const leftColMatch = result.html.match(/<aside class="doc-left-column[^>]*>([\s\S]*?)<\/aside>/);
+      const rightColMatch = result.html.match(/<main class="doc-right-column[^>]*>([\s\S]*?)<\/main>/);
+
+      expect(leftColMatch).toBeTruthy();
+      expect(rightColMatch).toBeTruthy();
+      expect(leftColMatch![1]).toContain("SKILLS");
+      expect(leftColMatch![1]).toContain("TypeScript, React");
+      expect(rightColMatch![1]).toContain("EXPERIENCE");
+      expect(rightColMatch![1]).toContain("Google — Senior Engineer");
+    });
+
+    it("auto-detects serif font family and compact margins from PDF coordinates and fonts", () => {
+      const rawPdfItems = [
+        { str: "Prof. Arthur Pendelton", transform: [1, 0, 0, 1, 28, 740], height: 24, width: 200, fontName: "TimesNewRomanPS-BoldMT" },
+        { str: "arthur@oxford.ac.uk • Oxford, UK", transform: [1, 0, 0, 1, 28, 715], height: 10, width: 220, fontName: "TimesNewRomanPSMT" },
+        { str: "PUBLICATIONS", transform: [1, 0, 0, 1, 28, 670], height: 12, width: 110, fontName: "TimesNewRomanPS-BoldMT" },
+        { str: "• Advanced Quantum Algorithms in Topology", transform: [1, 0, 0, 1, 28, 650], height: 10, width: 300, fontName: "TimesNewRomanPSMT" },
+        { str: "Journal of Theoretical Physics", transform: [1, 0, 0, 1, 28, 630], height: 10, width: 200, fontName: "TimesNewRomanPS-ItalicMT" },
+      ];
+
+      const layout = detectPdfLayout(rawPdfItems, 612);
+
+      expect(layout.detectedFontFamily).toBe("serif");
+      expect(layout.detectedMarginSize).toBe("compact");
+      expect(layout.margins.left).toBeLessThanOrEqual(36);
+    });
+
+    it("generates semantic candidate headers and split job entries in high-fidelity HTML", () => {
+      const rawPdfItems = [
+        { str: "Sarah Connor", transform: [1, 0, 0, 1, 40, 720], height: 26, width: 140 },
+        { str: "sarah@cyberdyne.com • Los Angeles, CA", transform: [1, 0, 0, 1, 40, 696], height: 10, width: 220 },
+        { str: "EXPERIENCE", transform: [1, 0, 0, 1, 40, 656], height: 13, width: 90 },
+        { str: "Cyberdyne Systems — Lead Engineer", transform: [1, 0, 0, 1, 40, 630], height: 11, width: 210 },
+        { str: "2020 – 2024", transform: [1, 0, 0, 1, 460, 630], height: 10, width: 70 },
+        { str: "• Defended distributed AI infrastructure against rogue neural processes", transform: [1, 0, 0, 1, 40, 610], height: 10, width: 420 },
+      ];
+
+      const result = buildHighFidelityPdfHtml(rawPdfItems, 612);
+
+      expect(result.html).toContain("doc-candidate-name");
+      expect(result.html).toContain("Sarah Connor");
+      expect(result.html).toContain("doc-contact-info");
+      expect(result.html).toContain("sarah@cyberdyne.com");
+      expect(result.html).toContain("doc-entry-header flex justify-between items-baseline");
+      expect(result.html).toContain("Cyberdyne Systems — Lead Engineer");
+      expect(result.html).toContain("2020 – 2024");
+      expect(result.html).toContain("Defended distributed AI infrastructure");
     });
   });
 });

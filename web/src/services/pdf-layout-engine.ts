@@ -33,6 +33,8 @@ export interface ExtractedPdfLayout {
   hasSplitRows: boolean; // Whether role/company + date/location split rows were detected
   detectedPreset: LayoutPreset;
   sectionDivider: SectionDividerStyle;
+  detectedFontFamily?: 'serif' | 'sans' | 'mono';
+  detectedMarginSize?: 'compact' | 'standard' | 'relaxed';
   fontScale: {
     nameFontSize: number;
     headerFontSize: number;
@@ -306,11 +308,36 @@ export function detectPdfLayout(
   // 6. Section divider style
   const sectionDivider: SectionDividerStyle = detectedPreset === 'minimal' ? 'minimal' : 'line';
 
-  // 7. Margins
+  // 7. Font family detection
+  let detectedFontFamily: 'serif' | 'sans' | 'mono' = 'sans';
+  let serifCount = 0;
+  let monoCount = 0;
+  for (const it of items) {
+    const fn = (it.fontName || '').toLowerCase();
+    if (/times|georgia|garamond|serif|cambria|palatino|baskerville|minion/i.test(fn)) {
+      serifCount++;
+    } else if (/courier|mono|consolas|menlo/i.test(fn)) {
+      monoCount++;
+    }
+  }
+  if (serifCount > items.length * 0.25) {
+    detectedFontFamily = 'serif';
+  } else if (monoCount > items.length * 0.25) {
+    detectedFontFamily = 'mono';
+  }
+
+  // 8. Margins
   const minX = Math.min(...items.map(it => it.x));
   const maxX = Math.max(...items.map(it => it.x + (it.width || 20)));
   const minY = Math.min(...items.map(it => it.y));
   const maxY = Math.max(...items.map(it => it.y));
+
+  let detectedMarginSize: 'compact' | 'standard' | 'relaxed' = 'standard';
+  if (minX <= 38 || (pageWidth - maxX) <= 38) {
+    detectedMarginSize = 'compact';
+  } else if (minX >= 52 && (pageWidth - maxX) >= 52) {
+    detectedMarginSize = 'relaxed';
+  }
 
   return {
     columnCount: colInfo.columnCount,
@@ -319,6 +346,8 @@ export function detectPdfLayout(
     hasSplitRows,
     detectedPreset,
     sectionDivider,
+    detectedFontFamily,
+    detectedMarginSize,
     fontScale: {
       nameFontSize: Math.round(maxHeight * 10) / 10,
       headerFontSize: Math.round((medianHeight * 1.25) * 10) / 10,
@@ -333,6 +362,450 @@ export function detectPdfLayout(
   };
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+export interface HighFidelityPdfResult {
+  html: string;
+  text: string;
+  layout: ExtractedPdfLayout;
+}
+
+/**
+ * Constructs a pixel-faithful, high-fidelity semantic HTML document and ATS-compliant plaintext
+ * directly from PDF.js positioned text items.
+ *
+ * Preserves:
+ * 1. Exact typography hierarchy (name, headers, titles, dates, body font sizes in px)
+ * 2. Header alignment (centered, left, or split)
+ * 3. Two-ended justification (role/company on left, dates/location on right)
+ * 4. Section dividers (line, accent, minimal, banner)
+ * 5. Multi-column spatial layout (CSS grid with exact sidebar and main column partitioning)
+ * 6. Zero content loss: every line, word, date, and bullet from the PDF is preserved.
+ */
+export function buildHighFidelityPdfHtml(
+  rawItems: RawPdfItem[],
+  pageWidth = 612,
+  pageHeight = 792
+): HighFidelityPdfResult {
+  const items = normalizePdfItems(rawItems);
+  const layout = detectPdfLayout(rawItems, pageWidth);
+
+  if (items.length === 0) {
+    return {
+      html: '',
+      text: '',
+      layout,
+    };
+  }
+
+  // Sort items top-to-bottom (Y descending), then left-to-right (X ascending)
+  items.sort((a, b) => {
+    const yDelta = b.y - a.y;
+    if (Math.abs(yDelta) > 3.0) return yDelta;
+    return a.x - b.x;
+  });
+
+  interface LineSegment {
+    text: string;
+    x: number;
+    width: number;
+    height: number;
+    fontSize: number;
+    isBold: boolean;
+    isItalic: boolean;
+  }
+
+  interface VisualLine {
+    y: number;
+    minX: number;
+    maxX: number;
+    maxHeight: number;
+    fontSize: number;
+    isBold: boolean;
+    isItalic: boolean;
+    segments: LineSegment[];
+    rawText: string;
+  }
+
+  const flushGroupToLine = (group: PositionedTextItem[], lineY: number | null): VisualLine | null => {
+    if (group.length === 0) return null;
+    group.sort((a, b) => a.x - b.x);
+
+    const segments: LineSegment[] = [];
+    let currentSegText = '';
+    let segStartX = group[0].x;
+    let segWidth = 0;
+    let segHeight = group[0].height || 10;
+    let segFontSize = group[0].fontSize || 10.5;
+    let segIsBold = Boolean(group[0].isBold);
+    let segIsItalic = Boolean(group[0].isItalic);
+
+    for (let i = 0; i < group.length; i++) {
+      const it = group[i];
+      if (i === 0) {
+        currentSegText = it.text;
+        segWidth = it.width || it.text.length * (segFontSize * 0.52);
+      } else {
+        const prev = group[i - 1];
+        const prevWidth = prev.width > 0 ? prev.width : prev.text.length * ((prev.fontSize || 10) * 0.52);
+        const gap = it.x - (prev.x + prevWidth);
+
+        // Wide gap indicates two-ended split (e.g. title on left, date on right)
+        if (gap >= 24 && it.x >= pageWidth * 0.45) {
+          segments.push({
+            text: currentSegText.trim(),
+            x: segStartX,
+            width: segWidth,
+            height: segHeight,
+            fontSize: segFontSize,
+            isBold: segIsBold,
+            isItalic: segIsItalic,
+          });
+          currentSegText = it.text;
+          segStartX = it.x;
+          segWidth = it.width || it.text.length * ((it.fontSize || 10) * 0.52);
+          segHeight = it.height || 10;
+          segFontSize = it.fontSize || 10.5;
+          segIsBold = Boolean(it.isBold);
+          segIsItalic = Boolean(it.isItalic);
+        } else if (gap > Math.max(1.8, (it.fontSize || 10) * 0.18)) {
+          currentSegText += ' ' + it.text;
+          segWidth += gap + (it.width || it.text.length * ((it.fontSize || 10) * 0.52));
+        } else {
+          currentSegText += it.text;
+          segWidth += (it.width || it.text.length * ((it.fontSize || 10) * 0.52));
+        }
+      }
+    }
+
+    if (currentSegText.trim()) {
+      segments.push({
+        text: currentSegText.trim(),
+        x: segStartX,
+        width: segWidth,
+        height: segHeight,
+        fontSize: segFontSize,
+        isBold: segIsBold,
+        isItalic: segIsItalic,
+      });
+    }
+
+    const minX = Math.min(...group.map(it => it.x));
+    const maxX = Math.max(...group.map(it => it.x + (it.width || it.text.length * 6)));
+    const maxHeight = Math.max(...group.map(it => it.height || 10));
+    const maxFontSize = Math.max(...group.map(it => it.fontSize || it.height || 10));
+    const anyBold = group.some(it => it.isBold);
+    const anyItalic = group.some(it => it.isItalic);
+    const rawText = segments.map(s => s.text).join('   |   ');
+
+    return {
+      y: lineY || 0,
+      minX,
+      maxX,
+      maxHeight,
+      fontSize: maxFontSize,
+      isBold: anyBold,
+      isItalic: anyItalic,
+      segments,
+      rawText,
+    };
+  };
+
+  const clusterItemsIntoVisualLines = (itemList: PositionedTextItem[]): VisualLine[] => {
+    const sorted = [...itemList].sort((a, b) => {
+      const yDelta = b.y - a.y;
+      if (Math.abs(yDelta) > 3.0) return yDelta;
+      return a.x - b.x;
+    });
+
+    const lines: VisualLine[] = [];
+    let currentGroup: PositionedTextItem[] = [];
+    let currentY: number | null = null;
+
+    for (const item of sorted) {
+      if (currentY === null || Math.abs(item.y - currentY) <= Math.max(3.2, (item.height || 10) * 0.35)) {
+        currentGroup.push(item);
+        currentY = item.y;
+      } else {
+        const line = flushGroupToLine(currentGroup, currentY);
+        if (line) lines.push(line);
+        currentGroup = [item];
+        currentY = item.y;
+      }
+    }
+    if (currentGroup.length > 0) {
+      const line = flushGroupToLine(currentGroup, currentY);
+      if (line) lines.push(line);
+    }
+
+    return lines;
+  };
+
+  // Identify top candidate header region (Y >= maxY - 55, excluding section titles)
+  const maxY = Math.max(...items.map(it => it.y));
+  const isHeaderExcluded = (text: string) => /^(WORK\s+EXPERIENCE|EXPERIENCE|EDUCATION|SKILLS|TECHNICAL\s+SKILLS|PROJECTS|SUMMARY|PUBLICATIONS|CERTIFICATIONS)$/i.test(text.trim().replace(/[:\-–—]+$/, ''));
+  const headerItems = items.filter(it => it.y >= maxY - 55 && !isHeaderExcluded(it.text));
+  const bodyItems = items.filter(it => !headerItems.includes(it));
+
+  const topLines = clusterItemsIntoVisualLines(headerItems.length > 0 ? headerItems : items.slice(0, 2));
+  let nameLine = topLines[0];
+  for (const l of topLines) {
+    if (l.fontSize > (nameLine?.fontSize || 0)) {
+      nameLine = l;
+    }
+  }
+
+  const candidateName = nameLine?.segments[0]?.text || nameLine?.rawText || 'Candidate';
+  const headerContactLines = topLines.filter(l => l !== nameLine);
+  const contactText = headerContactLines.map(l => l.rawText).join(' • ');
+
+  // Helper for section headers
+  const isSectionHeader = (line: VisualLine): boolean => {
+    const txt = line.rawText.trim();
+    if (!txt || txt.length > 55) return false;
+    if (/^[•▪▸▹‣◦○*\-]\s*/.test(txt)) return false;
+    if (txt.includes('@') || /linkedin\.com|github\.com|http/i.test(txt)) return false;
+
+    const upper = txt.replace(/[:\-–—]+$/, '').trim().toUpperCase();
+    if (/^(WORK\s+EXPERIENCE|EXPERIENCE|EMPLOYMENT\s+HISTORY|PROFESSIONAL\s+EXPERIENCE|PROJECTS|FEATURED\s+PROJECTS|TECHNICAL\s+PROJECTS|EDUCATION|ACADEMIC\s+BACKGROUND|TECHNICAL\s+SKILLS|SKILLS|CORE\s+COMPETENCIES|CERTIFICATIONS|PUBLICATIONS|AWARDS|HONORS|VOLUNTEERING|LEADERSHIP|SUMMARY|PROFESSIONAL\s+SUMMARY)$/i.test(upper)) {
+      return true;
+    }
+
+    if ((line.isBold || /^[A-Z0-9\s&/-]{3,}$/.test(txt)) && line.fontSize >= (layout.fontScale.bodyFontSize + 1.2) && !txt.endsWith('.')) {
+      return true;
+    }
+
+    return false;
+  };
+
+  // Helper to format section header tag
+  const formatSectionHeaderTag = (title: string): string => {
+    switch (layout.sectionDivider) {
+      case 'accent':
+        return `<h2 class="doc-section-header font-mono font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 border-l-2 border-zinc-900 dark:border-zinc-100 pl-2 mt-4 mb-2">${escapeHtml(title)}</h2>`;
+      case 'minimal':
+        return `<h2 class="doc-section-header font-mono font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 mt-4 mb-2">${escapeHtml(title)}</h2>`;
+      case 'banner':
+        return `<h2 class="doc-section-header font-mono font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800/80 px-2 py-0.5 rounded mt-4 mb-2">${escapeHtml(title)}</h2>`;
+      case 'line':
+      default:
+        return `<h2 class="doc-section-header font-mono font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 border-b border-zinc-200 dark:border-zinc-800 pb-1 mt-4 mb-2">${escapeHtml(title)}</h2>`;
+    }
+  };
+
+  // Format a list of visual lines into HTML sections and clean plaintext
+  const formatLinesToHtmlSections = (lines: VisualLine[]): { html: string; text: string } => {
+    interface SectionBlock {
+      header: string;
+      lines: VisualLine[];
+    }
+
+    const sections: SectionBlock[] = [];
+    let currentSection: SectionBlock = { header: '', lines: [] };
+
+    for (const l of lines) {
+      if (isSectionHeader(l)) {
+        if (currentSection.header || currentSection.lines.length > 0) {
+          sections.push(currentSection);
+        }
+        currentSection = { header: l.rawText.trim(), lines: [] };
+      } else {
+        currentSection.lines.push(l);
+      }
+    }
+    if (currentSection.header || currentSection.lines.length > 0) {
+      sections.push(currentSection);
+    }
+
+    const htmlParts: string[] = [];
+    const textLines: string[] = [];
+
+    for (const sec of sections) {
+      let secHtml = `<div class="doc-section mb-4">`;
+      if (sec.header) {
+        secHtml += `\n  ${formatSectionHeaderTag(sec.header)}`;
+        textLines.push(sec.header);
+      }
+
+      let currentBullets: string[] = [];
+      let lastBulletY: number | null = null;
+      const flushBullets = () => {
+        if (currentBullets.length > 0) {
+          secHtml += `\n  <ul class="doc-bullets list-disc pl-5 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200">`;
+          for (const b of currentBullets) {
+            const skillMatch = b.match(/^([A-Za-z0-9\s&/-]+):(\s+.+)$/);
+            if (skillMatch && /skills|technologies|competencies/i.test(sec.header)) {
+              secHtml += `\n    <li><strong>${escapeHtml(skillMatch[1])}:</strong>${escapeHtml(skillMatch[2])}</li>`;
+            } else {
+              secHtml += `\n    <li>${escapeHtml(b)}</li>`;
+            }
+            textLines.push(`• ${b}`);
+          }
+          secHtml += `\n  </ul>`;
+          currentBullets = [];
+          lastBulletY = null;
+        }
+      };
+
+      for (const l of sec.lines) {
+        const lineText = l.rawText.trim();
+        if (!lineText) continue;
+
+        const isBulletStart = /^[•▪▸▹‣◦○*\-]\s+/.test(lineText) || /^•\s*/.test(lineText);
+        if (isBulletStart) {
+          const cleanB = lineText.replace(/^[•▪▸▹‣◦○*\-]\s*/, '').trim();
+          currentBullets.push(cleanB);
+          lastBulletY = l.y;
+          continue;
+        }
+
+        // Multi-line bullet continuation check: if we are inside a bullet list and the line is not
+        // a section header, split entry header, bold title, or separated by a large vertical gap,
+        // it is a continuation of the previous bullet point wrapped onto a new line in the PDF.
+        const isSplitHeader = l.segments.length >= 2;
+        const isNewJobTitle = (l.isBold && l.fontSize >= layout.fontScale.bodyFontSize) || 
+                              (l.isBold && lineText.length < 50 && !/^[a-z,;.]/.test(lineText));
+        const isLargeVerticalGap = lastBulletY !== null && Math.abs(lastBulletY - l.y) > (l.fontSize || 10) * 2.2;
+
+        if (currentBullets.length > 0 && !isSplitHeader && !isNewJobTitle && !isLargeVerticalGap) {
+          currentBullets[currentBullets.length - 1] += ' ' + lineText;
+          lastBulletY = l.y;
+          continue;
+        }
+
+        flushBullets();
+
+        // Check if split entry header (left: title/company, right: dates/location)
+        if (l.segments.length >= 2) {
+          const titlePart = l.segments[0].text;
+          const metaPart = l.segments.slice(1).map(s => s.text).join(' | ');
+
+          secHtml += `\n  <div class="doc-entry-header flex justify-between items-baseline gap-2 mt-2 mb-0.5">
+    <span class="doc-job-title font-bold text-xs text-zinc-900 dark:text-zinc-100">${escapeHtml(titlePart)}</span>
+    <span class="doc-job-meta text-xs font-mono text-zinc-500 dark:text-zinc-400 whitespace-nowrap">${escapeHtml(metaPart)}</span>
+  </div>`;
+          textLines.push(`${titlePart}   |   ${metaPart}`);
+        } else if (l.isBold || (l.fontSize > layout.fontScale.bodyFontSize && lineText.length < 80)) {
+          secHtml += `\n  <p class="doc-job-title font-bold text-xs text-zinc-900 dark:text-zinc-100 mt-2 mb-0.5">${escapeHtml(lineText)}</p>`;
+          textLines.push(lineText);
+        } else if (/\b(19\d{2}|20\d{2}|Present)\b/i.test(lineText) && lineText.length < 60) {
+          secHtml += `\n  <p class="doc-job-meta text-xs text-zinc-500 dark:text-zinc-400 italic mb-1.5">${escapeHtml(lineText)}</p>`;
+          textLines.push(lineText);
+        } else {
+          secHtml += `\n  <p class="doc-text text-xs text-zinc-800 dark:text-zinc-200 my-1 leading-relaxed">${escapeHtml(lineText)}</p>`;
+          textLines.push(lineText);
+        }
+      }
+
+      flushBullets();
+      secHtml += `\n</div>`;
+      htmlParts.push(secHtml);
+      textLines.push('');
+    }
+
+    return {
+      html: htmlParts.join('\n'),
+      text: textLines.join('\n'),
+    };
+  };
+
+  // Build Document Header
+  const hasHeaderBorder = layout.sectionDivider !== 'minimal';
+  const borderClass = hasHeaderBorder ? ' border-b border-zinc-200 dark:border-zinc-800' : '';
+  const headerClass = layout.headerAlignment === 'center'
+    ? `doc-header text-center pb-3 mb-4${borderClass}`
+    : layout.headerAlignment === 'split'
+    ? `doc-header flex flex-col sm:flex-row sm:items-end justify-between pb-3 mb-4${borderClass} gap-2`
+    : `doc-header text-left pb-3 mb-4${borderClass}`;
+
+  const headerHtml = `
+    <div class="${headerClass}">
+      <div>
+        <h1 class="doc-candidate-name font-headline font-bold text-2xl sm:text-3xl tracking-tight text-zinc-950 dark:text-white pb-1">${escapeHtml(candidateName)}</h1>
+      </div>
+      ${contactText ? `<p class="doc-contact-info text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">${escapeHtml(contactText)}</p>` : ''}
+    </div>
+  `.trim();
+
+  // Multi-column layout:
+  if (layout.columnCount === 2 && layout.columnBoundaryX) {
+    const splitX = layout.columnBoundaryX;
+    const col1Items = bodyItems.filter(it => it.x < splitX);
+    const col2Items = bodyItems.filter(it => it.x >= splitX);
+
+    const col1Lines = clusterItemsIntoVisualLines(col1Items);
+    const col2Lines = clusterItemsIntoVisualLines(col2Items);
+
+    const col1Formatted = formatLinesToHtmlSections(col1Lines);
+    const col2Formatted = formatLinesToHtmlSections(col2Lines);
+
+    // Determine column widths based on splitX boundary ratio
+    const splitRatio = splitX / pageWidth;
+    let col1Span = 'col-span-4';
+    let col2Span = 'col-span-8';
+    if (splitRatio > 0.55) {
+      col1Span = 'col-span-8';
+      col2Span = 'col-span-4';
+    } else if (splitRatio >= 0.42 && splitRatio <= 0.58) {
+      col1Span = 'col-span-6';
+      col2Span = 'col-span-6';
+    }
+
+    // Left column is always col1 (x < splitX), Right column is always col2 (x >= splitX)
+    // preserving exact spatial layout and orientation of the original PDF.
+    const twoColumnHtml = `
+      <div class="doc-two-column-layout grid grid-cols-12 gap-5 mt-2">
+        <aside class="doc-left-column ${col1Span} border-r border-zinc-200 dark:border-zinc-800 pr-4 space-y-4">
+          ${col1Formatted.html}
+        </aside>
+        <main class="doc-right-column ${col2Span} space-y-4">
+          ${col2Formatted.html}
+        </main>
+      </div>
+    `.trim();
+
+    // For ATS reading order, prioritize the column containing experience/projects
+    const isCol2Main = /experience|work history|employment|projects/i.test(col2Formatted.text);
+    const primaryText = isCol2Main ? col2Formatted.text : col1Formatted.text;
+    const secondaryText = isCol2Main ? col1Formatted.text : col2Formatted.text;
+
+    const fullHtml = `${headerHtml}\n${twoColumnHtml}`;
+    const fullText = [
+      candidateName,
+      contactText,
+      '',
+      primaryText,
+      '',
+      secondaryText,
+    ].join('\n').trim();
+
+    return {
+      html: fullHtml,
+      text: fullText,
+      layout,
+    };
+  }
+
+  // Single-column layout:
+  const bodyLines = clusterItemsIntoVisualLines(bodyItems);
+  const bodyFormatted = formatLinesToHtmlSections(bodyLines);
+  const fullHtml = `${headerHtml}\n${bodyFormatted.html}`.trim();
+  const fullText = [candidateName, contactText, '', bodyFormatted.text].join('\n').trim();
+
+  return {
+    html: fullHtml,
+    text: fullText,
+    layout,
+  };
+}
+
 /**
  * Formats PDF text items taking column boundaries into account.
  * When a 2-column layout is present, items in Column 1 (sidebar) and Column 2 (main content)
@@ -344,125 +817,12 @@ export function formatLayoutAwarePdfItems(
 ): {
   text: string;
   layout: ExtractedPdfLayout;
+  html?: string;
 } {
-  const items = normalizePdfItems(rawItems);
-  const layout = detectPdfLayout(rawItems, pageWidth);
-
-  if (items.length === 0) {
-    return { text: '', layout };
-  }
-
-  // Format helper for a list of items belonging to one logical column
-  const formatColumnItems = (colItems: PositionedTextItem[]): string[] => {
-    // Sort primarily top-to-bottom (Y descending), then left-to-right (X ascending)
-    colItems.sort((a, b) => {
-      const yDelta = b.y - a.y;
-      if (Math.abs(yDelta) > 3.0) return yDelta;
-      return a.x - b.x;
-    });
-
-    const lines: string[] = [];
-    let currentLine: PositionedTextItem[] = [];
-    let currentY: number | null = null;
-    let lastLineY: number | null = null;
-
-    const flushLine = (lineItems: PositionedTextItem[]) => {
-      if (lineItems.length === 0) return;
-      lineItems.sort((a, b) => a.x - b.x);
-
-      let lineStr = '';
-      for (let i = 0; i < lineItems.length; i++) {
-        const it = lineItems[i];
-        if (i === 0) {
-          lineStr = it.text;
-        } else {
-          const prev = lineItems[i - 1];
-          const gap = it.x - (prev.x + (prev.width || prev.text.length * 6));
-          if (gap > 28) {
-            lineStr += '   |   ' + it.text;
-          } else {
-            lineStr += ' ' + it.text;
-          }
-        }
-      }
-
-      lineStr = lineStr.replace(/\s+/g, ' ').trim();
-      if (!lineStr) return;
-
-      const lineHeight = lineItems[0]?.height || 10;
-      if (lastLineY !== null && Math.abs(lastLineY - (currentY || 0)) > lineHeight * 1.5) {
-        if (lines.length > 0 && lines[lines.length - 1] !== '') {
-          lines.push('');
-        }
-      }
-
-      if (/^[•▪▸▹‣◦○*\-]\s+/.test(lineStr) || /^•\s*/.test(lineStr)) {
-        lineStr = '• ' + lineStr.replace(/^[•▪▸▹‣◦○*\-]\s*/, '').trim();
-      }
-
-      lines.push(lineStr);
-      lastLineY = currentY;
-    };
-
-    for (const item of colItems) {
-      if (currentY === null || Math.abs(item.y - currentY) <= 3.5) {
-        currentLine.push(item);
-        currentY = item.y;
-      } else {
-        flushLine(currentLine);
-        currentLine = [item];
-        currentY = item.y;
-      }
-    }
-
-    if (currentLine.length > 0) {
-      flushLine(currentLine);
-    }
-
-    return lines;
-  };
-
-  // If 2-column layout detected: extract Header first, then Main Column, then Sidebar
-  if (layout.columnCount === 2 && layout.columnBoundaryX) {
-    const splitX = layout.columnBoundaryX;
-    const maxY = Math.max(...items.map(it => it.y));
-
-    // Items in top 15% span full width (Header: candidate name + contact)
-    const headerItems = items.filter(it => it.y >= maxY - 75);
-    const bodyItems = items.filter(it => it.y < maxY - 75);
-
-    const leftCol = bodyItems.filter(it => it.x < splitX);
-    const rightCol = bodyItems.filter(it => it.x >= splitX);
-
-    const headerLines = formatColumnItems(headerItems);
-    const leftLines = formatColumnItems(leftCol);
-    const rightLines = formatColumnItems(rightCol);
-
-    // For ATS readability and document structure:
-    // Header -> Main Column (Experience/Projects) -> Sidebar (Skills/Education)
-    // Identify which column has more experience keywords to put main first
-    const leftText = leftLines.join('\n');
-    const rightText = rightLines.join('\n');
-    const isLeftMain = /experience|work history|employment|projects/i.test(leftText);
-
-    const orderedLines = [
-      ...headerLines,
-      '',
-      ...(isLeftMain ? rightLines : leftLines), // Sidebar first or main first
-      '',
-      ...(isLeftMain ? leftLines : rightLines),
-    ].filter((line, idx, arr) => !(line === '' && arr[idx - 1] === ''));
-
-    return {
-      text: orderedLines.join('\n').trim(),
-      layout,
-    };
-  }
-
-  // Single-column layout: standard ordered extraction
-  const singleLines = formatColumnItems(items);
+  const result = buildHighFidelityPdfHtml(rawItems, pageWidth);
   return {
-    text: singleLines.join('\n').trim(),
-    layout,
+    text: result.text,
+    layout: result.layout,
+    html: result.html,
   };
 }

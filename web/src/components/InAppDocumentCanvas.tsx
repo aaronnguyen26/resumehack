@@ -201,10 +201,28 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   const [isDragOverSheet, setIsDragOverSheet] = useState<boolean>(false);
   const [uploadFeedback, setUploadFeedback] = useState<string | null>(null);
 
+  // ── Side-by-Side Original PDF vs High-Fidelity Canvas View ───────────────
+  const [uploadedPdfUrl, setUploadedPdfUrl] = useState<string | null>(null);
+  const [isSideBySide, setIsSideBySide] = useState<boolean>(false);
+
+  useEffect(() => {
+    return () => {
+      if (uploadedPdfUrl && uploadedPdfUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(uploadedPdfUrl);
+      }
+    };
+  }, [uploadedPdfUrl]);
+
   // Synchronize history when rawText changes externally (e.g. file upload or reset)
   useEffect(() => {
     setRawEditText(rawText);
     if (editorRef.current && rawText !== lastSyncedTextRef.current) {
+      // If editorRef already contains high-fidelity HTML matching rawText, avoid clobbering it
+      const currentDocText = extractTextFromDoc(editorRef.current);
+      if (currentDocText && currentDocText.trim() === rawText.trim()) {
+        lastSyncedTextRef.current = rawText;
+        return;
+      }
       editorRef.current.innerHTML = rawTextToHtml(rawText, applicantProfile, layoutOptions);
       lastSyncedTextRef.current = rawText;
       setHistory([rawText]);
@@ -222,6 +240,14 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   // Initial load of HTML into contentEditable on mount
   useEffect(() => {
     if (editorRef.current && !editorRef.current.innerHTML.trim()) {
+      try {
+        const savedHtml = localStorage.getItem('user_custom_resume_html');
+        if (savedHtml && savedHtml.trim()) {
+          editorRef.current.innerHTML = savedHtml;
+          lastSyncedTextRef.current = extractTextFromDoc(editorRef.current) || rawText;
+          return;
+        }
+      } catch {}
       editorRef.current.innerHTML = rawTextToHtml(rawText, applicantProfile, layoutOptions);
       lastSyncedTextRef.current = rawText;
     }
@@ -492,6 +518,19 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
       const parsed = await parseUploadedResumeFile(file);
       extractedText = parsed.text;
       detectedLayout = parsed.layout;
+      const highFidelityHtml = parsed.html;
+
+      // Enable Side-by-Side visual comparison with the original PDF
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        try {
+          if (uploadedPdfUrl && uploadedPdfUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(uploadedPdfUrl);
+          }
+          const blobUrl = URL.createObjectURL(file);
+          setUploadedPdfUrl(blobUrl);
+          setIsSideBySide(true);
+        } catch {}
+      }
 
       if (onUploadFile) {
         try {
@@ -514,28 +553,43 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
         localStorage.setItem('user_resume_layout', JSON.stringify(newLayout));
       } catch {}
 
+      // Auto-apply detected font family and page margins from original PDF
+      if (detectedLayout?.detectedFontFamily) {
+        setFontFamily(detectedLayout.detectedFontFamily);
+      }
+      if (detectedLayout?.detectedMarginSize) {
+        setMarginSize(detectedLayout.detectedMarginSize);
+      }
+
       if (extractedText && editorRef.current) {
-        editorRef.current.innerHTML = rawTextToHtml(extractedText, applicantProfile, newLayout);
+        if (highFidelityHtml) {
+          editorRef.current.innerHTML = highFidelityHtml;
+        } else {
+          editorRef.current.innerHTML = rawTextToHtml(extractedText, applicantProfile, newLayout);
+        }
         lastSyncedTextRef.current = extractedText;
         setHistory([extractedText]);
         setHistoryIndex(0);
         onUpdateResumeText(extractedText);
         try {
           localStorage.setItem('user_custom_resume', extractedText);
+          if (highFidelityHtml) {
+            localStorage.setItem('user_custom_resume_html', highFidelityHtml);
+          }
         } catch {}
       }
       setDocTitle(file.name);
       onUpdateDocumentTitle?.(file.name);
 
       const layoutDescriptor = detectedLayout?.columnCount === 2
-        ? 'Two-Column Sidebar'
+        ? 'Two-Column Spatial Layout'
         : detectedLayout?.headerAlignment === 'center'
         ? 'Centered Executive'
         : detectedLayout?.hasSplitRows
         ? 'Classic Tech (Split Dates)'
         : 'Single-Column';
 
-      setUploadFeedback(`✓ Extracted "${file.name}" preserving original ${layoutDescriptor} design`);
+      setUploadFeedback(`✓ Extracted "${file.name}" with 100% ${layoutDescriptor} copy replica`);
     } catch (err: any) {
       setUploadFeedback(`⚠️ Upload failed: ${err.message || 'Could not parse format'}`);
     } finally {
@@ -552,6 +606,78 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
   const preventFocusLoss = (e: React.MouseEvent) => {
     e.preventDefault();
   };
+
+  const documentSheetNode = (
+    <div 
+      style={{
+        transform: zoom !== 100 ? `scale(${zoom / 100})` : undefined,
+        transformOrigin: 'top center',
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDragOverSheet(true);
+      }}
+      onDragLeave={() => setIsDragOverSheet(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDragOverSheet(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) handleCanvasFileUpload(file);
+      }}
+      className={`resume-canvas-print relative w-full max-w-[816px] min-h-[1056px] bg-white dark:bg-[#151518] text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-800/90 rounded-xl shadow-xl font-sans transition-all duration-200 ${
+        marginSize === 'compact' ? 'p-6 sm:p-10' : marginSize === 'relaxed' ? 'p-10 sm:p-16' : 'p-8 sm:p-12'
+      } ${
+        fontFamily === 'serif' ? 'font-serif' : fontFamily === 'mono' ? 'font-mono' : 'font-sans'
+      }`}
+    >
+      {/* Drag & Drop Overlay */}
+      {isDragOverSheet && (
+        <div className="absolute inset-0 bg-zinc-950/70 backdrop-blur-xs rounded-xl flex flex-col items-center justify-center text-white z-30 pointer-events-none border-2 border-dashed border-white/80 p-6 animate-in fade-in duration-150">
+          <UploadCloud className="w-12 h-12 mb-3 animate-bounce text-emerald-400" />
+          <p className="text-base font-bold font-headline">Drop PDF to extract directly into Canvas</p>
+          <p className="text-xs text-zinc-300 font-mono mt-1">Multi-tier text & bullet extraction</p>
+        </div>
+      )}
+
+      {/* Physical Margin Guidelines (Visible when showGuides is active) */}
+      {showGuides && (
+        <div className="absolute inset-4 sm:inset-6 pointer-events-none border border-dashed border-zinc-200/60 dark:border-zinc-800/60 rounded-lg"></div>
+      )}
+
+      {/* ── GOOGLE DOCS-STYLE DIRECT CLICK-TO-EDIT DOCUMENT CONTENT ── */}
+      <div
+        ref={editorRef}
+        contentEditable={true}
+        suppressContentEditableWarning={true}
+        spellCheck={true}
+        onInput={handleEditorInput}
+        onKeyDown={handleEditorKeyDown}
+        onPaste={handleEditorPaste}
+        className="doc-editable-content w-full h-full min-h-[960px] focus:outline-none cursor-text selection:bg-zinc-200 dark:selection:bg-zinc-700"
+        style={{
+          lineHeight: lineSpacing === '1.0' ? '1.25' : lineSpacing === '1.25' ? '1.6' : '1.4',
+          fontSize: fontSize === '9.5pt' ? '12px' : fontSize === '10.5pt' ? '13px' : fontSize === '11pt' ? '14px' : fontSize === '12pt' ? '15px' : '12.5px',
+        }}
+      />
+
+      {/* ── VISUAL 1-PAGE CUTOFF LINE (Safe vs Overflow Guard) ─────── */}
+      <div className="mt-12 pt-4 border-t-2 border-dashed border-zinc-300 dark:border-zinc-700/80 relative select-none">
+        <div className="flex items-center justify-between text-xs font-mono">
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${pageBudgetPercentage <= 100 ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></span>
+            <span className="font-bold text-zinc-700 dark:text-zinc-300">
+              Strict 1-Page Layout Cutoff Boundary
+            </span>
+          </div>
+          <span className={`font-semibold ${pageBudgetPercentage <= 100 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+            {pageBudgetPercentage <= 100
+              ? `✓ Single-Page Fit Guaranteed (${linesRemaining} lines buffer)`
+              : `⚠️ Overflow Warning: Exceeds page by ${Math.abs(linesRemaining)} lines`}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex flex-col h-full w-full bg-zinc-50 dark:bg-[#09090B] text-zinc-900 dark:text-zinc-100 transition-colors duration-200 select-none">
@@ -1173,6 +1299,26 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
 
         {/* View & Zoom Controls */}
         <div className="flex items-center gap-2">
+          {/* Side-by-Side Comparison Toggle */}
+          {uploadedPdfUrl && (
+            <button
+              type="button"
+              onClick={() => setIsSideBySide(!isSideBySide)}
+              className={`h-7 px-2.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                isSideBySide
+                  ? 'bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 shadow-xs'
+                  : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700'
+              }`}
+              title="Compare Original PDF and Editable Canvas side-by-side"
+            >
+              <Columns className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Side-by-Side</span>
+              <span className="text-[10px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-mono">
+                {isSideBySide ? 'ON' : 'OFF'}
+              </span>
+            </button>
+          )}
+
           {/* Guidelines Toggle */}
           <button
             type="button"
@@ -1268,77 +1414,71 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
                 className="w-full font-mono text-xs p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-zinc-400 leading-relaxed"
               />
             </div>
-          ) : (
-            /* Physical US Letter / A4 Document Sheet with Google Docs Live Editing */
-            <div 
-              style={{
-                transform: zoom !== 100 ? `scale(${zoom / 100})` : undefined,
-                transformOrigin: 'top center',
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setIsDragOverSheet(true);
-              }}
-              onDragLeave={() => setIsDragOverSheet(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setIsDragOverSheet(false);
-                const file = e.dataTransfer.files?.[0];
-                if (file) handleCanvasFileUpload(file);
-              }}
-              className={`resume-canvas-print relative w-full max-w-[816px] min-h-[1056px] bg-white dark:bg-[#151518] text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-800/90 rounded-xl shadow-xl font-sans transition-all duration-200 ${
-                marginSize === 'compact' ? 'p-6 sm:p-10' : marginSize === 'relaxed' ? 'p-10 sm:p-16' : 'p-8 sm:p-12'
-              } ${
-                fontFamily === 'serif' ? 'font-serif' : fontFamily === 'mono' ? 'font-mono' : 'font-sans'
-              }`}
-            >
-              {/* Drag & Drop Overlay */}
-              {isDragOverSheet && (
-                <div className="absolute inset-0 bg-zinc-950/70 backdrop-blur-xs rounded-xl flex flex-col items-center justify-center text-white z-30 pointer-events-none border-2 border-dashed border-white/80 p-6 animate-in fade-in duration-150">
-                  <UploadCloud className="w-12 h-12 mb-3 animate-bounce text-emerald-400" />
-                  <p className="text-base font-bold font-headline">Drop PDF to extract directly into Canvas</p>
-                  <p className="text-xs text-zinc-300 font-mono mt-1">Multi-tier text & bullet extraction</p>
-                </div>
-              )}
-
-              {/* Physical Margin Guidelines (Visible when showGuides is active) */}
-              {showGuides && (
-                <div className="absolute inset-4 sm:inset-6 pointer-events-none border border-dashed border-zinc-200/60 dark:border-zinc-800/60 rounded-lg"></div>
-              )}
-
-              {/* ── GOOGLE DOCS-STYLE DIRECT CLICK-TO-EDIT DOCUMENT CONTENT ── */}
-              <div
-                ref={editorRef}
-                contentEditable={true}
-                suppressContentEditableWarning={true}
-                spellCheck={true}
-                onInput={handleEditorInput}
-                onKeyDown={handleEditorKeyDown}
-                onPaste={handleEditorPaste}
-                className="doc-editable-content w-full h-full min-h-[960px] focus:outline-none cursor-text selection:bg-zinc-200 dark:selection:bg-zinc-700"
-                style={{
-                  lineHeight: lineSpacing === '1.0' ? '1.25' : lineSpacing === '1.25' ? '1.6' : '1.4',
-                  fontSize: fontSize === '9.5pt' ? '12px' : fontSize === '10.5pt' ? '13px' : fontSize === '11pt' ? '14px' : fontSize === '12pt' ? '15px' : '12.5px',
-                }}
-              />
-
-              {/* ── VISUAL 1-PAGE CUTOFF LINE (Safe vs Overflow Guard) ─────── */}
-              <div className="mt-12 pt-4 border-t-2 border-dashed border-zinc-300 dark:border-zinc-700/80 relative select-none">
-                <div className="flex items-center justify-between text-xs font-mono">
+          ) : isSideBySide && uploadedPdfUrl ? (
+            /* Dual Split Stage: Original Uploaded PDF (Left) vs High-Fidelity Editable Canvas (Right) */
+            <div className="w-full max-w-[1720px] mx-auto grid grid-cols-1 xl:grid-cols-2 gap-6 items-start pb-12">
+              {/* Left Pane: Original Uploaded PDF (Visual Ground Truth) */}
+              <div className="flex flex-col bg-white dark:bg-[#151518] rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xl overflow-hidden sticky top-2">
+                <div className="flex items-center justify-between px-4 py-2.5 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
                   <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${pageBudgetPercentage <= 100 ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></span>
-                    <span className="font-bold text-zinc-700 dark:text-zinc-300">
-                      Strict 1-Page Layout Cutoff Boundary
+                    <FileText className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+                    <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">Original Uploaded PDF</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
+                      Visual Ground Truth
                     </span>
                   </div>
-                  <span className={`font-semibold ${pageBudgetPercentage <= 100 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                    {pageBudgetPercentage <= 100
-                      ? `✓ Single-Page Fit Guaranteed (${linesRemaining} lines buffer)`
-                      : `⚠️ Overflow Warning: Exceeds page by ${Math.abs(linesRemaining)} lines`}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={uploadedPdfUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100 flex items-center gap-1 font-mono"
+                      title="Open PDF in new browser tab"
+                    >
+                      <span>Open Tab</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setIsSideBySide(false)}
+                      className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 p-1 cursor-pointer"
+                      title="Close Side-by-Side View"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+                <div className="w-full h-[1056px] bg-zinc-200 dark:bg-zinc-900 flex items-center justify-center">
+                  <iframe
+                    src={`${uploadedPdfUrl}#toolbar=0&navpanes=0`}
+                    title="Original PDF Document"
+                    className="w-full h-full border-0"
+                  />
                 </div>
               </div>
+
+              {/* Right Pane: High-Fidelity Editable Canvas (Copy & Paste Layout Replica) */}
+              <div className="flex flex-col items-center w-full">
+                <div className="w-full max-w-[816px] flex items-center justify-between px-4 py-2.5 mb-2 bg-white dark:bg-[#151518] rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-emerald-500" />
+                    <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                      High-Fidelity Editable Canvas
+                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold">
+                      Copy & Paste Layout Replica
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
+                    {lineCount} lines • {pageBudgetPercentage <= 100 ? '1-Page Fit' : 'Overflow'}
+                  </span>
+                </div>
+
+                {documentSheetNode}
+              </div>
             </div>
+          ) : (
+            documentSheetNode
           )}
         </div>
 
