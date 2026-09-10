@@ -218,7 +218,21 @@ export const App: React.FC = () => {
       if (!isMounted) return;
       setCurrentUser(user);
       if (user) {
+        // User is authenticated (e.g. from password sign in, email confirmation, or OAuth)
+        setIsAuthModalOpen(false);
+        setIsAuthMandatory(false);
         await syncUserDataFromCloud(user.id);
+        const cloudProfile = await fetchUserProfile(user.id);
+        const localProfile = await getStoredApplicantProfile();
+        const effective = cloudProfile || localProfile;
+        if (!effective || !isProfileComplete(effective)) {
+          setIsOnboardingOpen(true);
+        }
+
+        // Clean up verification tokens from URL without page reload
+        if (typeof window !== 'undefined' && (window.location.hash.includes('access_token') || window.location.search.includes('code='))) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
       } else {
         setUserCloudResumes([]);
         setActiveCloudResumeId(null);

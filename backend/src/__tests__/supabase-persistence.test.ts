@@ -58,11 +58,13 @@ describe('Supabase Cloud Database & Resume Persistence Architecture', () => {
       expect(content).toContain('persistSession: true');
     });
 
-    it('supabase-db.ts implements complete Auth and Profile persistence API', () => {
+    it('supabase-db.ts implements complete Auth, Verification, and Profile persistence API', () => {
       expect(fs.existsSync(dbServicePath)).toBe(true);
       const content = fs.readFileSync(dbServicePath, 'utf8');
 
+      expect(content).toContain('export function getAuthRedirectUrl');
       expect(content).toContain('export async function signUp');
+      expect(content).toContain('export async function resendVerificationEmail');
       expect(content).toContain('export async function signIn');
       expect(content).toContain('export async function signOut');
       expect(content).toContain('export async function getCurrentUser');
@@ -91,12 +93,14 @@ describe('Supabase Cloud Database & Resume Persistence Architecture', () => {
     const canvasPath = path.resolve(webDir, 'src/components/InAppDocumentCanvas.tsx');
     const profileTabPath = path.resolve(webDir, 'src/components/ProfileTab.tsx');
 
-    it('AuthModal handles sign-in, sign-up with client validation and error handling', () => {
+    it('AuthModal handles sign-in, sign-up with email verification and resend support', () => {
       expect(fs.existsSync(authModalPath)).toBe(true);
       const content = fs.readFileSync(authModalPath, 'utf8');
 
       expect(content).toContain('signIn(');
       expect(content).toContain('signUp(');
+      expect(content).toContain('resendVerificationEmail');
+      expect(content).toContain('isAwaitingVerification');
       expect(content).toContain('initialMode');
       expect(content).toContain('onAuthSuccess');
     });

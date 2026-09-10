@@ -26,14 +26,26 @@ export interface AuthUser {
 // ── Authentication API ───────────────────────────────────────────────────────
 
 /**
+ * Compute appropriate redirect URL based on current environment
+ */
+export function getAuthRedirectUrl(): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return 'https://resumehack.vercel.app';
+}
+
+/**
  * Register a new user with email and password
  */
 export async function signUp(email: string, password: string, firstName?: string, lastName?: string) {
   try {
+    const redirectUrl = getAuthRedirectUrl();
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
+        emailRedirectTo: redirectUrl,
         data: {
           first_name: firstName || '',
           last_name: lastName || '',
@@ -45,6 +57,27 @@ export async function signUp(email: string, password: string, firstName?: string
     return { user: data.user, session: data.session, error: null };
   } catch (err: any) {
     return { user: null, session: null, error: err.message || 'Sign up failed' };
+  }
+}
+
+/**
+ * Resend verification email for an unconfirmed account
+ */
+export async function resendVerificationEmail(email: string) {
+  try {
+    const redirectUrl = getAuthRedirectUrl();
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: {
+        emailRedirectTo: redirectUrl,
+      },
+    });
+
+    if (error) throw error;
+    return { error: null };
+  } catch (err: any) {
+    return { error: err.message || 'Failed to resend confirmation email' };
   }
 }
 
@@ -100,17 +133,17 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 /**
  * Listen to auth state changes (sign in, sign out, token refresh)
  */
-export function onAuthStateChange(callback: (user: AuthUser | null) => void) {
-  return supabase.auth.onAuthStateChange((_event, session) => {
+export function onAuthStateChange(callback: (user: AuthUser | null, event?: string) => void) {
+  return supabase.auth.onAuthStateChange((event, session) => {
     if (session?.user) {
       callback({
         id: session.user.id,
         email: session.user.email,
         firstName: session.user.user_metadata?.first_name || '',
         lastName: session.user.user_metadata?.last_name || '',
-      });
+      }, event);
     } else {
-      callback(null);
+      callback(null, event);
     }
   });
 }
