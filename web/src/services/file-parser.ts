@@ -474,12 +474,23 @@ export async function getPdfJsLib(): Promise<any> {
   try {
     const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
-    // In browser environments without worker URLs, register worker module to globalThis for in-memory fake worker
+    // In browser environments, configure workerSrc and in-memory handler
     if (typeof window !== 'undefined') {
       try {
         const workerModule = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
-        (globalThis as any).pdfjsWorker = workerModule;
+        const handler = workerModule?.WorkerMessageHandler || (workerModule as any).default?.WorkerMessageHandler || workerModule;
+        (globalThis as any).pdfjsWorker = { WorkerMessageHandler: handler };
       } catch {}
+
+      try {
+        // Provide valid workerSrc URL to satisfy PDFWorker static checks without network roundtrips
+        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+          'pdfjs-dist/legacy/build/pdf.worker.mjs',
+          import.meta.url
+        ).toString();
+      } catch {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '6.3.289'}/legacy/build/pdf.worker.min.mjs`;
+      }
     }
 
     pdfjsLibCache = pdfjsLib;
@@ -491,8 +502,18 @@ export async function getPdfJsLib(): Promise<any> {
       if (typeof window !== 'undefined') {
         try {
           const workerModule = await import('pdfjs-dist/build/pdf.worker.mjs');
-          (globalThis as any).pdfjsWorker = workerModule;
+          const handler = workerModule?.WorkerMessageHandler || (workerModule as any).default?.WorkerMessageHandler || workerModule;
+          (globalThis as any).pdfjsWorker = { WorkerMessageHandler: handler };
         } catch {}
+
+        try {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+            'pdfjs-dist/build/pdf.worker.mjs',
+            import.meta.url
+          ).toString();
+        } catch {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '6.3.289'}/build/pdf.worker.min.mjs`;
+        }
       }
 
       pdfjsLibCache = pdfjsLib;
@@ -533,7 +554,15 @@ export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
         includeMarkedContent: true,
         disableCombineTextItems: false,
       });
-      const pageFormatted = formatExtractedPdfItems(textContent.items as any[]);
+      let pageFormatted = formatExtractedPdfItems(textContent.items as any[]);
+      // Secondary fallback: if coordinate layout dropped strings, join raw str items directly
+      if (!pageFormatted.trim() && textContent.items && textContent.items.length > 0) {
+        pageFormatted = (textContent.items as any[])
+          .map((it: any) => it.str || '')
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+      }
       if (pageFormatted.trim()) {
         pageTexts.push(pageFormatted.trim());
       }
@@ -623,15 +652,18 @@ export async function parseUploadedResumeFile(file: File): Promise<FileParseResu
   if (extension === 'pdf') {
     const buffer = await file.arrayBuffer();
     const extracted = await extractTextFromPdf(buffer);
-    const finalText = extracted.trim().length > 25 
-      ? extracted 
-      : buildStarterResumeText({ fullName: fileName.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ') });
+    const cleaned = extracted.trim();
+    if (!cleaned) {
+      throw new Error(
+        'Could not extract text from this PDF. The document may be a scanned image without selectable text, or is password-protected. Please upload a searchable PDF or paste your resume text into the canvas.'
+      );
+    }
     
     return {
-      text: finalText,
+      text: cleaned,
       fileName,
       fileType: 'pdf',
-      charCount: finalText.length,
+      charCount: cleaned.length,
     };
   }
 
