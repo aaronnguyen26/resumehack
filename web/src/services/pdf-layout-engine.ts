@@ -25,6 +25,7 @@ export interface PositionedTextItem {
 export type HeaderAlignment = 'left' | 'center' | 'split';
 export type LayoutPreset = 'classic' | 'modern' | 'two_column' | 'minimal';
 export type SectionDividerStyle = 'line' | 'accent' | 'minimal' | 'banner';
+export type BulletStyle = 'disc' | 'dash' | 'square' | 'arrow' | 'diamond' | 'circle' | 'check' | 'numbered';
 
 export interface ExtractedPdfLayout {
   columnCount: 1 | 2;
@@ -35,6 +36,8 @@ export interface ExtractedPdfLayout {
   sectionDivider: SectionDividerStyle;
   detectedFontFamily?: 'serif' | 'sans' | 'mono';
   detectedMarginSize?: 'compact' | 'standard' | 'relaxed';
+  detectedBulletStyle?: BulletStyle;
+  detectedBulletChar?: string;
   fontScale: {
     nameFontSize: number;
     headerFontSize: number;
@@ -46,6 +49,42 @@ export interface ExtractedPdfLayout {
     top: number;
     bottom: number;
   };
+}
+
+/**
+ * Detects the bullet style, canonical character, and CSS list-style-type from an extracted bullet glyph.
+ * Ensures the visual canvas renders the exact bullet style used in the original uploaded PDF.
+ */
+export function detectBulletStyleFromGlyph(glyph: string): { style: BulletStyle; char: string; cssListStyle: string } {
+  if (!glyph) return { style: 'disc', char: '•', cssListStyle: 'disc' };
+  const g = glyph.trim();
+
+  // Dash / Hyphen: –, —, -, ⁃
+  if (/^[\u2013\u2014\u2010\u2011\u2012\u2043\-]$/.test(g)) {
+    return { style: 'dash', char: '–', cssListStyle: "'– '" };
+  }
+  // Square: ▪, ■, □, ▫, \uF0A7, \u25AA, \u25A0
+  if (/^[\u25AA\u25A0\u25AB\u25A1\uF0A7]$/.test(g)) {
+    return { style: 'square', char: '▪', cssListStyle: "'▪ '" };
+  }
+  // Arrow: ▸, ▹, ‣, ➢, ➤, ►, ➔, ➜, \u25B8, \u25B9, \u2023, \u27A2, \u27A4
+  if (/^[\u25B8\u25B9\u2023\u27A2\u27A4\u25BA\u2794\u279C]$/.test(g)) {
+    return { style: 'arrow', char: '▸', cssListStyle: "'▸ '" };
+  }
+  // Diamond: ◆, ◇, ❖
+  if (/^[\u25C6\u25C7\u2756]$/.test(g)) {
+    return { style: 'diamond', char: '◆', cssListStyle: "'◆ '" };
+  }
+  // Circle / Ring: ◦, ○, \u25E6, \u25CB, o
+  if (/^[\u25E6\u25CB]$/.test(g) || g === 'o') {
+    return { style: 'circle', char: '◦', cssListStyle: "'◦ '" };
+  }
+  // Checkmark: ✓, ✔, ☑
+  if (/^[\u2713\u2714\u2611]$/.test(g)) {
+    return { style: 'check', char: '✓', cssListStyle: "'✓ '" };
+  }
+  // Default Disc: •, ●, \uF0B7, \u2022, \u25CF
+  return { style: 'disc', char: '•', cssListStyle: 'disc' };
 }
 
 export interface RawPdfItem {
@@ -516,6 +555,38 @@ export function detectPdfLayout(
     detectedMarginSize = 'relaxed';
   }
 
+  // 9. Dominant Bullet Style Detection
+  const bulletCounts: Record<BulletStyle, number> = {
+    disc: 0,
+    dash: 0,
+    square: 0,
+    arrow: 0,
+    diamond: 0,
+    circle: 0,
+    check: 0,
+    numbered: 0,
+  };
+  const bulletPattern = /^[\uF0B7\u25CF\u25CB\u25A0\u25AA\u2022\u2023\u2043\u2013\u2014•▪▸▹‣◦○*\-●■◆✦➢✓–—]\s*/;
+  for (const it of items) {
+    const m = (it.text || '').trim().match(bulletPattern);
+    if (m) {
+      const { style } = detectBulletStyleFromGlyph(m[0]);
+      bulletCounts[style] = (bulletCounts[style] || 0) + 1;
+    }
+  }
+
+  let detectedBulletStyle: BulletStyle = 'disc';
+  let maxBulletCount = 0;
+  for (const [st, cnt] of Object.entries(bulletCounts)) {
+    if (cnt > maxBulletCount) {
+      maxBulletCount = cnt;
+      detectedBulletStyle = st as BulletStyle;
+    }
+  }
+  const detectedBulletChar = detectBulletStyleFromGlyph(
+    detectedBulletStyle === 'dash' ? '–' : detectedBulletStyle === 'square' ? '▪' : detectedBulletStyle === 'arrow' ? '▸' : detectedBulletStyle === 'diamond' ? '◆' : detectedBulletStyle === 'circle' ? '◦' : detectedBulletStyle === 'check' ? '✓' : '•'
+  ).char;
+
   return {
     columnCount: colInfo.columnCount,
     columnBoundaryX: colInfo.columnBoundaryX,
@@ -525,6 +596,8 @@ export function detectPdfLayout(
     sectionDivider,
     detectedFontFamily,
     detectedMarginSize,
+    detectedBulletStyle,
+    detectedBulletChar,
     fontScale: {
       nameFontSize: Math.round(maxHeight * 10) / 10,
       headerFontSize: Math.round((medianHeight * 1.25) * 10) / 10,
@@ -865,19 +938,34 @@ export function buildHighFidelityPdfHtml(
         textLines.push(sec.header);
       }
 
-      let currentBullets: string[] = [];
+      interface ExtractedBulletItem {
+        text: string;
+        glyph: string;
+        style: BulletStyle;
+        char: string;
+        cssListStyle: string;
+      }
+
+      let currentBullets: ExtractedBulletItem[] = [];
       let lastBulletY: number | null = null;
       const flushBullets = () => {
         if (currentBullets.length > 0) {
-          secHtml += `\n  <ul class="doc-bullets list-disc pl-5 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200">`;
+          const primaryStyle = currentBullets[0]?.style || 'disc';
+          const primaryCss = currentBullets[0]?.cssListStyle || 'disc';
+          const listStyleAttr = primaryCss === 'disc' ? '' : ` style="list-style-type: ${primaryCss}"`;
+          const listClass = primaryCss === 'disc'
+            ? 'doc-bullets list-disc pl-4 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200'
+            : 'doc-bullets pl-4 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200';
+
+          secHtml += `\n  <ul class="${listClass}"${listStyleAttr} data-bullet-style="${primaryStyle}">`;
           for (const b of currentBullets) {
-            const skillMatch = b.match(/^([A-Za-z0-9\s&/-]+):(\s+.+)$/);
+            const skillMatch = b.text.match(/^([A-Za-z0-9\s&/-]+):(\s+.+)$/);
             if (skillMatch && /skills|technologies|competencies/i.test(sec.header)) {
               secHtml += `\n    <li><strong>${escapeHtml(skillMatch[1])}:</strong>${escapeHtml(skillMatch[2])}</li>`;
             } else {
-              secHtml += `\n    <li>${escapeHtml(b)}</li>`;
+              secHtml += `\n    <li>${escapeHtml(b.text)}</li>`;
             }
-            textLines.push(`• ${b}`);
+            textLines.push(`${b.char} ${b.text}`);
           }
           secHtml += `\n  </ul>`;
           currentBullets = [];
@@ -891,9 +979,18 @@ export function buildHighFidelityPdfHtml(
 
         const isBulletStart = bulletRegex.test(lineText);
         if (isBulletStart) {
+          const bulletMatch = lineText.match(bulletRegex);
+          const rawGlyph = bulletMatch ? bulletMatch[0].trim() : '•';
+          const bulletInfo = detectBulletStyleFromGlyph(rawGlyph);
           const cleanB = lineText.replace(bulletRegex, '').trim();
           if (cleanB) {
-            currentBullets.push(cleanB);
+            currentBullets.push({
+              text: cleanB,
+              glyph: rawGlyph,
+              style: bulletInfo.style,
+              char: bulletInfo.char,
+              cssListStyle: bulletInfo.cssListStyle,
+            });
             lastBulletY = l.y;
           }
           continue;
@@ -908,7 +1005,7 @@ export function buildHighFidelityPdfHtml(
         const isLargeVerticalGap = lastBulletY !== null && Math.abs(lastBulletY - l.y) > (l.fontSize || 10) * 2.2;
 
         if (currentBullets.length > 0 && !isSplitHeader && !isNewJobTitle && !isLargeVerticalGap) {
-          currentBullets[currentBullets.length - 1] += ' ' + lineText;
+          currentBullets[currentBullets.length - 1].text += ' ' + lineText;
           lastBulletY = l.y;
           continue;
         }

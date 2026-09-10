@@ -41,10 +41,27 @@ import {
   Cloud,
   LayoutGrid,
   Columns,
+  Link,
+  Unlink,
+  SeparatorHorizontal,
+  Subscript,
+  Superscript,
+  CaseUpper,
+  Search,
+  Table,
+  Info,
+  Palette,
+  Highlighter,
+  ArrowDown,
+  ArrowUp,
 } from 'lucide-react';
 import { ParsedResume } from '../services/resume-parser.js';
 import { parseUploadedResumeFile } from '../services/file-parser.js';
 import type { ExtractedPdfLayout } from '../services/file-parser.js';
+import { 
+  detectBulletStyleFromGlyph,
+  type BulletStyle,
+} from '../services/pdf-layout-engine.js';
 import { 
   rawTextToHtml, 
   extractTextFromDoc, 
@@ -160,7 +177,55 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     alignJustify: false,
     unorderedList: false,
     orderedList: false,
+    subscript: false,
+    superscript: false,
   });
+
+  // ── Extended Google Docs Tools State ──────────────────────────────────────
+  const [isBulletMenuOpen, setIsBulletMenuOpen] = useState<boolean>(false);
+  const [isColorMenuOpen, setIsColorMenuOpen] = useState<boolean>(false);
+  const [isHighlightMenuOpen, setIsHighlightMenuOpen] = useState<boolean>(false);
+  const [isCaseMenuOpen, setIsCaseMenuOpen] = useState<boolean>(false);
+  const [isTableMenuOpen, setIsTableMenuOpen] = useState<boolean>(false);
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState<boolean>(false);
+  const [linkInputUrl, setLinkInputUrl] = useState<string>('');
+  const [isStatsModalOpen, setIsStatsModalOpen] = useState<boolean>(false);
+  const [isFindReplaceOpen, setIsFindReplaceOpen] = useState<boolean>(false);
+  const [findSearchTerm, setFindSearchTerm] = useState<string>('');
+  const [findReplaceTerm, setFindReplaceTerm] = useState<string>('');
+  const [findMatchCount, setFindMatchCount] = useState<number>(0);
+  const [findActiveIdx, setFindActiveIdx] = useState<number>(0);
+  const savedRangeRef = useRef<Range | null>(null);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest('.toolbar-dropdown-container')) {
+        setIsBulletMenuOpen(false);
+        setIsColorMenuOpen(false);
+        setIsHighlightMenuOpen(false);
+        setIsCaseMenuOpen(false);
+        setIsTableMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Ctrl+F / Cmd+F shortcut to open Find & Replace
+  useEffect(() => {
+    const handleFindShortcut = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        if (!isRawEditing) {
+          e.preventDefault();
+          setIsFindReplaceOpen(prev => !prev);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleFindShortcut);
+    return () => window.removeEventListener('keydown', handleFindShortcut);
+  }, [isRawEditing]);
 
   const checkActiveFormats = useCallback(() => {
     if (typeof document === 'undefined') return;
@@ -176,6 +241,8 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
         alignJustify: Boolean(document.queryCommandState('justifyFull')),
         unorderedList: Boolean(document.queryCommandState('insertUnorderedList')),
         orderedList: Boolean(document.queryCommandState('insertOrderedList')),
+        subscript: Boolean(document.queryCommandState('subscript')),
+        superscript: Boolean(document.queryCommandState('superscript')),
       });
     } catch {}
   }, []);
@@ -460,6 +527,248 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
       setTimeout(() => setCopied(false), 2000);
     } catch {}
   };
+
+  // ── Extended Google Docs Tools Handlers ──────────────────────────────────
+  const handleApplyBulletStyle = (style: BulletStyle) => {
+    setIsBulletMenuOpen(false);
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && editorRef.current) {
+      let node: Node | null = sel.anchorNode;
+      let listEl: HTMLElement | null = null;
+      while (node && node !== editorRef.current) {
+        if (node.nodeName === 'UL' || node.nodeName === 'OL') {
+          listEl = node as HTMLElement;
+          break;
+        }
+        node = node.parentNode;
+      }
+      if (listEl) {
+        if (style === 'numbered') {
+          if (listEl.nodeName === 'UL') {
+            const ol = document.createElement('ol');
+            ol.className = 'doc-bullets list-decimal pl-5 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200';
+            ol.innerHTML = listEl.innerHTML;
+            listEl.parentNode?.replaceChild(ol, listEl);
+          }
+        } else {
+          const info = detectBulletStyleFromGlyph(
+            style === 'dash' ? '–' : style === 'square' ? '▪' : style === 'arrow' ? '▸' : style === 'diamond' ? '◆' : style === 'circle' ? '◦' : style === 'check' ? '✓' : '•'
+          );
+          if (listEl.nodeName === 'OL') {
+            const ul = document.createElement('ul');
+            ul.className = info.cssListStyle === 'disc'
+              ? 'doc-bullets list-disc pl-4 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200'
+              : 'doc-bullets pl-4 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200';
+            if (info.cssListStyle !== 'disc') {
+              ul.style.listStyleType = info.cssListStyle;
+            }
+            ul.setAttribute('data-bullet-style', style);
+            ul.innerHTML = listEl.innerHTML;
+            listEl.parentNode?.replaceChild(ul, listEl);
+          } else {
+            listEl.className = info.cssListStyle === 'disc'
+              ? 'doc-bullets list-disc pl-4 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200'
+              : 'doc-bullets pl-4 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200';
+            if (info.cssListStyle === 'disc') {
+              listEl.style.removeProperty('list-style-type');
+            } else {
+              listEl.style.listStyleType = info.cssListStyle;
+            }
+            listEl.setAttribute('data-bullet-style', style);
+          }
+        }
+        handleEditorInput();
+        checkActiveFormats();
+        return;
+      }
+    }
+    // If not currently in a list, insert list and apply style
+    if (style === 'numbered') {
+      document.execCommand('insertOrderedList', false);
+    } else {
+      document.execCommand('insertUnorderedList', false);
+      const info = detectBulletStyleFromGlyph(
+        style === 'dash' ? '–' : style === 'square' ? '▪' : style === 'arrow' ? '▸' : style === 'diamond' ? '◆' : style === 'circle' ? '◦' : style === 'check' ? '✓' : '•'
+      );
+      if (editorRef.current) {
+        const uls = editorRef.current.querySelectorAll('ul');
+        const lastUl = uls[uls.length - 1];
+        if (lastUl) {
+          if (info.cssListStyle !== 'disc') {
+            lastUl.style.listStyleType = info.cssListStyle;
+          }
+          lastUl.setAttribute('data-bullet-style', style);
+        }
+      }
+    }
+    handleUpdateLayout({ bulletStyle: style });
+    handleEditorInput();
+    checkActiveFormats();
+  };
+
+  const handleApplyTextColor = (color: string) => {
+    setIsColorMenuOpen(false);
+    document.execCommand('foreColor', false, color);
+    handleEditorInput();
+  };
+
+  const handleApplyHighlightColor = (color: string) => {
+    setIsHighlightMenuOpen(false);
+    document.execCommand('hiliteColor', false, color);
+    handleEditorInput();
+  };
+
+  const openLinkModal = () => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+    }
+    setIsLinkModalOpen(true);
+  };
+
+  const handleInsertLink = () => {
+    if (!linkInputUrl.trim()) return;
+    let url = linkInputUrl.trim();
+    if (!/^https?:\/\//i.test(url) && !/^mailto:/i.test(url)) {
+      url = `https://${url}`;
+    }
+    if (savedRangeRef.current) {
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(savedRangeRef.current);
+      }
+    }
+    document.execCommand('createLink', false, url);
+    if (editorRef.current) {
+      const links = editorRef.current.querySelectorAll('a');
+      links.forEach(a => {
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener noreferrer');
+        a.className = 'text-zinc-900 dark:text-zinc-100 underline decoration-zinc-400 hover:decoration-zinc-900 transition-colors';
+      });
+    }
+    setIsLinkModalOpen(false);
+    setLinkInputUrl('');
+    handleEditorInput();
+  };
+
+  const handleRemoveLink = () => {
+    document.execCommand('unlink', false);
+    handleEditorInput();
+  };
+
+  const handleInsertHorizontalRule = () => {
+    document.execCommand('insertHorizontalRule', false);
+    if (editorRef.current) {
+      const hrs = editorRef.current.querySelectorAll('hr:not(.doc-page-break)');
+      hrs.forEach(hr => {
+        hr.className = 'my-3 border-t border-zinc-300 dark:border-zinc-700';
+      });
+    }
+    handleEditorInput();
+  };
+
+  const handleConvertCase = (mode: 'upper' | 'lower' | 'title') => {
+    setIsCaseMenuOpen(false);
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    const selectedText = range.toString();
+    if (!selectedText) return;
+
+    let converted = selectedText;
+    if (mode === 'upper') {
+      converted = selectedText.toUpperCase();
+    } else if (mode === 'lower') {
+      converted = selectedText.toLowerCase();
+    } else if (mode === 'title') {
+      converted = selectedText.replace(/\w\S*/g, txt => txt.charAt(0).toUpperCase() + txt.substring(1).toLowerCase());
+    }
+
+    document.execCommand('insertText', false, converted);
+    handleEditorInput();
+  };
+
+  const handleInsertTable = (rows: number, cols: number) => {
+    setIsTableMenuOpen(false);
+    let tableHtml = `<table class="doc-table w-full my-3 border border-zinc-200 dark:border-zinc-700/80 rounded border-collapse text-xs text-zinc-800 dark:text-zinc-200">\n  <tbody>`;
+    for (let r = 0; r < rows; r++) {
+      tableHtml += `\n    <tr>`;
+      for (let c = 0; c < cols; c++) {
+        tableHtml += `\n      <td class="p-2 border border-zinc-200 dark:border-zinc-700/80 min-w-[80px] align-top">${r === 0 ? `<strong>Col ${c + 1}</strong>` : 'Content'}</td>`;
+      }
+      tableHtml += `\n    </tr>`;
+    }
+    tableHtml += `\n  </tbody>\n</table>\n<p class="my-1"><br></p>`;
+    document.execCommand('insertHTML', false, tableHtml);
+    handleEditorInput();
+  };
+
+  // Find & Replace Handlers
+  const handleFindNext = (backwards = false) => {
+    if (!findSearchTerm.trim()) return;
+    if (typeof window !== 'undefined' && (window as any).find) {
+      const found = (window as any).find(findSearchTerm, false, backwards, true, false, false, false);
+      if (!found) {
+        (window as any).find(findSearchTerm, false, backwards, false, false, false, false);
+      }
+    }
+  };
+
+  const handleReplaceCurrent = () => {
+    if (!findSearchTerm) return;
+    const sel = window.getSelection();
+    if (sel && sel.toString().toLowerCase() === findSearchTerm.toLowerCase()) {
+      document.execCommand('insertText', false, findReplaceTerm);
+      handleEditorInput();
+      handleFindNext(false);
+    } else {
+      handleFindNext(false);
+    }
+  };
+
+  const handleReplaceAll = () => {
+    if (!findSearchTerm || !editorRef.current) return;
+    const currentHtml = editorRef.current.innerHTML;
+    const escapedTerm = findSearchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escapedTerm, 'gi');
+    const newHtml = currentHtml.replace(regex, findReplaceTerm);
+    editorRef.current.innerHTML = newHtml;
+    handleEditorInput();
+    setFindMatchCount(0);
+  };
+
+  useEffect(() => {
+    if (!findSearchTerm.trim()) {
+      setFindMatchCount(0);
+      return;
+    }
+    const fullText = editorRef.current ? extractTextFromDoc(editorRef.current) : rawText;
+    const escaped = findSearchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const matches = fullText.match(new RegExp(escaped, 'gi'));
+    setFindMatchCount(matches ? matches.length : 0);
+  }, [findSearchTerm, rawText]);
+
+  // Document Statistics
+  const documentStats = useMemo(() => {
+    const fullText = editorRef.current ? extractTextFromDoc(editorRef.current) : rawText;
+    const words = fullText.trim().split(/\s+/).filter(Boolean).length;
+    const charsWithSpaces = fullText.length;
+    const charsNoSpaces = fullText.replace(/\s+/g, '').length;
+    const bulletRegex = /^[\uF0B7\u25CF\u25CB\u25A0\u25AA\u2022\u2023\u2043\u2013\u2014•▪▸▹‣◦○*\-●■◆✦➢✓–—]/;
+    const bulletsCount = fullText.split('\n').filter(l => bulletRegex.test(l.trim())).length;
+    const readingTime = Math.max(1, Math.ceil(words / 200));
+    return {
+      words,
+      charsWithSpaces,
+      charsNoSpaces,
+      lines: rawLines.length,
+      sections: sectionBreakdown.length,
+      bullets: bulletsCount,
+      readingTime,
+    };
+  }, [rawText, rawLines, sectionBreakdown]);
 
   // Insert section template directly into the live document
   const handleInsertSectionIntoDoc = (type: 'EXPERIENCE' | 'PROJECTS' | 'SKILLS' | 'EDUCATION' | 'SUMMARY' | 'CUSTOM') => {
@@ -1097,7 +1406,7 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
 
               <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5 shrink-0" />
 
-              {/* Text Styling: Bold, Italic, Underline, Strikethrough with Google Docs active formatting states */}
+              {/* Text Styling: Bold, Italic, Underline, Strikethrough, Subscript, Superscript */}
               <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5">
                 <button
                   type="button"
@@ -1167,6 +1476,142 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
                 >
                   <Strikethrough className="w-3.5 h-3.5" />
                 </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    document.execCommand('subscript', false);
+                    handleEditorInput();
+                    checkActiveFormats();
+                  }}
+                  className={`p-1 rounded transition-colors ${
+                    activeFormats.subscript
+                      ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 shadow-2xs'
+                      : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                  }`}
+                  title="Subscript (x₂)"
+                >
+                  <Subscript className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => {
+                    document.execCommand('superscript', false);
+                    handleEditorInput();
+                    checkActiveFormats();
+                  }}
+                  className={`p-1 rounded transition-colors ${
+                    activeFormats.superscript
+                      ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 shadow-2xs'
+                      : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                  }`}
+                  title="Superscript (x²)"
+                >
+                  <Superscript className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5 shrink-0" />
+
+              {/* Text Color & Highlight Swatches */}
+              <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5">
+                {/* Text Color Dropdown */}
+                <div className="relative toolbar-dropdown-container">
+                  <button
+                    type="button"
+                    onMouseDown={preventFocusLoss}
+                    onClick={() => {
+                      setIsColorMenuOpen(!isColorMenuOpen);
+                      setIsHighlightMenuOpen(false);
+                      setIsBulletMenuOpen(false);
+                      setIsCaseMenuOpen(false);
+                      setIsTableMenuOpen(false);
+                    }}
+                    className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 flex items-center gap-0.5"
+                    title="Text color"
+                  >
+                    <Palette className="w-3.5 h-3.5" />
+                    <ChevronDown className="w-2.5 h-2.5 text-zinc-400" />
+                  </button>
+
+                  {isColorMenuOpen && (
+                    <div className="absolute left-0 top-full mt-1.5 w-44 bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl shadow-xl p-2 z-50 animate-in fade-in duration-150">
+                      <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block mb-1.5 px-1">Text Color</span>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[
+                          { label: 'Default', value: 'inherit', color: 'bg-zinc-900 dark:bg-zinc-100' },
+                          { label: 'Charcoal', value: '#27272a', color: 'bg-zinc-800' },
+                          { label: 'Muted Zinc', value: '#71717a', color: 'bg-zinc-500' },
+                          { label: 'Slate', value: '#475569', color: 'bg-slate-600' },
+                          { label: 'Emerald', value: '#059669', color: 'bg-emerald-600' },
+                          { label: 'Amber', value: '#d97706', color: 'bg-amber-600' },
+                          { label: 'Rose', value: '#e11d48', color: 'bg-rose-600' },
+                          { label: 'Deep Steel', value: '#1e293b', color: 'bg-slate-800' },
+                        ].map(swatch => (
+                          <button
+                            key={swatch.value}
+                            type="button"
+                            onMouseDown={preventFocusLoss}
+                            onClick={() => handleApplyTextColor(swatch.value)}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center hover:scale-110 transition-transform border border-zinc-300 dark:border-zinc-700"
+                            title={swatch.label}
+                          >
+                            <span className={`w-4 h-4 rounded-full ${swatch.color}`}></span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Highlight Color Dropdown */}
+                <div className="relative toolbar-dropdown-container">
+                  <button
+                    type="button"
+                    onMouseDown={preventFocusLoss}
+                    onClick={() => {
+                      setIsHighlightMenuOpen(!isHighlightMenuOpen);
+                      setIsColorMenuOpen(false);
+                      setIsBulletMenuOpen(false);
+                      setIsCaseMenuOpen(false);
+                      setIsTableMenuOpen(false);
+                    }}
+                    className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 flex items-center gap-0.5"
+                    title="Highlight color"
+                  >
+                    <Highlighter className="w-3.5 h-3.5" />
+                    <ChevronDown className="w-2.5 h-2.5 text-zinc-400" />
+                  </button>
+
+                  {isHighlightMenuOpen && (
+                    <div className="absolute left-0 top-full mt-1.5 w-44 bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl shadow-xl p-2 z-50 animate-in fade-in duration-150">
+                      <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block mb-1.5 px-1">Highlight</span>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[
+                          { label: 'None', value: 'transparent', preview: 'border border-dashed border-zinc-400' },
+                          { label: 'Yellow', value: '#fef08a', preview: 'bg-amber-200' },
+                          { label: 'Emerald', value: '#bbf7d0', preview: 'bg-emerald-200' },
+                          { label: 'Amber', value: '#fde68a', preview: 'bg-amber-300' },
+                          { label: 'Zinc', value: '#e4e4e7', preview: 'bg-zinc-300' },
+                          { label: 'Slate', value: '#cbd5e1', preview: 'bg-slate-300' },
+                        ].map(swatch => (
+                          <button
+                            key={swatch.label}
+                            type="button"
+                            onMouseDown={preventFocusLoss}
+                            onClick={() => handleApplyHighlightColor(swatch.value)}
+                            className="h-7 px-1.5 rounded-lg flex items-center justify-center text-[10px] font-medium border border-zinc-200 dark:border-zinc-700 hover:scale-105 transition-transform"
+                            title={swatch.label}
+                          >
+                            <span className={`w-3.5 h-3.5 rounded-full mr-1 ${swatch.preview}`}></span>
+                            <span className="text-zinc-700 dark:text-zinc-300 truncate">{swatch.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5 shrink-0 hidden sm:block" />
@@ -1262,25 +1707,68 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
 
               <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5 shrink-0 hidden sm:block" />
 
-              {/* Lists, Indents, and Clear Formatting */}
-              <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5 hidden sm:flex">
-                <button
-                  type="button"
-                  onMouseDown={preventFocusLoss}
-                  onClick={() => {
-                    document.execCommand('insertUnorderedList', false);
-                    handleEditorInput();
-                    checkActiveFormats();
-                  }}
-                  className={`p-1 rounded transition-colors ${
-                    activeFormats.unorderedList
-                      ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 shadow-2xs'
-                      : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
-                  }`}
-                  title="Bulleted List (•)"
-                >
-                  <List className="w-3.5 h-3.5" />
-                </button>
+              {/* Bullet Styles & Lists: Google Docs Bullet Dropdown, Numbered List, Indents */}
+              <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5">
+                {/* Bullet Style Dropdown */}
+                <div className="relative toolbar-dropdown-container">
+                  <button
+                    type="button"
+                    onMouseDown={preventFocusLoss}
+                    onClick={() => {
+                      setIsBulletMenuOpen(!isBulletMenuOpen);
+                      setIsColorMenuOpen(false);
+                      setIsHighlightMenuOpen(false);
+                      setIsCaseMenuOpen(false);
+                      setIsTableMenuOpen(false);
+                    }}
+                    className={`p-1 rounded flex items-center gap-0.5 transition-colors ${
+                      activeFormats.unorderedList
+                        ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 shadow-2xs'
+                        : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                    }`}
+                    title="Bullet points & style picker"
+                  >
+                    <List className="w-3.5 h-3.5" />
+                    <ChevronDown className="w-2.5 h-2.5 text-zinc-400" />
+                  </button>
+
+                  {isBulletMenuOpen && (
+                    <div className="absolute left-0 top-full mt-1.5 w-52 bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl shadow-xl p-1.5 z-50 animate-in fade-in duration-150">
+                      <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block mb-1 px-2 py-0.5">Bullet Point Styles</span>
+                      {[
+                        { style: 'disc' as BulletStyle, glyph: '•', label: 'Disc (Standard)' },
+                        { style: 'dash' as BulletStyle, glyph: '–', label: 'En-Dash (Modern)' },
+                        { style: 'square' as BulletStyle, glyph: '▪', label: 'Square (Technical)' },
+                        { style: 'arrow' as BulletStyle, glyph: '▸', label: 'Right Arrow' },
+                        { style: 'diamond' as BulletStyle, glyph: '◆', label: 'Filled Diamond' },
+                        { style: 'circle' as BulletStyle, glyph: '◦', label: 'Open Circle' },
+                        { style: 'check' as BulletStyle, glyph: '✓', label: 'Checkmark' },
+                        { style: 'numbered' as BulletStyle, glyph: '1.', label: 'Numbered List' },
+                      ].map(item => (
+                        <button
+                          key={item.style}
+                          type="button"
+                          onMouseDown={preventFocusLoss}
+                          onClick={() => handleApplyBulletStyle(item.style)}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                            layoutOptions.bulletStyle === item.style
+                              ? 'bg-zinc-100 dark:bg-zinc-800 font-semibold text-zinc-900 dark:text-zinc-100'
+                              : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="w-4 text-center font-bold text-zinc-900 dark:text-zinc-100">{item.glyph}</span>
+                            <span>{item.label}</span>
+                          </span>
+                          {layoutOptions.bulletStyle === item.style && (
+                            <Check className="w-3 h-3 text-emerald-500" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <button
                   type="button"
                   onMouseDown={preventFocusLoss}
@@ -1324,6 +1812,137 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
                 >
                   <IndentIncrease className="w-3.5 h-3.5" />
                 </button>
+              </div>
+
+              <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5 shrink-0 hidden lg:block" />
+
+              {/* Insertion Tools: Links, Horizontal Rule, Tables */}
+              <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5 hidden lg:flex">
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={openLinkModal}
+                  className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                  title="Insert Hyperlink (Ctrl+K)"
+                >
+                  <Link className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={handleRemoveLink}
+                  className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                  title="Remove Hyperlink"
+                >
+                  <Unlink className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={handleInsertHorizontalRule}
+                  className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                  title="Insert Horizontal Divider Line"
+                >
+                  <SeparatorHorizontal className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Quick Table Insert Dropdown */}
+                <div className="relative toolbar-dropdown-container">
+                  <button
+                    type="button"
+                    onMouseDown={preventFocusLoss}
+                    onClick={() => {
+                      setIsTableMenuOpen(!isTableMenuOpen);
+                      setIsBulletMenuOpen(false);
+                      setIsColorMenuOpen(false);
+                      setIsHighlightMenuOpen(false);
+                      setIsCaseMenuOpen(false);
+                    }}
+                    className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 flex items-center gap-0.5"
+                    title="Insert Table"
+                  >
+                    <Table className="w-3.5 h-3.5" />
+                    <ChevronDown className="w-2.5 h-2.5 text-zinc-400" />
+                  </button>
+
+                  {isTableMenuOpen && (
+                    <div className="absolute left-0 top-full mt-1.5 w-44 bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl shadow-xl p-1.5 z-50 animate-in fade-in duration-150">
+                      <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block mb-1 px-2 py-0.5">Quick Table</span>
+                      {[
+                        { rows: 2, cols: 2, label: '2 × 2 Skills Table' },
+                        { rows: 3, cols: 2, label: '3 × 2 Columns' },
+                        { rows: 3, cols: 3, label: '3 × 3 Grid' },
+                        { rows: 4, cols: 2, label: '4 × 2 Extended' },
+                      ].map(tbl => (
+                        <button
+                          key={tbl.label}
+                          type="button"
+                          onMouseDown={preventFocusLoss}
+                          onClick={() => handleInsertTable(tbl.rows, tbl.cols)}
+                          className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        >
+                          {tbl.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5 shrink-0 hidden md:block" />
+
+              {/* Case Conversion, Clear Formatting, Find & Replace, Stats */}
+              <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 rounded-md p-0.5 hidden md:flex">
+                {/* Case Conversion Dropdown */}
+                <div className="relative toolbar-dropdown-container">
+                  <button
+                    type="button"
+                    onMouseDown={preventFocusLoss}
+                    onClick={() => {
+                      setIsCaseMenuOpen(!isCaseMenuOpen);
+                      setIsBulletMenuOpen(false);
+                      setIsColorMenuOpen(false);
+                      setIsHighlightMenuOpen(false);
+                      setIsTableMenuOpen(false);
+                    }}
+                    className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 flex items-center gap-0.5"
+                    title="Change text case"
+                  >
+                    <CaseUpper className="w-3.5 h-3.5" />
+                    <ChevronDown className="w-2.5 h-2.5 text-zinc-400" />
+                  </button>
+
+                  {isCaseMenuOpen && (
+                    <div className="absolute left-0 top-full mt-1.5 w-40 bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl shadow-xl p-1.5 z-50 animate-in fade-in duration-150">
+                      <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block mb-1 px-2 py-0.5">Text Case</span>
+                      <button
+                        type="button"
+                        onMouseDown={preventFocusLoss}
+                        onClick={() => handleConvertCase('upper')}
+                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                      >
+                        UPPERCASE
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={preventFocusLoss}
+                        onClick={() => handleConvertCase('lower')}
+                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                      >
+                        lowercase
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={preventFocusLoss}
+                        onClick={() => handleConvertCase('title')}
+                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                      >
+                        Title Case
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <button
                   type="button"
                   onMouseDown={preventFocusLoss}
@@ -1336,6 +1955,30 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
                   title="Clear Formatting"
                 >
                   <RemoveFormatting className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => setIsFindReplaceOpen(!isFindReplaceOpen)}
+                  className={`p-1 rounded transition-colors ${
+                    isFindReplaceOpen
+                      ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 shadow-2xs'
+                      : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                  }`}
+                  title="Find & Replace (Ctrl+F)"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => setIsStatsModalOpen(true)}
+                  className="p-1 rounded text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                  title="Document Statistics & Metrics"
+                >
+                  <Info className="w-3.5 h-3.5" />
                 </button>
               </div>
 
@@ -1466,6 +2109,202 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
               </div>
             </div>
           </nav>
+
+          {/* ── GOOGLE DOCS FLOATING FIND & REPLACE BAR ── */}
+          {isFindReplaceOpen && (
+            <div className="absolute top-12 right-6 z-30 bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-xl shadow-xl p-2.5 flex flex-wrap items-center gap-2 text-xs font-mono animate-in fade-in slide-in-from-top-2 duration-150 max-w-lg">
+              <div className="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-lg px-2 py-1 border border-zinc-200 dark:border-zinc-700">
+                <Search className="w-3.5 h-3.5 text-zinc-400" />
+                <input
+                  type="text"
+                  placeholder="Find in document..."
+                  value={findSearchTerm}
+                  onChange={(e) => setFindSearchTerm(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleFindNext(e.shiftKey);
+                    }
+                  }}
+                  autoFocus
+                  className="bg-transparent border-none text-xs focus:outline-none w-32 sm:w-40 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400"
+                />
+                {findSearchTerm && (
+                  <span className="text-[10px] text-zinc-500 font-semibold px-1">
+                    {findMatchCount} {findMatchCount === 1 ? 'match' : 'matches'}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => handleFindNext(true)}
+                  className="p-0.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-white rounded"
+                  title="Previous match (Shift+Enter)"
+                >
+                  <ArrowUp className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={() => handleFindNext(false)}
+                  className="p-0.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-white rounded"
+                  title="Next match (Enter)"
+                >
+                  <ArrowDown className="w-3 h-3" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-lg px-2 py-1 border border-zinc-200 dark:border-zinc-700">
+                <input
+                  type="text"
+                  placeholder="Replace with..."
+                  value={findReplaceTerm}
+                  onChange={(e) => setFindReplaceTerm(e.target.value)}
+                  className="bg-transparent border-none text-xs focus:outline-none w-28 sm:w-36 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400"
+                />
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={handleReplaceCurrent}
+                  className="px-1.5 py-0.5 bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded text-[11px] font-sans font-medium text-zinc-800 dark:text-zinc-200 cursor-pointer"
+                >
+                  Replace
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preventFocusLoss}
+                  onClick={handleReplaceAll}
+                  className="px-1.5 py-0.5 bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded text-[11px] font-sans font-medium text-zinc-800 dark:text-zinc-200 cursor-pointer"
+                >
+                  All
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsFindReplaceOpen(false)}
+                className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded cursor-pointer"
+                title="Close (Esc)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* ── DOCUMENT STATISTICS MODAL ── */}
+          {isStatsModalOpen && (
+            <div className="fixed inset-0 z-50 bg-zinc-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-2xl shadow-2xl max-w-md w-full p-6 text-zinc-900 dark:text-zinc-100 animate-in fade-in zoom-in-95 duration-150">
+                <div className="flex items-center justify-between pb-3 border-b border-zinc-200 dark:border-zinc-800">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
+                      <Info className="w-4 h-4 text-emerald-500" />
+                    </div>
+                    <h3 className="text-sm font-headline font-bold">Document Statistics</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsStatsModalOpen(false)}
+                    className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-md cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="py-4 grid grid-cols-2 gap-3 text-xs">
+                  <div className="p-3 bg-zinc-50 dark:bg-zinc-900/60 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                    <span className="text-zinc-500 block font-mono text-[10px] uppercase">Words</span>
+                    <span className="text-lg font-bold font-mono">{documentStats.words.toLocaleString()}</span>
+                  </div>
+                  <div className="p-3 bg-zinc-50 dark:bg-zinc-900/60 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                    <span className="text-zinc-500 block font-mono text-[10px] uppercase">Characters</span>
+                    <span className="text-lg font-bold font-mono">{documentStats.charsWithSpaces.toLocaleString()}</span>
+                  </div>
+                  <div className="p-3 bg-zinc-50 dark:bg-zinc-900/60 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                    <span className="text-zinc-500 block font-mono text-[10px] uppercase">Characters (no spaces)</span>
+                    <span className="text-lg font-bold font-mono">{documentStats.charsNoSpaces.toLocaleString()}</span>
+                  </div>
+                  <div className="p-3 bg-zinc-50 dark:bg-zinc-900/60 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                    <span className="text-zinc-500 block font-mono text-[10px] uppercase">Lines / Page Budget</span>
+                    <span className="text-lg font-bold font-mono">{documentStats.lines} / {maxRecommendedLines}</span>
+                  </div>
+                  <div className="p-3 bg-zinc-50 dark:bg-zinc-900/60 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                    <span className="text-zinc-500 block font-mono text-[10px] uppercase">Bullet Points</span>
+                    <span className="text-lg font-bold font-mono">{documentStats.bullets}</span>
+                  </div>
+                  <div className="p-3 bg-zinc-50 dark:bg-zinc-900/60 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                    <span className="text-zinc-500 block font-mono text-[10px] uppercase">Est. Reading Time</span>
+                    <span className="text-lg font-bold font-mono">~{documentStats.readingTime} min</span>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-zinc-200 dark:border-zinc-800 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsStatsModalOpen(false)}
+                    className="px-4 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 font-semibold text-xs rounded-lg hover:opacity-90 cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── HYPERLINK MODAL ── */}
+          {isLinkModalOpen && (
+            <div className="fixed inset-0 z-50 bg-zinc-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] rounded-2xl shadow-2xl max-w-sm w-full p-5 text-zinc-900 dark:text-zinc-100 animate-in fade-in zoom-in-95 duration-150">
+                <div className="flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-zinc-800">
+                  <h3 className="text-xs font-headline font-bold flex items-center gap-1.5">
+                    <Link className="w-3.5 h-3.5 text-zinc-500" />
+                    <span>Insert Hyperlink</span>
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setIsLinkModalOpen(false)}
+                    className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="py-3">
+                  <label className="text-[11px] font-mono text-zinc-500 block mb-1">Target URL</label>
+                  <input
+                    type="text"
+                    placeholder="https://linkedin.com/in/... or github.com/..."
+                    value={linkInputUrl}
+                    onChange={(e) => setLinkInputUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleInsertLink();
+                      }
+                    }}
+                    autoFocus
+                    className="w-full px-2.5 py-1.5 text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none"
+                  />
+                </div>
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsLinkModalOpen(false)}
+                    className="px-3 py-1 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg font-medium cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleInsertLink}
+                    disabled={!linkInputUrl.trim()}
+                    className="px-3 py-1 bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 text-xs font-semibold rounded-lg hover:opacity-90 disabled:opacity-40 cursor-pointer"
+                  >
+                    Insert Link
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Extraction Feedback Banner */}
           {uploadFeedback && (

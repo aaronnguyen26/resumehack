@@ -10,6 +10,8 @@ import {
   ExtractedPdfLayout,
   PositionedTextItem,
   isKnownSectionHeader,
+  detectBulletStyleFromGlyph,
+  BulletStyle,
 } from "../services/pdf-layout-engine.js";
 import {
   rawTextToHtml,
@@ -565,6 +567,141 @@ describe("PDF Layout Preservation & Design Engine Test Suite", () => {
       const result = buildHighFidelityPdfHtml(bulletItems, 612);
       expect(result.html).toContain("Engineered low-latency consensus state machine across distributed database nodes yielding 99.999% availability during network splits.");
       expect(result.html).toContain("Spearheaded migration to containerized microservices architecture.");
+    });
+  });
+
+  describe("Part 6: Original PDF Bullet Style Preservation & Custom Glyph Rendering Engine", () => {
+    it("detects and maps all bullet styles and canonical glyphs accurately via detectBulletStyleFromGlyph", () => {
+      // Dash variants
+      expect(detectBulletStyleFromGlyph("–").style).toBe("dash");
+      expect(detectBulletStyleFromGlyph("—").style).toBe("dash");
+      expect(detectBulletStyleFromGlyph("-").style).toBe("dash");
+      expect(detectBulletStyleFromGlyph("⁃").style).toBe("dash");
+      expect(detectBulletStyleFromGlyph("–").cssListStyle).toBe("'– '");
+      expect(detectBulletStyleFromGlyph("–").char).toBe("–");
+
+      // Square variants
+      expect(detectBulletStyleFromGlyph("▪").style).toBe("square");
+      expect(detectBulletStyleFromGlyph("■").style).toBe("square");
+      expect(detectBulletStyleFromGlyph("\uF0A7").style).toBe("square");
+      expect(detectBulletStyleFromGlyph("▪").cssListStyle).toBe("'▪ '");
+      expect(detectBulletStyleFromGlyph("▪").char).toBe("▪");
+
+      // Arrow variants
+      expect(detectBulletStyleFromGlyph("▸").style).toBe("arrow");
+      expect(detectBulletStyleFromGlyph("▹").style).toBe("arrow");
+      expect(detectBulletStyleFromGlyph("‣").style).toBe("arrow");
+      expect(detectBulletStyleFromGlyph("➢").style).toBe("arrow");
+      expect(detectBulletStyleFromGlyph("▸").cssListStyle).toBe("'▸ '");
+
+      // Diamond variants
+      expect(detectBulletStyleFromGlyph("◆").style).toBe("diamond");
+      expect(detectBulletStyleFromGlyph("◇").style).toBe("diamond");
+      expect(detectBulletStyleFromGlyph("◆").cssListStyle).toBe("'◆ '");
+
+      // Circle variants
+      expect(detectBulletStyleFromGlyph("◦").style).toBe("circle");
+      expect(detectBulletStyleFromGlyph("○").style).toBe("circle");
+      expect(detectBulletStyleFromGlyph("◦").cssListStyle).toBe("'◦ '");
+
+      // Check variants
+      expect(detectBulletStyleFromGlyph("✓").style).toBe("check");
+      expect(detectBulletStyleFromGlyph("✔").style).toBe("check");
+      expect(detectBulletStyleFromGlyph("✓").cssListStyle).toBe("'✓ '");
+
+      // Standard disc variants
+      expect(detectBulletStyleFromGlyph("•").style).toBe("disc");
+      expect(detectBulletStyleFromGlyph("●").style).toBe("disc");
+      expect(detectBulletStyleFromGlyph("\uF0B7").style).toBe("disc");
+      expect(detectBulletStyleFromGlyph("•").cssListStyle).toBe("disc");
+    });
+
+    it("detects document-wide dominant bullet style in detectPdfLayout", () => {
+      // Resume with en-dash bullets
+      const dashPdfItems = [
+        { str: "Minh Nguyen", transform: [1, 0, 0, 1, 40, 720], height: 20, width: 140 },
+        { str: "EXPERIENCE", transform: [1, 0, 0, 1, 40, 680], height: 12, width: 80 },
+        { str: "– Developed scalable data pipelines in Python and Apache Spark", transform: [1, 0, 0, 1, 40, 660], height: 10, width: 400 },
+        { str: "– Reduced model inference latency by 35% through quantization", transform: [1, 0, 0, 1, 40, 640], height: 10, width: 390 },
+        { str: "– Orchestrated multi-region deployment with Kubernetes and Terraform", transform: [1, 0, 0, 1, 40, 620], height: 10, width: 410 },
+      ];
+
+      const dashLayout = detectPdfLayout(dashPdfItems, 612);
+      expect(dashLayout.detectedBulletStyle).toBe("dash");
+      expect(dashLayout.detectedBulletChar).toBe("–");
+
+      // Resume with square bullets
+      const squarePdfItems = [
+        { str: "Aaron Nguyen", transform: [1, 0, 0, 1, 40, 720], height: 20, width: 140 },
+        { str: "EXPERIENCE", transform: [1, 0, 0, 1, 40, 680], height: 12, width: 80 },
+        { str: "▪ Architected distributed event stream with Kafka and Redis", transform: [1, 0, 0, 1, 40, 660], height: 10, width: 400 },
+        { str: "▪ Spearheaded zero-downtime migration of 10M user records", transform: [1, 0, 0, 1, 40, 640], height: 10, width: 390 },
+      ];
+
+      const squareLayout = detectPdfLayout(squarePdfItems, 612);
+      expect(squareLayout.detectedBulletStyle).toBe("square");
+      expect(squareLayout.detectedBulletChar).toBe("▪");
+    });
+
+    it("renders custom CSS list-style-type and preserves original glyphs in buildHighFidelityPdfHtml", () => {
+      const dashResumeItems = [
+        { str: "WORK EXPERIENCE", transform: [1, 0, 0, 1, 40, 680], height: 12, width: 120 },
+        { str: "– Built full-stack React and Go services processing 100k daily requests", transform: [1, 0, 0, 1, 40, 660], height: 10, width: 420 },
+        { str: "– Designed automated CI/CD pipeline achieving sub-5 minute builds", transform: [1, 0, 0, 1, 40, 640], height: 10, width: 400 },
+      ];
+
+      const result = buildHighFidelityPdfHtml(dashResumeItems, 612);
+      // HTML must use list-style-type: '– ' and data-bullet-style="dash"
+      expect(result.html).toContain("style=\"list-style-type: '– '\"");
+      expect(result.html).toContain("data-bullet-style=\"dash\"");
+      expect(result.html).toContain("Built full-stack React and Go services processing 100k daily requests");
+
+      // Plaintext must preserve the en-dash '–'
+      expect(result.text).toContain("– Built full-stack React and Go services processing 100k daily requests");
+      expect(result.text).toContain("– Designed automated CI/CD pipeline achieving sub-5 minute builds");
+    });
+
+    it("renders square bullets with custom list-style-type and preserves square glyph in buildHighFidelityPdfHtml", () => {
+      const squareResumeItems = [
+        { str: "WORK EXPERIENCE", transform: [1, 0, 0, 1, 40, 680], height: 12, width: 120 },
+        { str: "▪ Engineered high-throughput Bigtable consensus cluster", transform: [1, 0, 0, 1, 40, 660], height: 10, width: 400 },
+        { str: "▪ Reduced P99 read latency by 45% via Dragonfly caching tier", transform: [1, 0, 0, 1, 40, 640], height: 10, width: 390 },
+      ];
+
+      const result = buildHighFidelityPdfHtml(squareResumeItems, 612);
+      expect(result.html).toContain("style=\"list-style-type: '▪ '\"");
+      expect(result.html).toContain("data-bullet-style=\"square\"");
+      expect(result.text).toContain("▪ Engineered high-throughput Bigtable consensus cluster");
+      expect(result.text).toContain("▪ Reduced P99 read latency by 45% via Dragonfly caching tier");
+    });
+
+    it("applies bulletStyle options to rawTextToHtml seamlessly", () => {
+      const resumeText = `Jane Doe
+jane@example.com
+
+WORK EXPERIENCE
+Software Engineer
+• Engineered distributed caching layer reducing latency by 40%
+• Implemented OAuth2 PKCE authentication flow`;
+
+      // 1. Classic disc
+      const htmlDisc = rawTextToHtml(resumeText, undefined, { bulletStyle: 'disc' });
+      expect(htmlDisc).toContain('data-bullet-style="disc"');
+
+      // 2. Dash
+      const htmlDash = rawTextToHtml(resumeText, undefined, { bulletStyle: 'dash' });
+      expect(htmlDash).toContain('data-bullet-style="dash"');
+      expect(htmlDash).toContain("style=\"list-style-type: '– '\"");
+
+      // 3. Square
+      const htmlSquare = rawTextToHtml(resumeText, undefined, { bulletStyle: 'square' });
+      expect(htmlSquare).toContain('data-bullet-style="square"');
+      expect(htmlSquare).toContain("style=\"list-style-type: '▪ '\"");
+
+      // 4. Arrow
+      const htmlArrow = rawTextToHtml(resumeText, undefined, { bulletStyle: 'arrow' });
+      expect(htmlArrow).toContain('data-bullet-style="arrow"');
+      expect(htmlArrow).toContain("style=\"list-style-type: '▸ '\"");
     });
   });
 });

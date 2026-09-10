@@ -1,5 +1,9 @@
 import { ApplicantProfile } from '../types/index.js';
-import { isKnownSectionHeader } from './pdf-layout-engine.js';
+import { 
+  isKnownSectionHeader, 
+  BulletStyle, 
+  detectBulletStyleFromGlyph 
+} from './pdf-layout-engine.js';
 
 export function escapeHtml(text: string): string {
   if (!text) return '';
@@ -29,6 +33,7 @@ export interface ResumeLayoutOptions {
   headerAlignment?: 'left' | 'center' | 'split';
   sectionDivider?: 'line' | 'accent' | 'minimal' | 'banner';
   columnLayout?: 'single' | 'two_column';
+  bulletStyle?: BulletStyle;
 }
 
 /**
@@ -274,12 +279,44 @@ export function rawTextToHtml(
           ${formatSectionHeaderTag(sectionHeader)}
       `.trim();
 
-      let currentBulletGroup: string[] = [];
+      interface RawBulletItem {
+        rawLine: string;
+        cleanText: string;
+      }
+      let currentBulletGroup: RawBulletItem[] = [];
 
       const flushBullets = () => {
         if (currentBulletGroup.length > 0) {
-          sectionHtml += `<ul class="doc-bullets list-disc pl-5 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200">`;
-          currentBulletGroup.forEach(b => {
+          // Determine bullet style: either from layoutOptions.bulletStyle or detected from the first bullet glyph
+          let bulletStyle: BulletStyle = layoutOptions?.bulletStyle || 'disc';
+          let listStyleCss = 'disc';
+
+          if (layoutOptions?.bulletStyle) {
+            bulletStyle = layoutOptions.bulletStyle;
+            listStyleCss = bulletStyle === 'dash' ? "'– '"
+              : bulletStyle === 'square' ? "'▪ '"
+              : bulletStyle === 'arrow' ? "'▸ '"
+              : bulletStyle === 'diamond' ? "'◆ '"
+              : bulletStyle === 'circle' ? "'◦ '"
+              : bulletStyle === 'check' ? "'✓ '"
+              : bulletStyle === 'numbered' ? 'decimal'
+              : 'disc';
+          } else {
+            const firstM = currentBulletGroup[0].rawLine.match(/^[\uF0B7\u25CF\u25CB\u25A0\u25AA\u2022\u2023\u2043\u2013\u2014•▪▸▹‣◦○*\-●■◆✦➢✓–—]\s*/);
+            const glyph = firstM ? firstM[0].trim() : '•';
+            const info = detectBulletStyleFromGlyph(glyph);
+            bulletStyle = info.style;
+            listStyleCss = info.cssListStyle;
+          }
+
+          const listStyleAttr = listStyleCss === 'disc' ? '' : ` style="list-style-type: ${listStyleCss}"`;
+          const listClass = listStyleCss === 'disc'
+            ? 'doc-bullets list-disc pl-4 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200'
+            : 'doc-bullets pl-4 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200';
+
+          sectionHtml += `<ul class="${listClass}"${listStyleAttr} data-bullet-style="${bulletStyle}">`;
+          currentBulletGroup.forEach(item => {
+            const b = item.cleanText;
             const skillCatMatch = b.match(/^([A-Za-z0-9\s&/-]+):(\s+.+)$/);
             if (skillCatMatch && /skills|technologies|competencies/i.test(sectionHeader)) {
               sectionHtml += `<li><strong>${escapeHtml(skillCatMatch[1])}:</strong>${escapeHtml(skillCatMatch[2])}</li>`;
@@ -296,13 +333,16 @@ export function rawTextToHtml(
         const line = sectionLines[lineIdx];
 
         if (isBulletLine(line)) {
-          currentBulletGroup.push(cleanBulletLine(line));
+          currentBulletGroup.push({
+            rawLine: line,
+            cleanText: cleanBulletLine(line),
+          });
         } else if (/skills|technologies|competencies|languages|interests/i.test(sectionHeader) && line.includes(':')) {
           flushBullets();
           const colonIdx = line.indexOf(':');
           const category = line.substring(0, colonIdx).trim();
           const items = line.substring(colonIdx + 1).trim();
-          sectionHtml += `<ul class="doc-bullets list-disc pl-5 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200">`;
+          sectionHtml += `<ul class="doc-bullets list-disc pl-4 space-y-1 my-1.5 text-xs text-zinc-800 dark:text-zinc-200">`;
           sectionHtml += `<li><strong>${escapeHtml(category)}:</strong> ${escapeHtml(items)}</li>`;
           sectionHtml += `</ul>`;
         } else {
@@ -320,7 +360,8 @@ export function rawTextToHtml(
 
           // Bullet continuation check: if we are in a bullet list and the line is not a new job title, meta, or date
           if (currentBulletGroup.length > 0 && !isJobTitleOrMeta) {
-            currentBulletGroup[currentBulletGroup.length - 1] += ' ' + line;
+            currentBulletGroup[currentBulletGroup.length - 1].rawLine += ' ' + line;
+            currentBulletGroup[currentBulletGroup.length - 1].cleanText += ' ' + line;
             continue;
           }
 

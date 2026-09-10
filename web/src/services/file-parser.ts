@@ -4,7 +4,8 @@ import {
   detectPdfLayout, 
   formatLayoutAwarePdfItems, 
   ExtractedPdfLayout,
-  isKnownSectionHeader
+  isKnownSectionHeader,
+  detectBulletStyleFromGlyph
 } from './pdf-layout-engine.js';
 
 export { detectPdfLayout, formatLayoutAwarePdfItems };
@@ -163,10 +164,13 @@ export function formatExtractedPdfItems(items: Array<{ str?: string; transform?:
       }
     }
 
-    // Normalize bullets at start of line with comprehensive Unicode/Wingdings coverage
+    // Preserve exact original bullet glyphs at start of line
     const bulletRegex = /^[\uF0B7\u25CF\u25CB\u25A0\u25AA\u2022\u2023\u2043\u2013\u2014•▪▸▹‣◦○*\-●■◆✦➢✓–—]\s*/;
     if (bulletRegex.test(lineStr)) {
-      lineStr = '• ' + lineStr.replace(bulletRegex, '').trim();
+      const match = lineStr.match(bulletRegex);
+      const rawGlyph = match ? match[0].trim() : '•';
+      const info = detectBulletStyleFromGlyph(rawGlyph);
+      lineStr = `${info.char} ${lineStr.replace(bulletRegex, '').trim()}`;
     }
 
     lines.push(lineStr);
@@ -191,26 +195,38 @@ export function formatExtractedPdfItems(items: Array<{ str?: string; transform?:
   return lines.join('\n');
 }
 
-/**
- * Cleans and normalizes extracted resume text to standard UTF-8 and formatting.
- */
-export function normalizeExtractedResumeText(text: string): string {
+export function normalizeExtractedResumeText(text: string, options?: { preserveBullets?: boolean }): string {
   if (!text) return '';
 
-  return text
+  let res = text
     // Replace common Unicode ligatures
     .replace(/\uFB00/g, 'ff')
     .replace(/\uFB01/g, 'fi')
     .replace(/\uFB02/g, 'fl')
     .replace(/\uFB03/g, 'ffi')
-    .replace(/\uFB04/g, 'ffl')
-    // Standardize bullet points
-    .replace(/^[\s\uFEFF\u200B]*[•▪▸▹‣◦○*]\s*/gm, '• ')
-    // Normalize dashes
-    .replace(/[\u2010\u2011\u2012\u2013\u2014]/g, '-')
+    .replace(/\uFB04/g, 'ffl');
+
+  if (options?.preserveBullets) {
+    // Preserve the original bullet glyph while standardizing the space after it
+    res = res.replace(/^[\s\uFEFF\u200B]*([•▪▸▹‣◦○*–—●■◆✦➢✓\uF0B7\u25CF\u25AA\u25A0\u2022\u2013\u2014])\s*/gm, '$1 ');
+  } else {
+    // Replace bullet variants with standard bullet
+    res = res.replace(/^[\s\uFEFF\u200B]*[•▪▸▹‣◦○*]\s*/gm, '• ');
+  }
+
+  res = res
     // Normalize quotes
     .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u201C\u201D]/g, '"');
+
+  if (options?.preserveBullets) {
+    // Normalize prose dashes while keeping leading bullet dashes intact
+    res = res.replace(/(?<!^[\s\uFEFF\u200B]*)[–—\u2010\u2011\u2012\u2013\u2014]/gm, '-');
+  } else {
+    res = res.replace(/[\u2010\u2011\u2012\u2013\u2014]/g, '-');
+  }
+
+  return res
     // Collapse excessive blank lines
     .replace(/\n{3,}/g, '\n\n')
     .trim();
