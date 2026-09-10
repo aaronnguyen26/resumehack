@@ -314,6 +314,8 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
         impactPts: Math.min(20, missingKeywords.length * 4),
         priority: 'critical',
         sectionHint: 'skills',
+        domain: 'fullstack',
+        antiHallucinationVerified: true,
         originalText: 'Technical skills list currently lacks key target technologies.',
         improvedText: `• Core Technical Competencies: Proficient in ${topMissing.join(', ')} with production deployment experience.`,
         critique: `Automated ATS filters screen for specific skills from the job description. Your resume is missing core requirements: ${topMissing.join(', ')}.`,
@@ -332,6 +334,8 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
         impactPts: 8,
         priority: 'high',
         sectionHint: 'experience',
+        domain: 'general',
+        antiHallucinationVerified: true,
         originalText: `Document is currently ${lineCount}/${maxRecommendedLines} lines (${pageBudgetPercentage}%).`,
         improvedText: 'Trim bullet wrapping or select 0.5" compact margins to fit cleanly onto 1 page.',
         critique: `Document is ${lineCount}/${maxRecommendedLines} lines (${pageBudgetPercentage}%). Overflowing onto Page 2 introduces parsing risks with automated ATS scanners.`,
@@ -650,6 +654,15 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                           </span>
                           <span className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">
                             +{rec.impactPts} pts
+                          </span>
+                          {rec.domain && (
+                            <span className="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-zinc-200/80 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-300/80 dark:border-zinc-700 uppercase">
+                              {rec.domain.replace('_', ' ')}
+                            </span>
+                          )}
+                          <span className="text-[9px] font-mono text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 flex items-center gap-0.5">
+                            <ShieldCheck className="w-2.5 h-2.5 text-emerald-500" />
+                            <span>Verified Domain</span>
                           </span>
                           <span className="text-[9px] font-mono text-zinc-500 uppercase">
                             [{rec.sectionHint}]

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   extractCandidateBullets,
+  classifyBulletDomain,
   generatePersonalizedFallbackRecommendations,
   GeminiRecommendationService,
   getStoredGeminiApiKey,
@@ -28,6 +29,32 @@ Event Stream Processing Engine
 
 SKILLS
 JavaScript, TypeScript, React, Node.js, Python, PostgreSQL, Redis, Git
+`;
+
+  const complexResumeWithEducationAndCerts = `
+Minh Nguyen (Aaron)
+minh@example.com • Los Angeles, CA
+
+WORK EXPERIENCE
+Apex Digital Media — Frontend Engineer
+Jan 2024 – Present
+• Worked on building customer-facing React components for data visualization
+• Implemented client-side caching with Zustand and modern Tailwind styling
+
+PROJECTS
+Distributed Algorithms Benchmark Suite
+• Formulated algorithms research under faculty mentorship of Professor Dinh
+• Built Python simulations analyzing matrix multiplication complexity
+
+EDUCATION
+University of Southern California — B.S. in Computer Science
+Expected June 2028 • GPA: 3.92 • Dean's Honor Roll
+John F. Kennedy High School — High School Diploma
+Certification: High School Diploma, IB Bilingual Diploma: 37
+
+CERTIFICATIONS
+• AWS Certified Cloud Practitioner
+• Meta Certified Frontend Developer
 `;
 
   const sampleJobDescription = `
@@ -69,7 +96,109 @@ Requirements:
     });
   });
 
-  describe('Part 2: Smart Personalized Heuristic Fallback Engine', () => {
+  describe('Part 2: Strict Section Isolation & Anti-Leakage Protection', () => {
+    it('NEVER extracts education degrees, diplomas, or certifications as experience accomplishment bullets', () => {
+      const bullets = extractCandidateBullets(complexResumeWithEducationAndCerts);
+
+      // Verify that education and diploma lines were completely excluded
+      const allExtractedText = bullets.map(b => b.cleanText.toLowerCase()).join(' ');
+
+      expect(allExtractedText).not.toContain('high school diploma');
+      expect(allExtractedText).not.toContain('ib bilingual diploma');
+      expect(allExtractedText).not.toContain("dean's honor roll");
+      expect(allExtractedText).not.toContain('aws certified cloud practitioner');
+
+      // Verify that only valid work/project bullets were captured
+      expect(bullets.some(b => b.cleanText.includes('customer-facing React components'))).toBe(true);
+      expect(bullets.some(b => b.cleanText.includes('algorithms research'))).toBe(true);
+    });
+
+    it('ensures fallback recommendations never corrupt or inject engineering metrics into education lines', () => {
+      const result = generatePersonalizedFallbackRecommendations(complexResumeWithEducationAndCerts, sampleJobDescription);
+
+      expect(result.recommendations.length).toBeGreaterThanOrEqual(2);
+
+      // Verify that no recommendation targets or outputs a High School Diploma or degree
+      for (const rec of result.recommendations) {
+        expect(rec.originalText.toLowerCase()).not.toContain('high school diploma');
+        expect(rec.originalText.toLowerCase()).not.toContain('bilingual diploma');
+        expect(rec.improvedText.toLowerCase()).not.toContain('high school diploma');
+        expect(rec.improvedText.toLowerCase()).not.toContain('bilingual diploma');
+      }
+    });
+  });
+
+  describe('Part 3: Domain & Semantic Bullet Classification', () => {
+    it('accurately identifies technical domains across bullets', () => {
+      expect(classifyBulletDomain('Built responsive React UI components with Tailwind CSS and Redux')).toBe('frontend');
+      expect(classifyBulletDomain('Architected PostgreSQL database with Redis caching and REST APIs in Node.js')).toBe('backend');
+      expect(classifyBulletDomain('Engineered Swift iOS mobile app with SwiftUI and offline CoreData storage')).toBe('mobile');
+      expect(classifyBulletDomain('Deployed Kubernetes clusters on AWS with Docker and GitHub Actions CI/CD')).toBe('devops');
+      expect(classifyBulletDomain('Trained PyTorch deep learning models on a 2.5M image dataset for object classification')).toBe('data_ai');
+      expect(classifyBulletDomain('Conducted algorithms research under faculty mentorship and co-authored conference paper')).toBe('research_academic');
+      expect(classifyBulletDomain('Mentored 4 junior engineers and managed agile sprint backlogs')).toBe('leadership');
+    });
+
+    it('assigns detected domains to extracted candidate bullets', () => {
+      const bullets = extractCandidateBullets(complexResumeWithEducationAndCerts);
+      const reactBullet = bullets.find(b => b.cleanText.includes('React'));
+      const researchBullet = bullets.find(b => b.cleanText.includes('research'));
+
+      expect(reactBullet).toBeDefined();
+      expect(reactBullet?.domain).toBe('frontend');
+
+      expect(researchBullet).toBeDefined();
+      expect(researchBullet?.domain).toBe('research_academic');
+    });
+  });
+
+  describe('Part 4: Domain-Calibrated Elevation (Zero-Hallucination Guardrails)', () => {
+    it('elevates frontend bullets with Web Vitals / UX responsiveness, NOT backend caching', () => {
+      const frontendOnlyResume = `
+WORK EXPERIENCE
+Web Developer — Studio UI
+• Built React components for user profile settings
+`;
+      const result = generatePersonalizedFallbackRecommendations(frontendOnlyResume);
+      const quantRec = result.recommendations.find(r => r.category === 'star_quantification');
+
+      expect(quantRec).toBeDefined();
+      expect(quantRec?.domain).toBe('frontend');
+      // Should mention LCP or client performance, NOT Redis or backend latency
+      expect(quantRec?.improvedText).toMatch(/Largest Contentful Paint|LCP|client-side|render|active user/i);
+      expect(quantRec?.improvedText).not.toMatch(/redis|database connection pooling/i);
+    });
+
+    it('elevates backend bullets with P99 latency and throughput metrics', () => {
+      const backendOnlyResume = `
+WORK EXPERIENCE
+API Engineer — Cloud Corp
+• Developed REST APIs with PostgreSQL database
+`;
+      const result = generatePersonalizedFallbackRecommendations(backendOnlyResume);
+      const quantRec = result.recommendations.find(r => r.category === 'star_quantification');
+
+      expect(quantRec).toBeDefined();
+      expect(quantRec?.domain).toBe('backend');
+      expect(quantRec?.improvedText).toMatch(/latency|throughput|requests|p99/i);
+    });
+
+    it('elevates research bullets with academic and benchmark metrics', () => {
+      const researchOnlyResume = `
+PROJECTS
+Theoretical Computer Science
+• Conducted algorithms research under faculty mentorship of professor
+`;
+      const result = generatePersonalizedFallbackRecommendations(researchOnlyResume);
+      const quantRec = result.recommendations.find(r => r.category === 'star_quantification');
+
+      expect(quantRec).toBeDefined();
+      expect(quantRec?.domain).toBe('research_academic');
+      expect(quantRec?.improvedText).toMatch(/findings|attendees|trials|benchmark/i);
+    });
+  });
+
+  describe('Part 5: Smart Personalized Heuristic Fallback Engine', () => {
     it('generates recommendations directly quoting the candidate ACTUAL bullets', () => {
       const result = generatePersonalizedFallbackRecommendations(sampleResume, sampleJobDescription);
 
@@ -116,7 +245,7 @@ Requirements:
     });
   });
 
-  describe('Part 3: Gemini API Service & Cascading Fallback', () => {
+  describe('Part 6: Gemini API Service & Cascading Fallback', () => {
     let originalFetch: typeof global.fetch;
 
     beforeEach(() => {
@@ -141,6 +270,7 @@ Requirements:
                       {
                         id: 'gemini-rec-1',
                         category: 'star_quantification',
+                        domain: 'frontend',
                         title: 'Quantify Analytics Dashboard User Engagement & Latency',
                         priority: 'critical',
                         impactPts: 18,
@@ -154,6 +284,7 @@ Requirements:
                       {
                         id: 'gemini-rec-2',
                         category: 'production_scale',
+                        domain: 'devops',
                         title: 'Incorporate Cloud Native CI/CD & Kubernetes Signals',
                         priority: 'high',
                         impactPts: 15,
@@ -190,6 +321,7 @@ Requirements:
       expect(result.modelUsed).toBe('gemini-2.0-flash');
       expect(result.recommendations.length).toBe(2);
       expect(result.recommendations[0].title).toContain('Quantify Analytics Dashboard');
+      expect(result.recommendations[0].domain).toBe('frontend');
       expect(result.recommendations[0].improvedText).toContain('Architected real-time internal analytics');
       expect(result.recommendations[1].improvedText).toContain('Automated database migrations');
     });
@@ -207,6 +339,7 @@ Requirements:
                       {
                         id: 'gemini-fallback-1',
                         category: 'systems_depth',
+                        domain: 'backend',
                         title: 'Highlight Event Stream Concurrency & Throughput',
                         priority: 'critical',
                         impactPts: 20,
@@ -283,7 +416,7 @@ Requirements:
     });
   });
 
-  describe('Part 4: Gemini Key Storage & Validation Helpers', () => {
+  describe('Part 7: Gemini Key Storage & Validation Helpers', () => {
     it('stores and retrieves Gemini API key in localStorage', () => {
       setStoredGeminiApiKey('AIzaSyTestKey12345');
       const retrieved = getStoredGeminiApiKey();
