@@ -49,6 +49,10 @@ import { AutoSubmitReport, AutoSubmitEngine } from './services/auto-submit-engin
 import { AuthModal } from './components/AuthModal.js';
 import { CloudResumeManagerModal } from './components/CloudResumeManagerModal.js';
 import { 
+  directJobIngester, 
+  VERIFIED_TECH_SEED_JOBS 
+} from './services/direct-job-ingester.js';
+import { 
   getCurrentUser, 
   signOut as supabaseSignOut, 
   onAuthStateChange, 
@@ -59,6 +63,8 @@ import {
   deleteResume, 
   setDefaultResume, 
   fetchUserApplications, 
+  fetchVerifiedJobPostings,
+  syncDeltaToSupabase,
   CloudResume,
   AuthUser
 } from './services/supabase-db.js';
@@ -81,12 +87,23 @@ const DEFAULT_JOB: ScrapedJobData = {
   source: 'Custom'
 };
 
+const INITIAL_JOB_DATABASE: JobPosting[] = (() => {
+  const map = new Map<string, JobPosting>();
+  for (const j of VERIFIED_TECH_SEED_JOBS) {
+    map.set(j.id, j);
+  }
+  for (const j of SEED_INTERNSHIP_DATABASE) {
+    if (!map.has(j.id)) map.set(j.id, j);
+  }
+  return Array.from(map.values());
+})();
+
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [currentJob, setCurrentJob] = useState<ScrapedJobData>(DEFAULT_JOB);
   const [tailorData, setTailorData] = useState<TailorResumeResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [jobs, setJobs] = useState<JobPosting[]>(SEED_INTERNSHIP_DATABASE);
+  const [jobs, setJobs] = useState<JobPosting[]>(INITIAL_JOB_DATABASE);
   const [applications, setApplications] = useState<ApplicationRecord[]>([]);
 
   // User Resume State
@@ -308,9 +325,28 @@ export const App: React.FC = () => {
       if (savedJobs) {
         const parsed = JSON.parse(savedJobs);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setJobs(parsed.map((j: JobPosting) => enrichJobDetails(j)));
+          const map = new Map<string, JobPosting>();
+          for (const j of parsed) map.set(j.id, j);
+          for (const s of VERIFIED_TECH_SEED_JOBS) {
+            if (!map.has(s.id)) map.set(s.id, s);
+          }
+          setJobs(Array.from(map.values()).map((j: JobPosting) => enrichJobDetails(j)));
         }
       }
+
+      // Query Supabase verified job postings asynchronously
+      fetchVerifiedJobPostings().then(cloudJobs => {
+        if (cloudJobs && cloudJobs.length > 0) {
+          setJobs(prev => {
+            const map = new Map<string, JobPosting>();
+            for (const c of cloudJobs) map.set(c.id, c);
+            for (const p of prev) {
+              if (!map.has(p.id)) map.set(p.id, p);
+            }
+            return Array.from(map.values()).map(j => enrichJobDetails(j));
+          });
+        }
+      }).catch(() => {});
     } catch {}
   }, []);
 
@@ -859,16 +895,44 @@ export const App: React.FC = () => {
     setIsSyncingJobs(true);
     setSyncMessage(null);
     try {
-      const res = await githubTracker.syncFromGitHub();
-      if (res.success) {
-        setJobs(res.jobs);
-        setLastSyncAt(res.syncedAt);
-        setNewJobsCount(res.newJobsCount);
-        setSyncMessage(`✨ Synced ${res.jobsCount} openings (${res.newJobsCount} new)`);
-        try {
-          localStorage.setItem('resumehack_github_jobs', JSON.stringify(res.jobs));
-        } catch {}
+      // 1. Live delta sync from direct tech company career boards (Greenhouse, Lever, Ashby)
+      const directDelta = await directJobIngester.syncAllTechCompanies(jobs);
+
+      // 2. Persist deltas to Supabase cloud
+      syncDeltaToSupabase({
+        newJobs: directDelta.newJobs,
+        updatedJobs: directDelta.updatedJobs,
+        closedJobs: directDelta.closedJobs,
+      }).catch(err => console.warn('[App] Supabase sync note:', err.message));
+
+      // 3. Sync from GitHub sources
+      const ghRes = await githubTracker.syncFromGitHub();
+
+      // 4. Merge verified direct tech openings + GitHub scraper roles
+      const mergedMap = new Map<string, JobPosting>();
+      for (const j of directDelta.activeJobs) {
+        mergedMap.set(j.id, j);
       }
+      if (ghRes.success && Array.isArray(ghRes.jobs)) {
+        for (const j of ghRes.jobs) {
+          if (!mergedMap.has(j.id)) {
+            mergedMap.set(j.id, j);
+          }
+        }
+      }
+      const combined = Array.from(mergedMap.values()).map(j => enrichJobDetails(j));
+      const totalNew = directDelta.newJobs.length + (ghRes.success ? ghRes.newJobsCount : 0);
+      const totalUpdated = directDelta.updatedJobs.length;
+
+      setJobs(combined);
+      setLastSyncAt(directDelta.syncedAt);
+      setNewJobsCount(totalNew);
+
+      const updateSuffix = totalUpdated > 0 ? `, ${totalUpdated} updated` : '';
+      setSyncMessage(`✨ Synced ${combined.length} openings (${totalNew} new${updateSuffix}) · Direct ATS & GitHub`);
+      try {
+        localStorage.setItem('resumehack_github_jobs', JSON.stringify(combined));
+      } catch {}
     } catch (e: any) {
       setSyncMessage('Sync note: Using cached openings');
     } finally {

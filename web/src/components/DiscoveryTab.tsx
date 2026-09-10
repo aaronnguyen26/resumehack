@@ -106,6 +106,7 @@ export const DiscoveryTab: React.FC<DiscoveryTabProps> = ({
 
   const categories = [
     'All',
+    'Verified',
     '⚡ Fresh (< 2m)',
     'New (24h)',
     'Business & Strategy',
@@ -244,7 +245,9 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
 
         const matchesCategory =
           selectedCategory === 'All' ||
-          (selectedCategory === '⚡ Fresh (< 2m)'
+          (selectedCategory === 'Verified'
+            ? Boolean(job.isVerified)
+            : selectedCategory === '⚡ Fresh (< 2m)'
             ? Boolean((job as any).isUltraFresh || (job as any).isFreshAts || (job.daysAgo ?? 999) === 0)
             : selectedCategory === 'New (24h)'
             ? (job.daysAgo ?? 999) === 0
@@ -285,6 +288,7 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
   // Category counts
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { All: enrichedJobsList.length };
+    counts['Verified'] = enrichedJobsList.filter(j => Boolean(j.isVerified)).length;
     counts['⚡ Fresh (< 2m)'] = enrichedJobsList.filter(
       j => (j as any).isUltraFresh || (j as any).isFreshAts || (j.daysAgo ?? 999) === 0
     ).length;
@@ -568,6 +572,12 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
                       <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate">
                         {job.company}
                       </span>
+                      {job.isVerified && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1 shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          Verified
+                        </span>
+                      )}
                       {job.category && (
                         <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700">
                           {job.category}
@@ -735,6 +745,13 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
                       ) : (
                         <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-semibold">
                           <span>Algorithmic ATS Rubric</span>
+                        </div>
+                      )}
+
+                      {job.isVerified && (
+                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          <span>Verified</span>
                         </div>
                       )}
 
@@ -1140,6 +1157,12 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
                     <span className="font-bold text-xs text-zinc-500 dark:text-zinc-400">
                       {focusedJob.company}
                     </span>
+                    {focusedJob.isVerified && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1 shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        Verified
+                      </span>
+                    )}
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
                       {focusedJob.workModel || 'Hybrid'}
                     </span>
