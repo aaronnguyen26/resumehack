@@ -161,6 +161,13 @@ export const InAppDocumentCanvas: React.FC<InAppDocumentCanvasProps> = ({
     }
   }, [rawText, applicantProfile]);
 
+  // Synchronize documentTitle prop into local state when external title changes
+  useEffect(() => {
+    if (documentTitle) {
+      setDocTitle(documentTitle);
+    }
+  }, [documentTitle]);
+
   // Initial load of HTML into contentEditable on mount
   useEffect(() => {
     if (editorRef.current && !editorRef.current.innerHTML.trim()) {
