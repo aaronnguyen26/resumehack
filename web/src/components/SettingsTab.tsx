@@ -6,7 +6,6 @@ import {
   Sun, 
   Moon, 
   Laptop, 
-  Sparkles, 
   RotateCcw, 
   Cloud, 
   LogOut, 
@@ -172,7 +171,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         </div>
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
             Cloud Synced
           </span>
         </div>
@@ -354,14 +353,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-100 dark:border-[#1E1E22] pb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] flex items-center justify-center text-zinc-800 dark:text-zinc-200">
-              <Sparkles className="w-5 h-5 text-emerald-500" />
+              <Sliders className="w-5 h-5 text-emerald-500" />
             </div>
             <div>
               <h3 className="font-bold text-base font-headline text-zinc-950 dark:text-zinc-50">
                 AI Optimization Engine & ATS Guardrails
               </h3>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Fully managed neural intelligence models with automated precision guardrails
+                Managed AI models with deterministic ATS parsing and precision guardrails
               </p>
             </div>
           </div>

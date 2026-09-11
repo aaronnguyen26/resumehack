@@ -54,7 +54,7 @@ export function createJobAlertNotification(
   const companySnippet = topCompanies.length > 0 ? ` (${topCompanies.join(', ')})` : '';
   const count = Math.max(1, newJobsCount || 1);
 
-  const title = `🔥 ${count} New 2026 Internships Added${companySnippet}!`;
+  const title = `${count} New 2026 Internships Added${companySnippet}!`;
   const body = topCompanies.length > 0
     ? `Top roles open at ${topCompanies.join(', ')}. 1-click apply and tailor your resume!`
     : `${count} verified internship openings just synced. Tailor your resume in 1-click!`;
@@ -62,10 +62,10 @@ export function createJobAlertNotification(
   return {
     id: `job-alert-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     type: 'NEW_JOBS_ALERT',
-    badge: '🔥 New Openings',
+    badge: 'New Openings',
     title,
     body,
-    ctaText: 'View Jobs 💼',
+    ctaText: 'View Jobs',
     targetTab: 'discovery',
     count,
     companies: topCompanies,
@@ -86,10 +86,10 @@ export function createProTipNotification(tipIndex?: number): MascotNotification 
   return {
     id: `protip-${Date.now()}-${index}`,
     type: 'PRO_TIP',
-    badge: `💡 ${selected.category}`,
+    badge: selected.category,
     title: 'AI Resume Pro-Tip',
     body: selected.tip,
-    ctaText: 'Tailor Resume ⚡',
+    ctaText: 'Tailor Resume',
     targetTab: 'match',
     autoScan: false,
     timestamp: Date.now()
@@ -111,7 +111,7 @@ export function createContextGreetingNotification(
         badge: 'Google Docs Connected',
         title: 'Google Doc Resume Detected!',
         body: `Found "${details?.title || 'your resume'}". Click to audit ATS match & tailor bullets!`,
-        ctaText: 'Tailor with Hacky ⚡',
+        ctaText: 'Tailor with Hacky',
         targetTab: 'match',
         autoScan: true,
         timestamp: Date.now()
@@ -123,7 +123,7 @@ export function createContextGreetingNotification(
         badge: 'Job Opening Ready',
         title: 'Target Role Detected!',
         body: `Detected "${details?.title || 'Job Opening'}"${details?.company ? ` at ${details.company}` : ''}. 1-click tailor your resume for this role!`,
-        ctaText: 'Tailor for This Job 🎯',
+        ctaText: 'Tailor for This Job',
         targetTab: 'match',
         timestamp: Date.now()
       };
@@ -134,7 +134,7 @@ export function createContextGreetingNotification(
         badge: 'Autofill Ready',
         title: 'Application Form Detected!',
         body: 'Ready to 1-click autofill your candidate profile, LinkedIn, and details on this form!',
-        ctaText: 'Autofill Form Now ⚡',
+        ctaText: 'Autofill Form Now',
         targetTab: 'tracker',
         timestamp: Date.now()
       };
@@ -145,7 +145,7 @@ export function createContextGreetingNotification(
         badge: 'Hacky AI Active',
         title: 'Hacky at your service!',
         body: '100+ verified 2026 tech internships & instant AI ATS resume tailoring ready.',
-        ctaText: 'Open Hacky ⚡',
+        ctaText: 'Open Hacky',
         targetTab: 'match',
         timestamp: Date.now()
       };
@@ -211,9 +211,9 @@ export function parseNotificationPayload(rawMessage: any): MascotNotification | 
       id: `star-suggestions-${Date.now()}`,
       type: 'CONTEXT_ALERT',
       badge: 'STAR Suggestions Active',
-      title: `✨ ${count} STAR Suggestions Ready!`,
+      title: `${count} STAR Suggestions Ready!`,
       body: 'Your tailored STAR bullet suggestions are live on your document. Click me anytime to reopen full panel.',
-      ctaText: 'Reopen Side Panel ⚡',
+      ctaText: 'Reopen Side Panel',
       targetTab: 'match',
       timestamp: Date.now()
     };

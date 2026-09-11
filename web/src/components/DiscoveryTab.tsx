@@ -5,7 +5,7 @@ import {
   Search,
   MapPin,
   DollarSign,
-  Sparkles,
+  Cpu,
   ExternalLink,
   RefreshCw,
   CheckCircle2,
@@ -23,6 +23,7 @@ import {
   Code2,
   ShieldCheck,
   Target,
+  AlertCircle,
   X,
   Maximize2,
   BookOpen,
@@ -107,7 +108,7 @@ export const DiscoveryTab: React.FC<DiscoveryTabProps> = ({
   const categories = [
     'All',
     'Verified',
-    '⚡ Fresh (< 2m)',
+    'Fresh (< 2m)',
     'New (24h)',
     'Business & Strategy',
     'Finance & Accounting',
@@ -178,7 +179,7 @@ export const DiscoveryTab: React.FC<DiscoveryTabProps> = ({
   };
 
   const handleCopyJobSpec = (job: JobPosting) => {
-    const spec = `📋 JOB SPECIFICATION: ${job.title} at ${job.company}
+    const spec = `JOB SPECIFICATION: ${job.title} at ${job.company}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Location: ${job.location} (${job.workModel || 'Hybrid'})
 • Compensation: ${job.salaryRange || 'Competitive'}
@@ -186,29 +187,29 @@ export const DiscoveryTab: React.FC<DiscoveryTabProps> = ({
 • Education: ${job.educationRequirements || 'CS / STEM Degree'}
 • Sponsorship: ${job.sponsorship || 'Available'}
 
-🏢 ABOUT THE TEAM & MISSION:
+ABOUT THE TEAM & MISSION:
 ${job.aboutTeam || job.aboutCompany || job.description}
 
-⚡ KEY RESPONSIBILITIES (WHAT YOU WILL DO):
+KEY RESPONSIBILITIES:
 ${(job.responsibilities || []).map(r => `• ${r}`).join('\n')}
 
-🎯 REQUIREMENTS & QUALIFICATIONS:
+REQUIREMENTS & QUALIFICATIONS:
 ${(job.requirements || []).map(r => `• ${r}`).join('\n')}
 
-✨ PREFERRED QUALIFICATIONS:
+PREFERRED QUALIFICATIONS:
 ${(job.preferredQualifications || []).map(p => `• ${p}`).join('\n')}
 
-🛠️ TECH STACK & SKILLS:
+TECH STACK & SKILLS:
 ${(job.skills || []).join(' · ')}
 
-💎 TOTAL COMPENSATION & PERKS:
+COMPENSATION & BENEFITS:
 ${(job.benefits || []).map(b => `• ${b}`).join('\n')}
 
-💡 COMPLETE INTERVIEW PROCESS & PREP TIPS:
+INTERVIEW PROCESS & PREP TIPS:
 ${(job.interviewProcess || []).map((s, i) => `${i + 1}. ${s}`).join('\n')}
-${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
+${(job.prepTips || []).map(t => `Tip: ${t}`).join('\n')}
 
-🔗 Official Application Link: ${job.url}`;
+Official Application Link: ${job.url}`;
 
     navigator.clipboard.writeText(spec);
     setCopiedJobId(job.id);
@@ -247,7 +248,7 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
           selectedCategory === 'All' ||
           (selectedCategory === 'Verified'
             ? Boolean(job.isVerified)
-            : selectedCategory === '⚡ Fresh (< 2m)'
+            : selectedCategory === 'Fresh (< 2m)'
             ? Boolean((job as any).isUltraFresh || (job as any).isFreshAts || (job.daysAgo ?? 999) === 0)
             : selectedCategory === 'New (24h)'
             ? (job.daysAgo ?? 999) === 0
@@ -289,7 +290,7 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { All: enrichedJobsList.length };
     counts['Verified'] = enrichedJobsList.filter(j => Boolean(j.isVerified)).length;
-    counts['⚡ Fresh (< 2m)'] = enrichedJobsList.filter(
+    counts['Fresh (< 2m)'] = enrichedJobsList.filter(
       j => (j as any).isUltraFresh || (j as any).isFreshAts || (job => (job.daysAgo ?? 999) === 0)(j)
     ).length;
     counts['New (24h)'] = enrichedJobsList.filter(j => (j.daysAgo ?? 999) === 0).length;
@@ -367,17 +368,17 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
         {syncMessage && (
           <div
             className={`p-2.5 rounded-lg text-xs flex items-center gap-2 ${
-              syncMessage.startsWith('⚠️')
+              syncMessage.startsWith('Warning:') || syncMessage.startsWith('⚠️')
                 ? 'bg-rose-500/10 border border-rose-500/20 text-rose-800 dark:text-rose-200'
                 : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-200'
             }`}
           >
-            {syncMessage.startsWith('⚠️') ? (
-              <span className="shrink-0">⚠️</span>
+            {syncMessage.startsWith('Warning:') || syncMessage.startsWith('⚠️') ? (
+              <AlertCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
             ) : (
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
             )}
-            <span>{syncMessage.replace('⚠️ ', '')}</span>
+            <span>{syncMessage.replace(/^⚠️\s*|^Warning:\s*/, '')}</span>
           </div>
         )}
 
@@ -405,7 +406,7 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
         <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
           {categories.map(cat => {
             const count = categoryCounts[cat] || 0;
-            const isFreshPill = cat === '⚡ Fresh (< 2m)';
+            const isFreshPill = cat === 'Fresh (< 2m)';
             return (
               <button
                 key={cat}
@@ -422,7 +423,7 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
                     : 'bg-zinc-100 dark:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-700/60 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
                 }`}
               >
-                <span>{cat === 'New (24h)' ? '🔥 New (24h)' : cat}</span>
+                <span>{cat}</span>
                 <span
                   className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
                     selectedCategory === cat 
@@ -502,10 +503,10 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
               onChange={e => setSortBy(e.target.value as any)}
               className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-semibold rounded-md px-2 py-1 focus:outline-none focus:border-zinc-500 cursor-pointer shadow-2xs font-mono"
             >
-              <option value="newest">🔥 Newest</option>
-              <option value="salary">💰 Top Pay</option>
-              <option value="match">🎯 Best ATS Match</option>
-              <option value="company">🏢 Company (A-Z)</option>
+              <option value="newest">Newest</option>
+              <option value="salary">Top Pay</option>
+              <option value="match">Best ATS Match</option>
+              <option value="company">Company (A-Z)</option>
             </select>
           </div>
         </div>
@@ -514,7 +515,7 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
       {/* Quick Target Inspector Ribbon (Horizontal Rapid Preview) */}
       <div className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-xl p-3 sm:p-3.5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
         <div className="flex items-center gap-2 shrink-0">
-          <Sparkles className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+          <Cpu className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
           <span className="text-[11px] font-bold uppercase tracking-wider font-mono text-zinc-500 dark:text-zinc-400">
             Quick Spec Inspector:
           </span>
@@ -785,7 +786,7 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
                   onClick={() => onSelectJobForTailoring(activeWorkbenchJob)}
                   className="px-5 py-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 text-xs font-bold font-mono flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
                 >
-                  <Sparkles className="w-4 h-4 text-emerald-500" />
+                  <Cpu className="w-4 h-4 text-emerald-500" />
                   <span>Tailor Resume to Job [1-Click]</span>
                 </button>
                 <span className="text-[11px] font-mono text-zinc-400 hidden sm:inline">
@@ -1137,11 +1138,11 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
                                 : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'
                             }`}
                           >
-                            {job.workModel === 'Remote' ? '🏠 Remote' : job.workModel === 'Hybrid' ? '🏢 Hybrid' : '📍 On-site'}
+                            {job.workModel === 'Remote' ? 'Remote' : job.workModel === 'Hybrid' ? 'Hybrid' : 'On-site'}
                           </span>
                         )}
                         {((job as any).isUltraFresh || (job as any).isFreshAts) && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white flex items-center gap-0.5 shadow-2xs animate-pulse">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white flex items-center gap-0.5 shadow-2xs">
                             <Zap className="w-2.5 h-2.5" /> &lt; 2m ATS
                           </span>
                         )}
@@ -1246,7 +1247,7 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
                       onClick={() => onSelectJobForTailoring(job)}
                       className="flex-1 py-2 px-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                      <Cpu className="w-3.5 h-3.5 text-emerald-400" />
                       <span>Tailor Resume</span>
                     </button>
                   </div>
@@ -1562,7 +1563,7 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
                     {focusedJob.prepTips && focusedJob.prepTips.length > 0 && (
                       <div className="pt-1.5 space-y-1">
                         <span className="text-[10px] font-bold font-mono text-amber-700 dark:text-amber-400 uppercase tracking-wider block">
-                          💡 Key Focus Areas:
+                          Key Focus Areas:
                         </span>
                         <p className="text-[11px] text-zinc-700 dark:text-zinc-300 leading-snug pl-2 border-l-2 border-amber-500">
                           {focusedJob.prepTips[0]}
@@ -1573,7 +1574,7 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
 
                   <div className="space-y-2 pt-2 border-t border-zinc-200/80 dark:border-zinc-800">
                     <div className="p-2.5 rounded-lg bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-700 dark:text-zinc-300 leading-snug flex items-start gap-2">
-                      <span className="text-emerald-500 shrink-0 font-bold">⚡</span>
+                      <Zap className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
                       <span>
                         <strong>Hacky AI Insight:</strong> Focus on architectural clarity and past edge-case resolution.
                       </span>
@@ -1610,7 +1611,7 @@ ${(job.prepTips || []).map(t => `💡 Tip: ${t}`).join('\n')}
                   }}
                   className="px-5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
                 >
-                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  <Cpu className="w-4 h-4 text-emerald-400" />
                   <span>Tailor Resume</span>
                 </button>
               </div>

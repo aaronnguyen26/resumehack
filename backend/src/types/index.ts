@@ -449,7 +449,7 @@ export interface ApplicantProfile {
 
 export interface ChatAction {
   label: string;
-  action: 'navigate_tab' | 'tailor_job' | 'quick_reply';
+  action: 'navigate_tab' | 'tailor_job' | 'quick_reply' | 'resync_resume' | 'update_info';
   tab?: 'home' | 'canvas' | 'discovery' | 'tracker' | 'profile' | 'settings';
   payload?: any;
 }
@@ -487,6 +487,37 @@ export type ChatDataCard =
         salary?: string;
         url?: string;
       }>;
+    }
+  | {
+      type: 'info_updated';
+      title: string;
+      updateType: 'resume' | 'profile' | 'target_role' | 'skills' | 'bullet';
+      summary: string;
+      previousValue?: string;
+      newValue?: string;
+      changes: Array<{ field: string; value: string }>;
+      metrics?: {
+        score: number;
+        metricsCount: number;
+        lineCount: number;
+      };
+    }
+  | {
+      type: 'profile_summary';
+      title: string;
+      fullName: string;
+      email: string;
+      targetRole: string;
+      location: string;
+      school: string;
+      skillsCount: number;
+      skills: string[];
+      resumeLoaded: boolean;
+      resumeStats?: {
+        score: number;
+        metricsCount: number;
+        lineCount: number;
+      };
     };
 
 export interface ChatMessage {
@@ -496,6 +527,12 @@ export interface ChatMessage {
   timestamp: number;
   actions?: ChatAction[];
   dataCard?: ChatDataCard;
+  updatedInfo?: {
+    type: 'resume' | 'profile' | 'target_role' | 'skills' | 'bullet';
+    newResumeText?: string;
+    updatedProfile?: Partial<ApplicantProfile>;
+    summary: string;
+  };
 }
 
 export interface ChatbotContext {
@@ -507,4 +544,6 @@ export interface ChatbotContext {
   activeTab?: string;
   currentJob?: any;
   targetRole?: string;
+  onUpdateResumeText?: (text: string) => void;
+  onUpdateApplicantProfile?: (profile: Partial<ApplicantProfile>) => void;
 }

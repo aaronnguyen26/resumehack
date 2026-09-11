@@ -3,7 +3,6 @@ import {
   ChevronRight,
   ChevronLeft,
   Check,
-  Sparkles,
   ShieldCheck,
   Linkedin,
   Github,
@@ -215,9 +214,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete, in
         <div className="bg-zinc-900 dark:bg-zinc-950 border-b border-zinc-800 px-6 py-5 text-white">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-400" />
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <span id="onboarding-modal-title" className="font-bold text-sm">
-                Welcome to ResumeHack
+                Candidate Profile Configuration
               </span>
             </div>
             <div className="flex items-center gap-1 bg-white/10 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide border border-white/10 font-mono">
@@ -226,7 +225,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete, in
             </div>
           </div>
           <p className="text-xs text-zinc-400 leading-relaxed">
-            Fill in your profile details to unlock auto-apply, precision tailoring, and ATS scoring.
+            Configure candidate profile parameters for form auto-completion, tailoring algorithms, and ATS verification.
           </p>
         </div>
 

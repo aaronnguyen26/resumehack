@@ -3,7 +3,6 @@ import {
   FileText, 
   Cloud, 
   UploadCloud, 
-  Sparkles, 
   CheckCircle2, 
   ArrowRight, 
   Layers, 
@@ -323,7 +322,7 @@ export const ResumeWorkspaceGateway: React.FC<ResumeWorkspaceGatewayProps> = ({
               onClick={handleUseStarterTemplate}
               className="w-full py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
             >
-              <Sparkles className="w-4 h-4 text-emerald-400" />
+              <FileCode className="w-4 h-4 text-emerald-400" />
               <span>Use High-Impact Tech Template</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>

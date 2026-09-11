@@ -17,7 +17,6 @@ import {
   FileText, 
   Check, 
   ExternalLink,
-  Sparkles,
   ArrowRight,
   Layers,
   Cloud,
@@ -268,7 +267,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
               {/* Status Chips */}
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                   Onboarding Complete
                 </span>
 
@@ -385,7 +384,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
               }`}>
                 {currentUser ? (
                   <>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     Cloud Synced
                   </>
                 ) : (

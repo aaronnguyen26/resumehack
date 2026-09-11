@@ -9,7 +9,6 @@ import {
   CheckCircle2, 
   AlertTriangle, 
   FileText, 
-  Sparkles, 
   Send, 
   X, 
   ExternalLink, 
@@ -83,8 +82,8 @@ export const PreFlightApplyModal: React.FC<PreFlightApplyModalProps> = ({
         {/* Header */}
         <div className="px-5 py-4 bg-zinc-900 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300 font-bold text-xs">
-              ⚡
+            <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300">
+              <FileText className="w-4 h-4 text-emerald-400" />
             </div>
             <div>
               <h2 className="font-bold text-xs leading-tight text-white flex items-center gap-1.5">
@@ -242,9 +241,9 @@ export const PreFlightApplyModal: React.FC<PreFlightApplyModalProps> = ({
             <div className="bg-white p-3.5 rounded-xl border border-zinc-200 space-y-3">
               <div className="flex items-center justify-between border-b border-zinc-100 pb-2">
                 <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  <Edit3 className="w-4 h-4 text-zinc-600" />
                   <span className="text-xs font-bold text-zinc-800">
-                    ✍️ AI Question Answers ({customQuestions.length})
+                    Custom Question Answers ({customQuestions.length})
                   </span>
                 </div>
                 <span className="text-[10px] font-mono font-bold text-zinc-700 bg-zinc-100 px-2 py-0.5 rounded border border-zinc-200">
@@ -362,7 +361,7 @@ export const PreFlightApplyModal: React.FC<PreFlightApplyModalProps> = ({
                 </>
               ) : (
                 <>
-                  <span>⚡ Autofill Page (Assisted Mode)</span>
+                  <span>Autofill Page (Assisted Mode)</span>
                 </>
               )}
             </button>
@@ -386,7 +385,7 @@ export const PreFlightApplyModal: React.FC<PreFlightApplyModalProps> = ({
               ) : (
                 <>
                   <Send className="w-3.5 h-3.5 text-zinc-300" />
-                  <span>🚀 Inject &amp; Submit Application</span>
+                  <span>Submit Application</span>
                 </>
               )}
             </button>

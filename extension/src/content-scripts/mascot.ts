@@ -273,28 +273,27 @@ class HackyMascot {
       <svg class="hacky-avatar-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="bodyGrad" x1="10" y1="10" x2="90" y2="90" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#FFFFFF" />
-            <stop offset="60%" stop-color="#F1F5F9" />
-            <stop offset="100%" stop-color="#CBD5E1" />
+            <stop offset="0%" stop-color="#FAFAFA" />
+            <stop offset="60%" stop-color="#F4F4F5" />
+            <stop offset="100%" stop-color="#E4E4E7" />
           </linearGradient>
           <linearGradient id="irisGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#6760FD" />
-            <stop offset="50%" stop-color="#4F46E5" />
-            <stop offset="100%" stop-color="#312E81" />
+            <stop offset="0%" stop-color="#34D399" />
+            <stop offset="50%" stop-color="#10B981" />
+            <stop offset="100%" stop-color="#059669" />
           </linearGradient>
           <linearGradient id="capGrad" x1="20" y1="5" x2="80" y2="35" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#1E1B4B" />
-            <stop offset="100%" stop-color="#0F172A" />
+            <stop offset="0%" stop-color="#27272A" />
+            <stop offset="100%" stop-color="#18181B" />
           </linearGradient>
           <linearGradient id="tasselGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#FDE047" />
-            <stop offset="100%" stop-color="#F59E0B" />
+            <stop offset="0%" stop-color="#10B981" />
+            <stop offset="100%" stop-color="#059669" />
           </linearGradient>
           <linearGradient id="haloGrad" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#4F46E5" />
-            <stop offset="35%" stop-color="#818CF8" />
-            <stop offset="70%" stop-color="#C084FC" />
-            <stop offset="100%" stop-color="#4F46E5" />
+            <stop offset="0%" stop-color="#10B981" />
+            <stop offset="50%" stop-color="#34D399" />
+            <stop offset="100%" stop-color="#10B981" />
           </linearGradient>
           <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="3" result="blur" />
@@ -303,67 +302,63 @@ class HackyMascot {
         </defs>
 
         <!-- Shadow under character -->
-        <ellipse cx="50" cy="94" rx="28" ry="5" fill="rgba(15, 23, 42, 0.25)" class="hacky-shadow" />
+        <ellipse cx="50" cy="94" rx="28" ry="5" fill="rgba(24, 24, 27, 0.15)" class="hacky-shadow" />
 
         <!-- Floating Aura Glow -->
-        <circle cx="50" cy="52" r="38" stroke="url(#haloGrad)" stroke-width="2" fill="none" opacity="0.6" class="hacky-aura-ring" />
+        <circle cx="50" cy="52" r="38" stroke="url(#haloGrad)" stroke-width="1.5" fill="none" opacity="0.3" class="hacky-aura-ring" />
 
-        <!-- Main Body (Owl / AI Robot form) -->
-        <path d="M 24 54 C 24 32, 76 32, 76 54 C 76 76, 70 88, 50 88 C 30 88, 24 76, 24 54 Z" fill="url(#bodyGrad)" stroke="#94A3B8" stroke-width="1.5" />
+        <!-- Main Body (AI Robot form) -->
+        <path d="M 24 54 C 24 32, 76 32, 76 54 C 76 76, 70 88, 50 88 C 30 88, 24 76, 24 54 Z" fill="url(#bodyGrad)" stroke="#71717A" stroke-width="1.5" />
 
-        <!-- Belly Plate with Holographic Screen Glow -->
-        <path d="M 34 60 C 34 50, 66 50, 66 60 C 66 75, 62 82, 50 82 C 38 82, 34 75, 34 60 Z" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1" />
+        <!-- Belly Plate with Screen -->
+        <path d="M 34 60 C 34 50, 66 50, 66 60 C 66 75, 62 82, 50 82 C 38 82, 34 75, 34 60 Z" fill="#FFFFFF" stroke="#E4E4E7" stroke-width="1" />
         
         <!-- Chest AI Core Light -->
-        <circle cx="50" cy="68" r="4.5" fill="#4F46E5" filter="url(#glow)" class="hacky-core-pulse" />
-        <circle cx="50" cy="68" r="2" fill="#A5B4FC" />
+        <circle cx="50" cy="68" r="4.5" fill="#10B981" filter="url(#glow)" class="hacky-core-pulse" />
+        <circle cx="50" cy="68" r="2" fill="#34D399" />
 
         <!-- Left Wing -->
-        <path d="M 24 52 C 16 54, 15 68, 22 74 C 25 70, 26 62, 25 54 Z" fill="#E2E8F0" stroke="#CBD5E1" stroke-width="1" class="hacky-left-wing" />
+        <path d="M 24 52 C 16 54, 15 68, 22 74 C 25 70, 26 62, 25 54 Z" fill="#F4F4F5" stroke="#D4D4D8" stroke-width="1" class="hacky-left-wing" />
 
         <!-- Right Wing (Waving) -->
-        <path d="M 76 52 C 84 54, 85 68, 78 74 C 75 70, 74 62, 75 54 Z" fill="#E2E8F0" stroke="#CBD5E1" stroke-width="1" class="hacky-right-wing" />
-
-        <!-- Cheek Blush -->
-        <circle cx="34" cy="55" r="4" fill="#F472B6" opacity="0.4" />
-        <circle cx="66" cy="55" r="4" fill="#F472B6" opacity="0.4" />
+        <path d="M 76 52 C 84 54, 85 68, 78 74 C 75 70, 74 62, 75 54 Z" fill="#F4F4F5" stroke="#D4D4D8" stroke-width="1" class="hacky-right-wing" />
 
         <!-- Left Eye Socket -->
-        <circle cx="38" cy="46" r="10" fill="#0F172A" stroke="#4F46E5" stroke-width="1.5" />
-        <!-- Left Eye Iris (Glowing Deep Iris) -->
+        <circle cx="38" cy="46" r="10" fill="#18181B" stroke="#27272A" stroke-width="1.5" />
+        <!-- Left Eye Iris (Glowing Emerald Iris) -->
         <circle cx="38" cy="46" r="7.5" fill="url(#irisGrad)" class="hacky-iris" />
         <!-- Left Eye Pupil & Highlights -->
         <g class="hacky-eye-left">
-          <circle cx="38" cy="46" r="5" fill="#0F172A" />
+          <circle cx="38" cy="46" r="5" fill="#18181B" />
           <circle cx="36" cy="44" r="2.2" fill="#FFFFFF" />
-          <circle cx="40" cy="48" r="1" fill="#A5B4FC" />
+          <circle cx="40" cy="48" r="1" fill="#34D399" />
         </g>
 
         <!-- Right Eye Socket -->
-        <circle cx="62" cy="46" r="10" fill="#0F172A" stroke="#4F46E5" stroke-width="1.5" />
+        <circle cx="62" cy="46" r="10" fill="#18181B" stroke="#27272A" stroke-width="1.5" />
         <!-- Right Eye Iris -->
         <circle cx="62" cy="46" r="7.5" fill="url(#irisGrad)" class="hacky-iris" />
         <!-- Right Eye Pupil & Highlights -->
         <g class="hacky-eye-right">
-          <circle cx="62" cy="46" r="5" fill="#0F172A" />
+          <circle cx="62" cy="46" r="5" fill="#18181B" />
           <circle cx="60" cy="44" r="2.2" fill="#FFFFFF" />
-          <circle cx="64" cy="48" r="1" fill="#A5B4FC" />
+          <circle cx="64" cy="48" r="1" fill="#34D399" />
         </g>
 
-        <!-- Cute Beak / Mouth -->
-        <polygon points="50,50 46,55 54,55" fill="#F59E0B" stroke="#D97706" stroke-width="0.75" />
+        <!-- Beak / Sensor -->
+        <polygon points="50,50 46,55 54,55" fill="#71717A" stroke="#52525B" stroke-width="0.75" />
 
         <!-- Academic Graduation Cap -->
         <g class="hacky-grad-cap">
           <!-- Cap Skull Base -->
-          <ellipse cx="50" cy="30" rx="16" ry="4.5" fill="#0F172A" />
+          <ellipse cx="50" cy="30" rx="16" ry="4.5" fill="#18181B" />
           <!-- Diamond Board -->
-          <polygon points="50,14 78,24 50,34 22,24" fill="url(#capGrad)" stroke="#312E81" stroke-width="1.2" />
+          <polygon points="50,14 78,24 50,34 22,24" fill="url(#capGrad)" stroke="#3F3F46" stroke-width="1.2" />
           <!-- Cap Button -->
-          <ellipse cx="50" cy="24" rx="2.5" ry="1.5" fill="#F59E0B" />
+          <ellipse cx="50" cy="24" rx="2.5" ry="1.5" fill="#10B981" />
           <!-- Tassel Ribbon & Charm -->
           <path d="M 50 24 C 65 24, 74 34, 76 44" stroke="url(#tasselGrad)" stroke-width="1.8" fill="none" stroke-linecap="round" class="hacky-tassel" />
-          <circle cx="76" cy="44" r="2" fill="#F59E0B" />
+          <circle cx="76" cy="44" r="2" fill="#10B981" />
         </g>
       </svg>
     `;
@@ -416,25 +411,25 @@ class HackyMascot {
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-        filter: drop-shadow(0 10px 25px rgba(79, 70, 229, 0.28));
+        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+        filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.12));
       }
 
       .hacky-avatar-btn:hover {
-        transform: scale(1.08) translateY(-4px);
+        transform: translateY(-2px);
       }
 
       .hacky-avatar-btn:active {
-        transform: scale(0.95);
+        transform: translateY(0);
       }
 
       .hacky-avatar-btn.attention-bounce {
-        animation: hacky-attention-bounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 2;
+        animation: hacky-attention-bounce 0.6s ease 2;
       }
 
       @keyframes hacky-attention-bounce {
-        0%, 100% { transform: translateY(0) scale(1); }
-        50% { transform: translateY(-12px) scale(1.1); }
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-6px); }
       }
 
       .hacky-avatar-svg {
@@ -507,18 +502,11 @@ class HackyMascot {
         position: absolute;
         top: 2px;
         right: 4px;
-        width: 14px;
-        height: 14px;
+        width: 12px;
+        height: 12px;
         border-radius: 50%;
         background: #10B981;
-        border: 2.5px solid #FFFFFF;
-        box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
-        animation: hacky-pip-glow 2s infinite;
-      }
-
-      @keyframes hacky-pip-glow {
-        0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-        50% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+        border: 2px solid #FFFFFF;
       }
 
       /* ── Hacky Name Tag Badge ── */
@@ -527,23 +515,18 @@ class HackyMascot {
         bottom: -4px;
         left: 50%;
         transform: translateX(-50%);
-        background: linear-gradient(135deg, #4F46E5, #6366F1);
-        color: #FFFFFF;
+        background: #18181B;
+        color: #F4F4F5;
         font-size: 11px;
-        font-weight: 800;
+        font-weight: 700;
         letter-spacing: 0.2px;
         padding: 2px 8px;
         border-radius: 12px;
-        border: 1.5px solid #FFFFFF;
-        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.45);
+        border: 1px solid #27272A;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
         white-space: nowrap;
         pointer-events: none;
         z-index: 2;
-        transition: transform 0.2s ease;
-      }
-
-      .hacky-avatar-btn:hover .hacky-name-tag {
-        transform: translateX(-50%) scale(1.06);
       }
 
       /* ── Notification Count Badge (Top-Left) ── */
@@ -551,47 +534,40 @@ class HackyMascot {
         position: absolute;
         top: -2px;
         left: -2px;
-        background: linear-gradient(135deg, #EF4444, #F59E0B);
+        background: #10B981;
         color: #FFFFFF;
         font-size: 10px;
-        font-weight: 800;
+        font-weight: 700;
         padding: 2px 6px;
         border-radius: 12px;
         border: 1.5px solid #FFFFFF;
-        box-shadow: 0 2px 6px rgba(239, 68, 68, 0.4);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
         letter-spacing: -0.02em;
-        transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
         z-index: 3;
-        animation: hacky-badge-pulse 1s ease-in-out infinite alternate;
       }
 
       .hacky-badge-counter.hidden {
         display: none !important;
       }
 
-      @keyframes hacky-badge-pulse {
-        from { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-        to { transform: scale(1.15); box-shadow: 0 0 12px rgba(239, 68, 68, 0.9); }
-      }
-
       /* ── Speech Bubble (Context Greeting & Proactive Alert) ── */
       .hacky-speech-bubble {
         width: 300px;
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid rgba(226, 232, 240, 0.9);
-        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.98);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid #E4E4E7;
+        border-radius: 14px;
         border-bottom-right-radius: 4px;
         padding: 14px;
-        box-shadow: 0 14px 40px -8px rgba(15, 23, 42, 0.18), 0 4px 14px -2px rgba(79, 70, 229, 0.12);
+        box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.12);
         display: flex;
         flex-direction: column;
         gap: 8px;
         position: relative;
-        animation: hacky-pop 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        animation: hacky-pop 0.2s ease-out;
         transform-origin: bottom right;
-        transition: all 0.25s ease;
+        transition: all 0.2s ease;
       }
 
       .hacky-speech-bubble.hidden {
@@ -599,8 +575,8 @@ class HackyMascot {
       }
 
       @keyframes hacky-pop {
-        from { transform: scale(0.85) translateY(12px); opacity: 0; }
-        to { transform: scale(1) translateY(0); opacity: 1; }
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
       }
 
       /* Holographic border effect */
@@ -617,20 +593,10 @@ class HackyMascot {
         pointer-events: none;
       }
 
-      /* Proactive Job Alert Glow & Highlight Style */
+      /* Proactive Job Alert Style */
       .hacky-speech-bubble.job-alert {
-        border-color: rgba(245, 158, 11, 0.6);
-        box-shadow: 0 16px 45px -8px rgba(245, 158, 11, 0.25), 0 6px 20px -2px rgba(79, 70, 229, 0.2);
-        animation: hacky-pop 0.35s cubic-bezier(0.16, 1, 0.3, 1), hacky-alert-glow 3s infinite alternate ease-in-out;
-      }
-
-      .hacky-speech-bubble.job-alert::before {
-        background: linear-gradient(135deg, #F59E0B, #EF4444, #8B5CF6, #F59E0B);
-      }
-
-      @keyframes hacky-alert-glow {
-        0% { filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.3)); }
-        100% { filter: drop-shadow(0 0 14px rgba(239, 68, 68, 0.5)); }
+        border-color: #10B981;
+        box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.15);
       }
 
       .hacky-bubble-header {
@@ -648,33 +614,32 @@ class HackyMascot {
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.5px;
-        color: #4F46E5;
-        background: #EEF2FF;
+        color: #10B981;
+        background: #ECFDF5;
         padding: 3px 9px;
         border-radius: 12px;
       }
 
       .hacky-speech-bubble.job-alert .hacky-bubble-tag {
-        color: #B45309;
-        background: #FEF3C7;
+        color: #059669;
+        background: #D1FAE5;
       }
 
       .hacky-bubble-tag-dot {
         width: 6px;
         height: 6px;
         border-radius: 50%;
-        background: #4F46E5;
+        background: #10B981;
       }
 
       .hacky-speech-bubble.job-alert .hacky-bubble-tag-dot {
-        background: #F59E0B;
-        box-shadow: 0 0 6px #F59E0B;
+        background: #059669;
       }
 
       .hacky-bubble-close {
         background: transparent;
         border: none;
-        color: #94A3B8;
+        color: #71717A;
         cursor: pointer;
         font-size: 14px;
         width: 22px;
@@ -687,70 +652,64 @@ class HackyMascot {
       }
 
       .hacky-bubble-close:hover {
-        background: #F1F5F9;
-        color: #0F172A;
+        background: #F4F4F5;
+        color: #18181B;
       }
 
       .hacky-bubble-title {
         font-size: 13px;
         font-weight: 700;
-        color: #0F172A;
+        color: #18181B;
         line-height: 1.35;
       }
 
       .hacky-bubble-body {
         font-size: 12px;
-        color: #475569;
+        color: #52525B;
         line-height: 1.45;
       }
 
       .hacky-btn-main {
         width: 100%;
-        background: linear-gradient(135deg, #4F46E5, #6366F1);
-        color: #FFFFFF;
-        font-weight: 700;
+        background: #18181B;
+        color: #FAFAFA;
+        font-weight: 600;
         font-size: 12px;
         padding: 9px 14px;
-        border-radius: 10px;
-        border: none;
+        border-radius: 8px;
+        border: 1px solid #27272A;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 6px;
-        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
-        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-      }
-
-      .hacky-speech-bubble.job-alert .hacky-btn-main {
-        background: linear-gradient(135deg, #4F46E5, #7C3AED);
-        box-shadow: 0 4px 14px rgba(124, 58, 237, 0.4);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        transition: all 0.15s ease;
       }
 
       .hacky-btn-main:hover {
-        background: linear-gradient(135deg, #4338CA, #4F46E5);
-        transform: translateY(-1px);
-        box-shadow: 0 6px 16px rgba(79, 70, 229, 0.45);
+        background: #27272A;
+        color: #FFFFFF;
       }
 
       .hacky-btn-main:active {
-        transform: translateY(0);
+        background: #18181B;
       }
 
       /* ── Expandable Quick Actions Menu ── */
       .hacky-quick-menu {
         width: 300px;
-        background: rgba(255, 255, 255, 0.96);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid #E2E8F0;
-        border-radius: 18px;
-        padding: 10px;
-        box-shadow: 0 16px 40px -10px rgba(15, 23, 42, 0.2);
+        background: rgba(255, 255, 255, 0.98);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid #E4E4E7;
+        border-radius: 12px;
+        padding: 8px;
+        box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.12);
         display: flex;
         flex-direction: column;
-        gap: 6px;
-        animation: hacky-pop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        gap: 4px;
+        animation: hacky-pop 0.2s ease-out;
         transform-origin: bottom right;
       }
 
@@ -762,14 +721,14 @@ class HackyMascot {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 4px 8px 8px;
-        border-bottom: 1px solid #F1F5F9;
+        padding: 4px 8px 6px;
+        border-bottom: 1px solid #F4F4F5;
       }
 
       .hacky-menu-title {
         font-size: 11px;
-        font-weight: 800;
-        color: #64748B;
+        font-weight: 700;
+        color: #71717A;
         text-transform: uppercase;
         letter-spacing: 0.6px;
       }
@@ -778,13 +737,13 @@ class HackyMascot {
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 9px 12px;
-        border-radius: 10px;
-        background: #F8FAFC;
-        border: 1px solid #F1F5F9;
-        color: #0F172A;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: #FAFAFA;
+        border: 1px solid #F4F4F5;
+        color: #18181B;
         font-size: 12px;
-        font-weight: 600;
+        font-weight: 500;
         cursor: pointer;
         transition: all 0.15s ease;
         text-align: left;
@@ -792,25 +751,31 @@ class HackyMascot {
       }
 
       .hacky-menu-action:hover {
-        background: #EEF2FF;
-        border-color: #C7D2FE;
-        color: #4F46E5;
-        transform: translateX(-2px);
+        background: #F4F4F5;
+        border-color: #E4E4E7;
+        color: #18181B;
       }
 
       .hacky-menu-action-icon {
-        font-size: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #71717A;
         flex-shrink: 0;
+      }
+
+      .hacky-menu-action:hover .hacky-menu-action-icon {
+        color: #10B981;
       }
 
       .hacky-menu-action-badge {
         margin-left: auto;
         font-size: 10px;
-        font-weight: 800;
+        font-weight: 700;
         background: #10B981;
         color: #FFFFFF;
         padding: 1px 6px;
-        border-radius: 10px;
+        border-radius: 8px;
       }
 
       /* ── Minimized Floating Pill (When Minimized) ── */
@@ -818,22 +783,21 @@ class HackyMascot {
         display: none;
         align-items: center;
         gap: 6px;
-        background: #0F172A;
-        color: #FFFFFF;
+        background: #18181B;
+        color: #F4F4F5;
         padding: 6px 12px;
-        border-radius: 24px;
+        border-radius: 20px;
         cursor: pointer;
-        box-shadow: 0 4px 16px rgba(15, 23, 42, 0.35);
-        border: 1px solid #334155;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        border: 1px solid #27272A;
         font-size: 11px;
-        font-weight: 700;
-        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        font-weight: 600;
+        transition: background 0.15s ease;
         pointer-events: auto;
       }
 
       .hacky-minimized-pill:hover {
-        background: #4F46E5;
-        transform: scale(1.05);
+        background: #27272A;
       }
 
       .hacky-dock.minimized .hacky-avatar-btn,
@@ -846,18 +810,18 @@ class HackyMascot {
         display: flex !important;
       }
 
-      /* ── Particle Confetti Stars ── */
+      /* ── Subtle Micro-Particles ── */
       .hacky-particle {
         position: fixed;
         pointer-events: none;
         z-index: 2147483647;
-        font-size: 14px;
-        animation: hacky-particle-fly 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        border-radius: 50%;
+        animation: hacky-particle-fly 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       }
 
       @keyframes hacky-particle-fly {
-        0% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
-        100% { transform: translate(var(--tx), var(--ty)) scale(0) rotate(180deg); opacity: 0; }
+        0% { transform: translate(0, 0) scale(1); opacity: 0.8; }
+        100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
       }
 
       /* Drag handle hover indicator */
@@ -915,29 +879,39 @@ class HackyMascot {
         <!-- Expandable Quick Actions Menu -->
         <div class="hacky-quick-menu hidden" id="hacky-quick-menu">
           <div class="hacky-menu-header">
-            <span class="hacky-menu-title">🦉 Hacky</span>
+            <span class="hacky-menu-title">Hacky Assistant</span>
             <button class="hacky-bubble-close" id="hacky-menu-close">✕</button>
           </div>
           <button class="hacky-menu-action" id="hacky-act-copilot">
-            <span class="hacky-menu-action-icon">🚀</span>
+            <span class="hacky-menu-action-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg>
+            </span>
             <span>Open Hacky Side Panel</span>
           </button>
           <button class="hacky-menu-action" id="hacky-act-scan">
-            <span class="hacky-menu-action-icon">🎯</span>
+            <span class="hacky-menu-action-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+            </span>
             <span>Scan Page Resume (ATS Audit)</span>
           </button>
           <button class="hacky-menu-action" id="hacky-act-autofill">
-            <span class="hacky-menu-action-icon">⚡</span>
-            <span>1-Click Autofill Form</span>
+            <span class="hacky-menu-action-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            </span>
+            <span>Autofill Form Fields</span>
           </button>
           <button class="hacky-menu-action" id="hacky-act-internships">
-            <span class="hacky-menu-action-icon">💼</span>
-            <span>Browse 2026 Internships</span>
+            <span class="hacky-menu-action-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            </span>
+            <span>Browse Verified Tech Roles</span>
             <span class="hacky-menu-action-badge" id="hacky-menu-badge">+${this.currentJobsCount}</span>
           </button>
           <button class="hacky-menu-action" id="hacky-act-tip">
-            <span class="hacky-menu-action-icon">💡</span>
-            <span>AI Resume Pro-Tip</span>
+            <span class="hacky-menu-action-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
+            </span>
+            <span>Resume Strategy</span>
           </button>
         </div>
 
@@ -952,8 +926,8 @@ class HackyMascot {
 
         <!-- Minimized Floating Pill -->
         <div class="hacky-minimized-pill" id="hacky-minimized-pill">
-          <span>🦉 Hacky</span>
-          <span style="color: #A5B4FC;">⚡</span>
+          <span>Hacky</span>
+          <span style="color: #10B981;">•</span>
         </div>
 
       </div>
@@ -1285,9 +1259,9 @@ class HackyMascot {
               id: `star-suggestions-${Date.now()}`,
               type: 'CONTEXT_ALERT',
               badge: 'STAR Suggestions Active',
-              title: `✨ ${count} STAR Suggestions Ready!`,
+              title: `${count} STAR Suggestions Ready`,
               body: 'Your tailored STAR bullet suggestions are live on your document. Click me anytime to reopen full panel.',
-              ctaText: 'Reopen Side Panel ⚡',
+              ctaText: 'Reopen Side Panel',
               targetTab: 'match',
               timestamp: Date.now()
             };
@@ -1460,14 +1434,16 @@ class HackyMascot {
   }
 
   private triggerSparkles(x: number, y: number): void {
-    const emojis = ['✨', '⚡', '🌟', '🎯', '🚀', '💎'];
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 6; i++) {
       const p = document.createElement('div');
       p.className = 'hacky-particle';
-      p.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+      p.style.width = '4px';
+      p.style.height = '4px';
+      p.style.borderRadius = '50%';
+      p.style.background = '#10B981';
 
-      const angle = (i / 8) * Math.PI * 2;
-      const dist = 35 + Math.random() * 45;
+      const angle = (i / 6) * Math.PI * 2;
+      const dist = 20 + Math.random() * 25;
       const tx = Math.cos(angle) * dist;
       const ty = Math.sin(angle) * dist;
 
@@ -1479,7 +1455,7 @@ class HackyMascot {
       const mount = document.body || document.documentElement;
       if (mount) {
         mount.appendChild(p);
-        setTimeout(() => p.remove(), 950);
+        setTimeout(() => p.remove(), 750);
       }
     }
   }
@@ -1565,9 +1541,9 @@ class HackyMascot {
       id: `autofill-${Date.now()}`,
       type: 'CONTEXT_ALERT',
       badge: 'Autofill Complete',
-      title: `⚡ Autofilled ${filled} Fields!`,
-      body: 'Autofilled your candidate details. Review and submit your application!',
-      ctaText: 'View Applications 💼',
+      title: `Autofilled ${filled} Fields`,
+      body: 'Autofilled your candidate details. Review and submit your application.',
+      ctaText: 'View Applications',
       targetTab: 'tracker',
       timestamp: Date.now()
     });

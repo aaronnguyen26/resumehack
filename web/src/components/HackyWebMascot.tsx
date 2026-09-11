@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Sparkles,
+  Bot,
   X,
   ChevronRight,
   Send,
@@ -9,6 +9,8 @@ import {
   TrendingUp,
   AlertCircle,
   MessageSquare,
+  CheckCircle2,
+  User,
 } from 'lucide-react';
 
 import { NavTab } from './Navbar.js';
@@ -31,6 +33,8 @@ export interface HackyWebMascotProps {
   applications?: ApplicationRecord[];
   jobs?: JobPosting[];
   onSelectJobForTailoring?: (job: JobPosting) => void;
+  onUpdateResumeText?: (text: string) => void;
+  onUpdateApplicantProfile?: (profile: Partial<ApplicantProfile>) => void;
 }
 
 const CHAT_STORAGE_KEY = 'resumehack_hacky_chat_history';
@@ -39,21 +43,24 @@ const INITIAL_MESSAGE: ChatMessage = {
   id: 'init-hacky-welcome',
   sender: 'hacky',
   text:
-    "Hi! I'm Hacky, your AI career & resume copilot 🦉.\n\n" +
+    "Hi! I'm Hacky, your career and resume assistant.\n\n" +
     "Ask me anything about:\n" +
-    "• **Your resume** & how to boost your ATS score\n" +
-    "• **How your job applications** & interview pipeline are doing\n" +
+    "• **Your resume** & how to optimize your ATS score\n" +
+    "• **Updating your information** (paste your resume, change target role, or add skills)\n" +
+    "• **Your job applications** & interview pipeline\n" +
     "• **New verified job openings** & internships to apply for!",
   timestamp: Date.now(),
   actions: [
-    { label: '📄 How is my resume doing?', action: 'quick_reply', payload: 'How is my resume doing?' },
-    { label: '📊 How are my jobs doing?', action: 'quick_reply', payload: 'How are my jobs doing?' },
-    { label: '💼 Any new job openings?', action: 'quick_reply', payload: 'Are there any new job openings?' },
+    { label: 'How is my resume doing?', action: 'quick_reply', payload: 'How is my resume doing?' },
+    { label: 'What is my current info?', action: 'quick_reply', payload: 'What is my current info?' },
+    { label: 'How are my jobs doing?', action: 'quick_reply', payload: 'How are my jobs doing?' },
+    { label: 'Any new job openings?', action: 'quick_reply', payload: 'Are there any new job openings?' },
   ],
 };
 
 const SUGGESTION_CHIPS = [
   'How is my resume doing?',
+  'What is my current info?',
   'How are my jobs doing?',
   'Any new job openings?',
   'How to quantify bullets?',
@@ -68,6 +75,8 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
   applications = [],
   jobs = [],
   onSelectJobForTailoring,
+  onUpdateResumeText,
+  onUpdateApplicantProfile,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
@@ -109,6 +118,13 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
     } catch {}
   }, [messages]);
 
+  const effectiveResumeText =
+    resumeText && resumeText.trim().length > 30
+      ? resumeText.trim()
+      : typeof window !== 'undefined'
+      ? localStorage.getItem('user_custom_resume') || ''
+      : '';
+
   const handleSendMessage = async (textToSend?: string) => {
     const query = (textToSend || inputValue).trim();
     if (!query || isThinking) return;
@@ -126,21 +142,34 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
 
     try {
       const context = {
-        resumeText,
+        resumeText: effectiveResumeText,
         atsScore,
         applicantProfile,
         applications,
         jobs,
         activeTab,
+        onUpdateResumeText,
+        onUpdateApplicantProfile,
       };
 
       const reply = await HackyChatbot.processUserMessage(query, context);
+
+      // Handle any live updates triggered by the chatbot
+      if (reply.updatedInfo) {
+        if (reply.updatedInfo.newResumeText && onUpdateResumeText) {
+          onUpdateResumeText(reply.updatedInfo.newResumeText);
+        }
+        if (reply.updatedInfo.updatedProfile && onUpdateApplicantProfile) {
+          onUpdateApplicantProfile(reply.updatedInfo.updatedProfile);
+        }
+      }
+
       setMessages((prev) => [...prev, reply]);
     } catch (err) {
       const errorReply: ChatMessage = {
         id: `err-msg-${Date.now()}`,
         sender: 'hacky',
-        text: "I encountered a hiccup analyzing that question. Please try asking again in a moment! 🦉",
+        text: "I encountered an issue analyzing that question. Please try asking again in a moment.",
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, errorReply]);
@@ -308,6 +337,123 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
       );
     }
 
+    if (card.type === 'info_updated') {
+      return (
+        <div className="mt-2.5 p-2.5 rounded-xl bg-zinc-50 dark:bg-[#121215] border border-zinc-200 dark:border-zinc-800 space-y-2 text-[11px]">
+          <div className="flex items-center justify-between border-b border-zinc-200/60 dark:border-zinc-800/80 pb-1.5">
+            <span className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              {card.title}
+            </span>
+            <span className="px-2 py-0.5 rounded-full font-mono font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-[10px]">
+              Synced
+            </span>
+          </div>
+
+          <div className="text-zinc-600 dark:text-zinc-300 text-[11px] leading-relaxed">
+            {card.summary}
+          </div>
+
+          {card.changes && card.changes.length > 0 && (
+            <div className="space-y-1 pt-1 border-t border-zinc-200/50 dark:border-zinc-800/50">
+              {card.changes.map((c, idx) => (
+                <div key={idx} className="flex items-center justify-between text-[10px] bg-white dark:bg-[#18181B] px-2 py-1 rounded border border-zinc-200/40 dark:border-zinc-800/40">
+                  <span className="font-medium text-zinc-500 dark:text-zinc-400">{c.field}</span>
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-[180px]">{c.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {card.metrics && (
+            <div className="grid grid-cols-2 gap-1.5 pt-1 text-zinc-600 dark:text-zinc-400">
+              {card.metrics.score > 0 && (
+                <div className="flex items-center justify-between bg-white dark:bg-[#18181B] px-2 py-1 rounded border border-zinc-200/50 dark:border-zinc-800/50 text-[10px]">
+                  <span className="text-zinc-500 dark:text-zinc-400">ATS Score</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-mono font-bold">{card.metrics.score}%</span>
+                </div>
+              )}
+              {card.metrics.metricsCount !== undefined && (
+                <div className="flex items-center justify-between bg-white dark:bg-[#18181B] px-2 py-1 rounded border border-zinc-200/50 dark:border-zinc-800/50 text-[10px]">
+                  <span className="text-zinc-500 dark:text-zinc-400">Metrics</span>
+                  <span className="text-zinc-900 dark:text-zinc-100 font-mono font-bold">{card.metrics.metricsCount}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (card.type === 'profile_summary') {
+      return (
+        <div className="mt-2.5 p-2.5 rounded-xl bg-zinc-50 dark:bg-[#121215] border border-zinc-200 dark:border-zinc-800 space-y-2 text-[11px]">
+          <div className="flex items-center justify-between border-b border-zinc-200/60 dark:border-zinc-800/80 pb-1.5">
+            <span className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
+              {card.title}
+            </span>
+            <span className="px-2 py-0.5 rounded-full font-mono text-[10px] bg-zinc-200/60 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 truncate max-w-[130px]">
+              {card.targetRole}
+            </span>
+          </div>
+
+          <div className="space-y-1 text-[10px]">
+            <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400">
+              <span>Email:</span>
+              <span className="font-medium text-zinc-900 dark:text-zinc-100 truncate max-w-[180px]">{card.email}</span>
+            </div>
+            <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400">
+              <span>Location:</span>
+              <span className="font-medium text-zinc-900 dark:text-zinc-100 truncate max-w-[180px]">{card.location}</span>
+            </div>
+            <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400">
+              <span>Education:</span>
+              <span className="font-medium text-zinc-900 dark:text-zinc-100 truncate max-w-[180px]">{card.school}</span>
+            </div>
+          </div>
+
+          {card.skills && card.skills.length > 0 && (
+            <div className="pt-1.5 border-t border-zinc-200/50 dark:border-zinc-800/50">
+              <div className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">
+                Top Skills ({card.skillsCount})
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {card.skills.slice(0, 6).map((skill, idx) => (
+                  <span
+                    key={idx}
+                    className="px-1.5 py-0.5 rounded bg-zinc-200/50 dark:bg-zinc-800/80 text-zinc-800 dark:text-zinc-200 text-[9px] font-mono"
+                  >
+                    {skill}
+                  </span>
+                ))}
+                {card.skills.length > 6 && (
+                  <span className="text-[9px] text-zinc-400 px-1 py-0.5">+{card.skills.length - 6} more</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {card.resumeStats && (
+            <div className="pt-1.5 border-t border-zinc-200/50 dark:border-zinc-800/50 grid grid-cols-3 gap-1 text-center">
+              <div className="p-1 rounded bg-white dark:bg-[#18181B] border border-zinc-200/50 dark:border-zinc-800/50">
+                <div className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400">{card.resumeStats.score}%</div>
+                <div className="text-[8px] text-zinc-400 uppercase tracking-wider">ATS Score</div>
+              </div>
+              <div className="p-1 rounded bg-white dark:bg-[#18181B] border border-zinc-200/50 dark:border-zinc-800/50">
+                <div className="font-mono font-bold text-xs text-zinc-900 dark:text-zinc-100">{card.resumeStats.metricsCount}</div>
+                <div className="text-[8px] text-zinc-400 uppercase tracking-wider">Metrics</div>
+              </div>
+              <div className="p-1 rounded bg-white dark:bg-[#18181B] border border-zinc-200/50 dark:border-zinc-800/50">
+                <div className="font-mono font-bold text-xs text-zinc-900 dark:text-zinc-100">~{card.resumeStats.lineCount}</div>
+                <div className="text-[8px] text-zinc-400 uppercase tracking-wider">Lines</div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     return null;
   };
 
@@ -326,8 +472,8 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
           {/* Header */}
           <div className="h-14 px-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-white dark:bg-[#121215] shrink-0">
             <div className="flex items-center gap-2.5">
-              <div className="relative w-8 h-8 rounded-lg bg-zinc-100 dark:bg-[#1E1E22] border border-zinc-200 dark:border-[#2E2E33] flex items-center justify-center text-lg">
-                <span>🦉</span>
+              <div className="relative w-8 h-8 rounded-lg bg-zinc-100 dark:bg-[#1E1E22] border border-zinc-200 dark:border-[#2E2E33] flex items-center justify-center">
+                <Bot className="w-4 h-4 text-emerald-500" />
                 <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-[#121215]" />
               </div>
               <div className="flex flex-col text-left">
@@ -335,14 +481,18 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
                   <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 font-headline">
                     Ask Hacky
                   </span>
-                  {atsScore !== undefined && (
+                  {atsScore !== undefined && atsScore > 0 ? (
                     <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-[9px] font-mono font-bold">
                       {atsScore}% ATS
                     </span>
-                  )}
+                  ) : effectiveResumeText ? (
+                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-[9px] font-mono font-bold">
+                      Live Sync
+                    </span>
+                  ) : null}
                 </div>
                 <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-medium">
-                  Career & Resume Copilot
+                  Career &amp; Resume Assistant
                 </span>
               </div>
             </div>
@@ -370,10 +520,10 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
           {/* Context status bar */}
           <div className="px-3.5 py-1.5 bg-zinc-50 dark:bg-[#18181B]/80 border-b border-zinc-100 dark:border-zinc-800/80 text-[10px] text-zinc-500 dark:text-zinc-400 flex items-center justify-between font-mono shrink-0">
             <span className="truncate max-w-[170px]">
-              📄 {applicantProfile?.firstName ? `${applicantProfile.firstName}'s Resume` : (resumeText ? 'Resume Loaded' : 'No Resume')}
+              {applicantProfile?.firstName ? `${applicantProfile.firstName}'s Resume` : (effectiveResumeText ? 'Resume Loaded' : 'No Resume')}
             </span>
             <span>
-              📊 {applications.length} Apps • 💼 {jobs.length || 100}+ Jobs
+              {applications.length} Apps • {jobs.length || 100}+ Jobs
             </span>
           </div>
 
@@ -420,7 +570,7 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
 
             {isThinking && (
               <div className="flex items-center gap-2 p-2.5 rounded-2xl rounded-tl-xs bg-zinc-100 dark:bg-[#18181B] border border-zinc-200/80 dark:border-[#27272A] text-zinc-500 max-w-[140px]">
-                <span className="text-xs">🦉</span>
+                <Bot className="w-3.5 h-3.5 text-zinc-400" />
                 <div className="flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '0ms' }} />
                   <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -479,14 +629,14 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="pointer-events-auto relative group flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-zinc-950 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 shadow-2xl border-2 border-zinc-200/80 dark:border-zinc-800 transition-all duration-200 cursor-pointer hover:scale-[1.03] active:scale-95 ring-2 ring-zinc-900/10 dark:ring-white/10"
+        className="pointer-events-auto relative group flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-zinc-950 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 shadow-2xl border-2 border-zinc-200/80 dark:border-zinc-800 transition-colors duration-150 cursor-pointer ring-2 ring-zinc-900/10 dark:ring-white/10"
         title={isOpen ? 'Minimize Hacky Chatbot' : 'Click to chat with Hacky'}
         aria-expanded={isOpen}
       >
         <div className="relative flex items-center justify-center">
-          <span className="text-xl leading-none">🦉</span>
-          {/* Pulsing online status indicator */}
-          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-zinc-950 dark:border-white animate-pulse" />
+          <Bot className="w-5 h-5 text-emerald-400 dark:text-emerald-600" />
+          {/* Online status indicator */}
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-zinc-950 dark:border-white" />
         </div>
 
         <div className="flex flex-col text-left">
@@ -494,7 +644,7 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
             {isOpen ? 'Close Hacky' : 'Ask Hacky'}
           </span>
           <span className="text-[9px] font-mono leading-none text-zinc-400 dark:text-zinc-500">
-            {isOpen ? 'Minimize' : 'AI Copilot'}
+            {isOpen ? 'Minimize' : 'Assistant'}
           </span>
         </div>
 
@@ -502,7 +652,7 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
           {isOpen ? (
             <X className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500 group-hover:text-white dark:group-hover:text-zinc-950 transition-colors" />
           ) : (
-            <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+            <MessageSquare className="w-3.5 h-3.5 text-emerald-400 dark:text-emerald-600" />
           )}
         </div>
       </button>

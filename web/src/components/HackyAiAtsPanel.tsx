@@ -6,7 +6,7 @@ import {
   CheckCircle2, 
   Check, 
   ChevronRight, 
-  Sparkles, 
+  Cpu, 
   Briefcase, 
   Code2, 
   SlidersHorizontal, 
@@ -399,7 +399,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
       <div className="p-4 border-b border-zinc-200 dark:border-[#27272A] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 rounded-md bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 flex items-center justify-center font-bold text-xs font-headline shadow-xs">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+            <Cpu className="w-3.5 h-3.5 text-emerald-500" />
           </div>
           <div className="flex flex-col">
             <span className="font-bold text-xs font-headline uppercase tracking-wider text-zinc-950 dark:text-zinc-50 leading-none">
@@ -543,7 +543,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                     </span>
                   ) : (
                     <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-700 flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-zinc-400" />
+                      <Cpu className="w-3 h-3 text-zinc-400" />
                       <span>Personalized Heuristics</span>
                     </span>
                   )}
@@ -683,7 +683,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
             {isGeneratingRecs && (
               <div className="p-4 rounded-xl bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] flex items-center justify-center gap-2.5 text-xs font-mono text-zinc-600 dark:text-zinc-400 animate-pulse">
                 <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
-                <span>Running Gemini deep resume personalization...</span>
+                <span>Analyzing resume optimization with Hacky AI...</span>
               </div>
             )}
 
@@ -691,7 +691,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono uppercase font-bold text-zinc-600 dark:text-zinc-300 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+                  <CheckCheck className="w-3.5 h-3.5 text-emerald-500" />
                   <span>Personalized Improvements ({filteredRecommendations.length})</span>
                 </span>
                 <span className="text-[10px] font-mono text-zinc-400">STAR & ATS Aligned</span>
@@ -704,7 +704,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                   onClick={handleApplyAllRecommendations}
                   className="w-full py-2.5 px-3 text-xs font-mono font-bold rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+                  <CheckCheck className="w-3.5 h-3.5 text-emerald-500" />
                   <span>
                     Apply All {filteredRecommendations.filter(r => !appliedItemIds[r.id]).length} Enhancements (+
                     {filteredRecommendations.filter(r => !appliedItemIds[r.id]).reduce((sum, r) => sum + r.impactPts, 0)} pts)
@@ -783,7 +783,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                         <div className="p-2.5 rounded-lg bg-emerald-500/5 dark:bg-emerald-500/5 border border-emerald-500/20 space-y-2">
                           <div className="flex items-center justify-between">
                             <div className="text-[10px] font-mono uppercase font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                              <Sparkles className="w-3 h-3 text-emerald-500" />
+                              <ArrowUpRight className="w-3 h-3 text-emerald-500" />
                               <span>Suggested Hacky AI Enhancement:</span>
                             </div>
                             <button
@@ -878,8 +878,9 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
 
                     {/* Reasoning Footer */}
                     {rec.reasoning && (
-                      <div className="text-[10px] font-mono text-zinc-500 pt-0.5 leading-relaxed">
-                        💡 {rec.reasoning}
+                      <div className="text-[10px] font-mono text-zinc-500 pt-0.5 leading-relaxed flex items-start gap-1">
+                        <Lightbulb className="w-3 h-3 text-zinc-400 shrink-0 mt-0.5" />
+                        <span>{rec.reasoning}</span>
                       </div>
                     )}
 
@@ -1052,7 +1053,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                   />
                 </div>
                 <div className="text-[10px] text-zinc-400 font-mono">
-                  {atsReport.selfProjectsAudit?.hasWorkingLinks ? '✓ Live URLs verified' : '⚠️ Missing live URLs'}
+                  {atsReport.selfProjectsAudit?.hasWorkingLinks ? '✓ Live URLs verified' : 'Missing live URLs'}
                   {(atsReport.selfProjectsAudit?.tutorialFlags.length ?? 0) > 0 && ' (Tutorial clone flag -25 pts)'}
                 </div>
               </div>
@@ -1127,18 +1128,18 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                 <div className="p-2.5 rounded-lg bg-zinc-100/70 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-800 space-y-1.5 text-xs">
                   <div className="flex items-center justify-between font-semibold text-zinc-900 dark:text-zinc-100">
                     <span className="flex items-center gap-1.5">
-                      <span>🛠️ Self Projects Audit:</span>
+                      <span>Self-Directed Projects Audit:</span>
                       <span className="font-mono text-emerald-600 dark:text-emerald-400">
                         {atsReport.selfProjectsAudit.score}/100
                       </span>
                     </span>
                     {atsReport.selfProjectsAudit.hasWorkingLinks ? (
                       <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-semibold font-mono">
-                        🔗 Link Verified
+                        Link Verified
                       </span>
                     ) : (
                       <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 font-semibold font-mono">
-                        ⚠️ No Live URL
+                        No Live URL
                       </span>
                     )}
                   </div>
@@ -1146,7 +1147,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                   {/* Tutorial clone warnings */}
                   {atsReport.selfProjectsAudit.tutorialFlags.length > 0 && (
                     <div className="p-1.5 rounded bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-700 dark:text-amber-400 font-mono">
-                      ⚠️ Generic Tutorial Phrasing Detected (-25 pts): {atsReport.selfProjectsAudit.tutorialFlags.join(', ')}
+                      Tutorial Phrasing Detected (-25 pts): {atsReport.selfProjectsAudit.tutorialFlags.join(', ')}
                     </div>
                   )}
 
@@ -1173,14 +1174,14 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                 <div className="p-2.5 rounded-lg bg-zinc-100/70 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-800 space-y-1.5 text-xs">
                   <div className="flex items-center justify-between font-semibold text-zinc-900 dark:text-zinc-100">
                     <span className="flex items-center gap-1.5">
-                      <span>🏢 Production Scale Audit:</span>
+                      <span>Production Scale Audit:</span>
                       <span className="font-mono text-emerald-600 dark:text-emerald-400">
                         {atsReport.productionExperienceAudit.score}/100
                       </span>
                     </span>
                     {atsReport.productionExperienceAudit.isProductionHeavy && (
                       <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-semibold font-mono">
-                        🚀 High Production Maturity
+                        High Production Maturity
                       </span>
                     )}
                   </div>
@@ -1279,7 +1280,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                         {isTailorLoading ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         ) : (
-                          <Sparkles className="w-3.5 h-3.5" />
+                          <ArrowUpRight className="w-3.5 h-3.5" />
                         )}
                         <span>{isTailorLoading ? 'Analyzing...' : 'Generate STAR'}</span>
                       </button>

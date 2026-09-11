@@ -16,10 +16,10 @@ describe('Hacky Mascot — Proactive Notification Alert System', () => {
       const notif = createJobAlertNotification(12, ['Stripe', 'Google', 'OpenAI'], 120);
 
       expect(notif.type).toBe('NEW_JOBS_ALERT');
-      expect(notif.badge).toBe('🔥 New Openings');
-      expect(notif.title).toBe('🔥 12 New 2026 Internships Added (Stripe, Google, OpenAI)!');
+      expect(notif.badge).toBe('New Openings');
+      expect(notif.title).toBe('12 New 2026 Internships Added (Stripe, Google, OpenAI)!');
       expect(notif.body).toContain('Top roles open at Stripe, Google, OpenAI');
-      expect(notif.ctaText).toBe('View Jobs 💼');
+      expect(notif.ctaText).toBe('View Jobs');
       expect(notif.targetTab).toBe('discovery');
       expect(notif.count).toBe(12);
       expect(notif.companies).toEqual(['Stripe', 'Google', 'OpenAI']);
@@ -29,18 +29,18 @@ describe('Hacky Mascot — Proactive Notification Alert System', () => {
     it('handles comma-separated string of companies', () => {
       const notif = createJobAlertNotification(5, 'Meta, Citadel, Databricks');
 
-      expect(notif.title).toBe('🔥 5 New 2026 Internships Added (Meta, Citadel, Databricks)!');
+      expect(notif.title).toBe('5 New 2026 Internships Added (Meta, Citadel, Databricks)!');
       expect(notif.companies).toEqual(['Meta', 'Citadel', 'Databricks']);
       expect(notif.targetTab).toBe('discovery');
     });
 
     it('handles single company and empty company arrays gracefully', () => {
       const singleNotif = createJobAlertNotification(1, ['Apple']);
-      expect(singleNotif.title).toBe('🔥 1 New 2026 Internships Added (Apple)!');
+      expect(singleNotif.title).toBe('1 New 2026 Internships Added (Apple)!');
       expect(singleNotif.body).toContain('Top roles open at Apple');
 
       const emptyNotif = createJobAlertNotification(8, []);
-      expect(emptyNotif.title).toBe('🔥 8 New 2026 Internships Added!');
+      expect(emptyNotif.title).toBe('8 New 2026 Internships Added!');
       expect(emptyNotif.body).toContain('8 verified internship openings just synced');
       expect(emptyNotif.companies).toEqual([]);
     });
@@ -60,7 +60,7 @@ describe('Hacky Mascot — Proactive Notification Alert System', () => {
       expect(notif.badge).toContain('STAR Strategy');
       expect(notif.title).toBe('AI Resume Pro-Tip');
       expect(notif.body).toContain('STAR method');
-      expect(notif.ctaText).toBe('Tailor Resume ⚡');
+      expect(notif.ctaText).toBe('Tailor Resume');
       expect(notif.targetTab).toBe('match');
     });
 
@@ -68,7 +68,7 @@ describe('Hacky Mascot — Proactive Notification Alert System', () => {
       const notif = createProTipNotification();
 
       expect(notif.type).toBe('PRO_TIP');
-      expect(notif.badge).toMatch(/^💡/);
+      expect(typeof notif.badge).toBe('string');
       expect(PRO_TIPS.some(p => p.tip === notif.body)).toBe(true);
 
       const outOfBoundsNotif = createProTipNotification(999);
@@ -83,7 +83,7 @@ describe('Hacky Mascot — Proactive Notification Alert System', () => {
       expect(notif.badge).toBe('Google Docs Connected');
       expect(notif.title).toBe('Google Doc Resume Detected!');
       expect(notif.body).toContain('Alex Chen Resume 2026');
-      expect(notif.ctaText).toBe('Tailor with Hacky ⚡');
+      expect(notif.ctaText).toBe('Tailor with Hacky');
       expect(notif.targetTab).toBe('match');
       expect(notif.autoScan).toBe(true);
     });
@@ -97,7 +97,7 @@ describe('Hacky Mascot — Proactive Notification Alert System', () => {
       expect(notif.badge).toBe('Job Opening Ready');
       expect(notif.title).toBe('Target Role Detected!');
       expect(notif.body).toContain('"SWE Intern" at Stripe');
-      expect(notif.ctaText).toBe('Tailor for This Job 🎯');
+      expect(notif.ctaText).toBe('Tailor for This Job');
       expect(notif.targetTab).toBe('match');
     });
 
@@ -106,7 +106,7 @@ describe('Hacky Mascot — Proactive Notification Alert System', () => {
 
       expect(notif.badge).toBe('Autofill Ready');
       expect(notif.title).toBe('Application Form Detected!');
-      expect(notif.ctaText).toBe('Autofill Form Now ⚡');
+      expect(notif.ctaText).toBe('Autofill Form Now');
       expect(notif.targetTab).toBe('tracker');
     });
 

@@ -628,7 +628,7 @@ export const App: React.FC = () => {
 
       if (aiSettings && (aiSettings.apiKey || aiSettings.provider === 'ollama')) {
         aiSettings.strictAntiHallucination = storedSettings.strictAntiHallucination;
-        setAppliedStatus(`🤖 Generating AI-powered suggestions with ${aiSettings.provider} (${archetype.badge})…`);
+        setAppliedStatus(`Generating suggestions with ${aiSettings.provider} (${archetype.badge})…`);
         const aiResult = await aiTailor.tailorBulletsWithAi(
           userBullets,
           currentJob.description,
@@ -683,11 +683,11 @@ export const App: React.FC = () => {
       };
 
       setTailorData(response);
-      setAppliedStatus(aiModelUsed ? `✨ ${bulletDiffs.length} STAR suggestions generated with ${aiModelUsed}!` : `✨ ${bulletDiffs.length} STAR suggestions generated!`);
+      setAppliedStatus(aiModelUsed ? `${bulletDiffs.length} STAR suggestions generated with ${aiModelUsed}.` : `${bulletDiffs.length} STAR suggestions generated.`);
       setTimeout(() => setAppliedStatus(null), 5000);
     } catch (err: any) {
       console.error(err);
-      setAppliedStatus(`⚠️ Error tailoring resume: ${err.message}`);
+      setAppliedStatus(`Error tailoring resume: ${err.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -721,7 +721,7 @@ export const App: React.FC = () => {
         bulletDiffs,
         archetype: CompanyArchetypeClassifier.classify('Universal Master', domain),
       });
-      setAppliedStatus(`✨ General ATS optimization complete! Score projected to ${projectedNewScore}%`);
+      setAppliedStatus(`General ATS optimization complete. Score projected to ${projectedNewScore}%.`);
     } catch (e: any) {
       setAppliedStatus(`⚠️ Optimization error: ${e.message}`);
     } finally {
@@ -997,7 +997,7 @@ export const App: React.FC = () => {
       setNewJobsCount(totalNew);
 
       const updateSuffix = totalUpdated > 0 ? `, ${totalUpdated} updated` : '';
-      setSyncMessage(`✨ Synced ${combined.length} openings (${totalNew} new${updateSuffix}) · Direct ATS & GitHub`);
+      setSyncMessage(`Synced ${combined.length} openings (${totalNew} new${updateSuffix}) · Direct ATS & GitHub`);
       try {
         localStorage.setItem('resumehack_github_jobs', JSON.stringify(combined));
       } catch {}
@@ -1523,11 +1523,19 @@ export const App: React.FC = () => {
         activeTab={activeTab}
         onNavigateTab={setActiveTab}
         atsScore={currentAtsScore}
-        resumeText={screenResume?.fullText || parsedResume?.rawText || ''}
+        resumeText={screenResume?.fullText || parsedResume?.rawText || (typeof window !== 'undefined' ? localStorage.getItem('user_custom_resume') || '' : '')}
         applicantProfile={applicantProfile}
         applications={applications}
         jobs={jobs}
         onSelectJobForTailoring={handleTailorForJob}
+        onUpdateResumeText={handleUpdateCustomResumeText}
+        onUpdateApplicantProfile={(partial) => {
+          const merged: ApplicantProfile = {
+            ...applicantProfile,
+            ...partial,
+          };
+          handleUpdateApplicantProfile(merged);
+        }}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ApplicationRecord } from '../types/index.js';
-import { Kanban, FileText, ExternalLink, LayoutList, CheckCircle2, Building2, TrendingUp, Sparkles, Plus } from 'lucide-react';
+import { Kanban, FileText, ExternalLink, LayoutList, CheckCircle2, Building2, TrendingUp, Plus } from 'lucide-react';
 
 interface TrackerTabProps {
   applications: ApplicationRecord[];

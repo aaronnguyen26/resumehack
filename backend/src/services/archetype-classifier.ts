@@ -29,7 +29,7 @@ export const ARCHETYPE_PROFILES: Record<CompanyArchetype, ArchetypeProfile> = {
   QUANT_FINANCE: {
     archetype: 'QUANT_FINANCE',
     label: 'Quantitative Finance & Low-Latency',
-    badge: '⚡ Quant / Low-Latency',
+    badge: 'Quant / Low-Latency',
     description: 'High-frequency trading, market data engines, and algorithmic precision.',
     narrativeDirective: 'Emphasize sub-millisecond latency (µs/ns), memory layout, lock-free concurrency, algorithmic determinism, and hardware cache locality.',
     keyThemes: ['Microsecond Latency', 'Lock-Free Concurrency', 'Deterministic Execution', 'C++ / Systems'],
@@ -37,7 +37,7 @@ export const ARCHETYPE_PROFILES: Record<CompanyArchetype, ArchetypeProfile> = {
   BIG_TECH_SCALE: {
     archetype: 'BIG_TECH_SCALE',
     label: 'Big Tech & Global Scale',
-    badge: '🌐 Big Tech Scale',
+    badge: 'Big Tech Scale',
     description: 'Massive distributed systems, multi-region infrastructure, and cross-functional leadership.',
     narrativeDirective: 'Emphasize massive horizontal scale (10M+ DAU, petabyte scale, 10k+ QPS), multi-team stakeholder leadership, architectural RFCs, and 99.99% high-availability SLAs.',
     keyThemes: ['Petabyte Scale', 'Multi-Region High Availability', 'Cross-Functional RFCs', 'System Reliability'],
@@ -45,7 +45,7 @@ export const ARCHETYPE_PROFILES: Record<CompanyArchetype, ArchetypeProfile> = {
   HIGH_GROWTH_INFRA: {
     archetype: 'HIGH_GROWTH_INFRA',
     label: 'High-Growth Platform & Infrastructure',
-    badge: '🚀 High-Growth Infra',
+    badge: 'High-Growth Infra',
     description: 'Developer platforms, API ecosystems, and mission-critical cloud infrastructure.',
     narrativeDirective: 'Emphasize developer experience, API idempotency, backward compatibility, zero-downtime database migrations, telemetry/observability, and SOC2 security compliance.',
     keyThemes: ['API Ergonomics', 'Zero-Downtime Deployments', 'Observability & Telemetry', 'Idempotency & Security'],
@@ -53,7 +53,7 @@ export const ARCHETYPE_PROFILES: Record<CompanyArchetype, ArchetypeProfile> = {
   AI_RESEARCH_PLATFORM: {
     archetype: 'AI_RESEARCH_PLATFORM',
     label: 'AI Research & Frontier Models',
-    badge: '🤖 AI Research & Frontier',
+    badge: 'AI Research & Frontier',
     description: 'Foundation model training, GPU orchestration, and frontier AI evaluation platforms.',
     narrativeDirective: 'Emphasize GPU cluster throughput (TFLOPs), evaluation harnesses, inference optimization, vector search, embeddings, model fine-tuning, and scalable pipeline orchestration.',
     keyThemes: ['GPU Cluster Throughput', 'Model Evaluation & Benchmarking', 'Inference Latency', 'Vector Search & RAG'],
@@ -61,7 +61,7 @@ export const ARCHETYPE_PROFILES: Record<CompanyArchetype, ArchetypeProfile> = {
   EARLY_STAGE_STARTUP: {
     archetype: 'EARLY_STAGE_STARTUP',
     label: 'Early-Stage Startup & 0-to-1',
-    badge: '🌱 0-to-1 Startup',
+    badge: '0-to-1 Startup',
     description: 'Rapid product shipping, broad full-stack ownership, and zero-to-one feature velocity.',
     narrativeDirective: 'Emphasize 0-to-1 feature velocity, broad full-stack ownership, product intuition, rapid prototyping, and pragmatic unblocked shipping.',
     keyThemes: ['0-to-1 Velocity', 'Full-Stack Ownership', 'Pragmatic Execution', 'Rapid Iteration'],
@@ -69,7 +69,7 @@ export const ARCHETYPE_PROFILES: Record<CompanyArchetype, ArchetypeProfile> = {
   STANDARD_TECH_ENTERPRISE: {
     archetype: 'STANDARD_TECH_ENTERPRISE',
     label: 'Enterprise & Modern Software Engineering',
-    badge: '🏢 Modern Enterprise',
+    badge: 'Modern Enterprise',
     description: 'Pragmatic software delivery, modular architecture, and measurable business impact.',
     narrativeDirective: 'Emphasize clean modular architecture, test-driven reliability, measurable business impact, maintainable codebases, and strong agile collaboration.',
     keyThemes: ['Modular Architecture', 'Business Impact & ROI', 'Quality & Test Coverage', 'Agile Collaboration'],

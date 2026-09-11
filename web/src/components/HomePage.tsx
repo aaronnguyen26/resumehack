@@ -12,7 +12,7 @@ import {
   UploadCloud, 
   Loader2,
   Award,
-  Sparkles
+  Cpu
 } from 'lucide-react';
 import { ScrapedJobData } from '../types/index.js';
 
@@ -97,7 +97,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             <span>Zero Hallucination Engine</span>
           </div>
           <div className="flex items-center gap-2 px-3.5 py-1.5 bg-white dark:bg-[#121215] border border-zinc-200 dark:border-[#27272A] rounded-md shadow-xs">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+            <Cpu className="w-3.5 h-3.5 text-emerald-500" />
             <span>Hacky AI ATS Architecture</span>
           </div>
         </div>
@@ -315,7 +315,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               url: 'https://stripe.com/jobs/search?q=intern',
               source: 'LinkedIn'
             })}
-            className="p-3.5 bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] hover:border-zinc-400 dark:hover:border-[#3F3F46] rounded-lg cursor-pointer transition-all hover:-translate-y-0.5"
+            className="p-3.5 bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] hover:border-zinc-400 dark:hover:border-[#3F3F46] rounded-lg cursor-pointer transition-colors"
           >
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs font-bold text-zinc-950 dark:text-zinc-100 font-headline">Stripe</span>
@@ -342,7 +342,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               url: 'https://anthropic.com/careers',
               source: 'Greenhouse'
             })}
-            className="p-3.5 bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] hover:border-zinc-400 dark:hover:border-[#3F3F46] rounded-lg cursor-pointer transition-all hover:-translate-y-0.5"
+            className="p-3.5 bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] hover:border-zinc-400 dark:hover:border-[#3F3F46] rounded-lg cursor-pointer transition-colors"
           >
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs font-bold text-zinc-950 dark:text-zinc-100 font-headline">Anthropic</span>
@@ -369,7 +369,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               url: 'https://openai.com/careers',
               source: 'Lever'
             })}
-            className="p-3.5 bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] hover:border-zinc-400 dark:hover:border-[#3F3F46] rounded-lg cursor-pointer transition-all hover:-translate-y-0.5"
+            className="p-3.5 bg-zinc-50 dark:bg-[#18181B] border border-zinc-200 dark:border-[#27272A] hover:border-zinc-400 dark:hover:border-[#3F3F46] rounded-lg cursor-pointer transition-colors"
           >
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs font-bold text-zinc-950 dark:text-zinc-100 font-headline">OpenAI</span>
