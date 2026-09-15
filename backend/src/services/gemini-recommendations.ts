@@ -59,6 +59,29 @@ export interface AtsAuditContext {
   totalBullets: number;
   metricPercentage: number;
   improvementSuggestions: string[];
+
+  // ── Job-Specific Tailoring Context ───────────────────────────────────────
+  /** Title of the target job posting (e.g. "Senior Software Engineer") */
+  jobTitle?: string;
+  /** Company name of the target posting (e.g. "Stripe") */
+  jobCompany?: string;
+  /** Seniority level extracted from the posting (e.g. "Senior", "Mid-Level", "Intern") */
+  jobSeniority?: string;
+  /** Hard skills explicitly listed in the job description (from extractedSkills or parsed requirements) */
+  jobKeySkills?: string[];
+  /** Required qualifications lifted directly from the JD */
+  jobRequirements?: string[];
+  /** Preferred / nice-to-have qualifications from the JD */
+  jobPreferredQualifications?: string[];
+  /** Core responsibilities listed in the JD */
+  jobResponsibilities?: string[];
+  /**
+   * Critical missing keywords — skills that appear in the JD with high importance
+   * AND are absent from the resume. Higher signal than generic missingKeywords.
+   */
+  criticalMissingKeywords?: string[];
+  /** Job-specific ATS match score (0-100) computed by atsScorer.analyze() vs the JD */
+  jobSpecificScore?: number;
 }
 
 export interface GeminiRecommendationRequest {
@@ -959,6 +982,57 @@ export function buildAtsContextBlock(ats: AtsAuditContext): string {
   lines.push('Prioritize fixing weak verbs, adding quantifiable metrics to unquantified bullets, and weaving in missing keywords naturally.');
   lines.push('── END ATS AUDIT REPORT ──');
 
+  // ── Job-Specific Tailoring Block ───────────────────────────────────────────
+  const hasJobContext = ats.jobTitle || ats.jobCompany || (ats.jobKeySkills && ats.jobKeySkills.length > 0);
+  if (hasJobContext) {
+    lines.push('\n── JOB-SPECIFIC TAILORING CONTEXT ──');
+
+    if (ats.jobTitle || ats.jobCompany) {
+      const roleStr = [ats.jobTitle, ats.jobCompany].filter(Boolean).join(' @ ');
+      lines.push(`Target Role: ${roleStr}`);
+      if (ats.jobSeniority) lines.push(`Seniority Level: ${ats.jobSeniority}`);
+      if (ats.jobSpecificScore !== undefined) {
+        lines.push(`Job-Specific ATS Match Score: ${ats.jobSpecificScore}/100`);
+      }
+    }
+
+    if (ats.criticalMissingKeywords && ats.criticalMissingKeywords.length > 0) {
+      lines.push(`\n🚨 CRITICAL MISSING KEYWORDS (high-importance JD requirements absent from resume):`);
+      lines.push(`   ${ats.criticalMissingKeywords.slice(0, 10).join(', ')}`);
+      lines.push('   → Each of these MUST be woven into at least one bullet rewrite naturally.');
+    }
+
+    if (ats.jobKeySkills && ats.jobKeySkills.length > 0) {
+      lines.push(`\nRequired Skills in JD (must demonstrate in rewrites): ${ats.jobKeySkills.slice(0, 10).join(', ')}`);
+    }
+
+    if (ats.jobRequirements && ats.jobRequirements.length > 0) {
+      lines.push('\nRequired Qualifications from JD:');
+      for (const req of ats.jobRequirements.slice(0, 5)) {
+        lines.push(`  • ${req}`);
+      }
+    }
+
+    if (ats.jobPreferredQualifications && ats.jobPreferredQualifications.length > 0) {
+      lines.push('\nPreferred Qualifications (Bonus Signal):');
+      for (const pref of ats.jobPreferredQualifications.slice(0, 3)) {
+        lines.push(`  ◦ ${pref}`);
+      }
+    }
+
+    if (ats.jobResponsibilities && ats.jobResponsibilities.length > 0) {
+      lines.push('\nCore Responsibilities (align bullet rewrites to these outcomes):');
+      for (const resp of ats.jobResponsibilities.slice(0, 4)) {
+        lines.push(`  → ${resp}`);
+      }
+    }
+
+    lines.push('\nTAILORING MANDATE: Every recommendation MUST directly address the specific job above.');
+    lines.push('Frame bullet rewrites using keywords and responsibilities from this exact JD.');
+    lines.push('Do NOT give generic advice — every improvement must map to a concrete requirement or skill listed above.');
+    lines.push('── END JOB-SPECIFIC CONTEXT ──');
+  }
+
   return lines.join('\n');
 }
 
@@ -1000,15 +1074,25 @@ export class GeminiRecommendationService {
     // Build the ATS context block if available to ground Gemini in real rule-based data
     const atsBlock = request.atsContext ? buildAtsContextBlock(request.atsContext) : '';
 
+    // Derive job-tailoring mode — used to switch the system prompt tone
+    const ctx = request.atsContext;
+    const isJobTailoringMode = !!(ctx?.jobTitle || ctx?.jobCompany || (ctx?.criticalMissingKeywords && ctx.criticalMissingKeywords.length > 0));
+    const jobLabel = isJobTailoringMode
+      ? `${ctx?.jobTitle || 'Target Role'}${ctx?.jobCompany ? ` at ${ctx.jobCompany}` : ''}`
+      : (request.targetRole || 'Software Engineer');
+
     const systemPrompt = `You are Hacky, an elite AI Career Architect, Principal Engineer, and Hiring Committee Leader for top tech companies (Google, Meta, Apple, Stripe, Netflix).
 Your mission is to perform a rigorous, data-driven ATS audit of the candidate's resume and generate 5 to 7 deeply personalized, high-accuracy recommendations grounded in the ATS analysis report below.
 You represent Hacky AI. Mask all outputs under Hacky AI identity. Recommendation IDs MUST follow the pattern 'hacky-rec-1', 'hacky-rec-2', etc. NEVER mention Google Gemini, OpenAI, or third-party provider names in recommendations, titles, or critiques.
 
-${atsBlock ? `${atsBlock}\n\n` : ''}STRICT PERSONALIZATION & ANTI-HALLUCINATION RULES:
+${atsBlock ? `${atsBlock}\n\n` : ''}${isJobTailoringMode ? `JOB-TAILORING MODE ACTIVE: You are generating recommendations specifically for "${jobLabel}".
+Every single recommendation and bullet rewrite MUST be calibrated to win this exact position.
+Use the job requirements, skills, and responsibilities above to frame every suggestion.
+Candidate's current resume must be repositioned to match this specific job's language, scope, and technical expectations.\n\n` : ''}STRICT PERSONALIZATION & ANTI-HALLUCINATION RULES:
 1. Every recommendation MUST quote an ACTUAL bullet or phrase from the candidate's resume in 'originalText'. Do NOT invent fake bullets.
 2. STRICT SECTION ISOLATION: NEVER evaluate, rewrite, or inject metrics into Education, Degrees, High School Diplomas, Certifications, or Contact info. Only evaluate actual work experience or technical project bullets.
 3. ATS-GROUNDED PRIORITY: If the ATS Audit Report above identifies specific weak verbs or missing keywords, your FIRST recommendations MUST directly address those exact items by name. Generic advice is NOT acceptable — cite the specific weak verb or missing keyword from the audit.
-4. DOMAIN-CALIBRATED ELEVATION:
+${isJobTailoringMode ? `3a. JOB-SPECIFIC PRIORITY: The JOB-SPECIFIC TAILORING CONTEXT above lists exact required skills and responsibilities. Your first 2-3 recommendations MUST target the CRITICAL MISSING KEYWORDS and required qualifications listed there. Show explicitly how each rewrite closes a gap between the resume and this specific job posting.\n` : ''}4. DOMAIN-CALIBRATED ELEVATION:
    - Preserve the candidate's actual work domain.
    - If Frontend/Web UI, elevate with Frontend metrics (Largest Contentful Paint, bundle size, interactive responsiveness, WCAG AA accessibility, user session volume). DO NOT invent backend Redis caching or distributed databases!
    - If Backend, elevate with P99 latency, RPS/QPS throughput, database connection pooling, caching, or data consistency.
@@ -1020,11 +1104,11 @@ ${atsBlock ? `${atsBlock}\n\n` : ''}STRICT PERSONALIZATION & ANTI-HALLUCINATION 
    - ALWAYS include hard quantifiable metrics (%, ms latency, RPS, scale, users, $ impact) and causal connectors (cutting, by, reducing, sustaining, yielding, accelerating, with).
    - Use diverse, elite executive action verbs (Architected, Engineered, Spearheaded, Orchestrated, Automated, Overhauled, Streamlined) instead of passive verbs ('worked on', 'helped', 'responsible for'). NEVER repeat the same lead verb across recommendations.
 6. In 'critique', provide an incisive diagnostic explaining why the original bullet is weak or fails ATS/interviewer screens (at least 35 characters). Reference the ATS score breakdown if relevant.
-7. In 'reasoning', explain why the elevated rewrite directly improves interview callback rates (at least 35 characters).
-8. KEYWORD INTEGRATION: For each missing keyword identified in the ATS report, weave it naturally into the relevant experience bullet's improvedText. Do NOT keyword-stuff — integrate contextually.
+7. In 'reasoning', explain why the elevated rewrite directly improves interview callback rates (at least 35 characters).${isJobTailoringMode ? ' Where applicable, cite which specific job requirement or skill this rewrite satisfies.' : ''}
+8. KEYWORD INTEGRATION: For each missing keyword identified in the ATS report${isJobTailoringMode ? ' and in the JOB-SPECIFIC TAILORING CONTEXT' : ''}, weave it naturally into the relevant experience bullet's improvedText. Do NOT keyword-stuff — integrate contextually.
 9. BREVITY & LINE BUDGETING: Identify bullets that spill onto a second or third line by only 1-3 words ('ragged widows') and offer tightened rewrites under category 'brevity_line_budget' that fit cleanly onto a single line without losing impact.`;
 
-    const userPrompt = `Target Role: ${targetRole}
+    const userPrompt = `Target Role: ${isJobTailoringMode ? jobLabel : request.targetRole || 'Software Engineer'}
 ${jobDescription ? `\nTarget Job Description:\n${jobDescription.slice(0, 3000)}\n` : ''}
 
 Candidate's Actual Resume Text:

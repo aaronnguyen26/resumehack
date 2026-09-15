@@ -564,6 +564,11 @@ export const App: React.FC = () => {
       description: job.description || `${job.title} at ${job.company}`,
       url: job.url,
       source: job.source,
+      // Preserve rich structured fields for job-specific Gemini tailoring pipeline
+      seniorityLevel: job.experienceLevel || job.type,
+      extractedSkills: job.skills || [],
+      coreResponsibilities: job.responsibilities || [],
+      requiredQualifications: job.requirements || [],
     });
     setActiveTab('canvas');
     window.scrollTo({ top: 0, behavior: 'smooth' });

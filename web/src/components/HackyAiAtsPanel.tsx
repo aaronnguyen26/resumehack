@@ -256,6 +256,25 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
     try {
       const activeKey = forcedKey !== undefined ? forcedKey : geminiApiKey;
 
+      // Compute critical missing keywords — Critical-importance JD skills absent from resume
+      const criticalMissingKeywords = atsReport.keywords
+        .filter(k => !k.foundInResume && k.importance === 'Critical')
+        .slice(0, 10)
+        .map(k => k.keyword);
+
+      // Also include high-importance missing keywords if critical list is short
+      const recommendedMissingKeywords = criticalMissingKeywords.length < 5
+        ? atsReport.keywords
+            .filter(k => !k.foundInResume && k.importance === 'Recommended')
+            .slice(0, 5 - criticalMissingKeywords.length)
+            .map(k => k.keyword)
+        : [];
+
+      const allCriticalMissing = [...criticalMissingKeywords, ...recommendedMissingKeywords];
+
+      // Determine if a specific job is active (vs. general mode)
+      const hasActiveJob = !!(currentJob?.title && currentJob.title.trim());
+
       // Build structured ATS context from the live rule-based report to ground Gemini recommendations
       const atsContext: AtsAuditContext = {
         overallScore: atsReport.overallScore,
@@ -271,6 +290,19 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
         totalBullets: atsReport.quantificationStats?.totalBullets ?? 0,
         metricPercentage: atsReport.quantificationStats?.percentage ?? 0,
         improvementSuggestions: atsReport.improvementSuggestions?.slice(0, 5) ?? [],
+
+        // ── Job-Specific Tailoring Context ────────────────────────────────────
+        ...(hasActiveJob && {
+          jobTitle: currentJob!.title,
+          jobCompany: currentJob!.company || undefined,
+          jobSeniority: currentJob!.seniorityLevel || undefined,
+          jobKeySkills: currentJob!.extractedSkills?.slice(0, 12) ?? [],
+          jobRequirements: currentJob!.requiredQualifications?.slice(0, 5) ?? [],
+          jobResponsibilities: currentJob!.coreResponsibilities?.slice(0, 4) ?? [],
+          criticalMissingKeywords: allCriticalMissing,
+          // jobSpecificScore: atsReport uses analyze() against JD when job is active, so overallScore IS job-specific
+          jobSpecificScore: atsReport.overallScore,
+        }),
       };
 
       const result = await geminiService.generateRecommendations({
@@ -290,7 +322,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
     } finally {
       setIsGeneratingRecs(false);
     }
-  }, [resumeText, currentJob?.description, targetRole, geminiApiKey, selectedModel, geminiService, atsReport]);
+  }, [resumeText, currentJob, targetRole, geminiApiKey, selectedModel, geminiService, atsReport]);
 
   useEffect(() => {
     handleGenerateRecommendations();
@@ -1290,21 +1322,30 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
                         {currentJob?.title || targetRole}
                       </div>
                     </div>
-                    {onTriggerTailor && (
-                      <button
-                        type="button"
-                        onClick={onTriggerTailor}
-                        disabled={isTailorLoading}
-                        className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all shadow-xs"
-                      >
-                        {isTailorLoading ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <ArrowUpRight className="w-3.5 h-3.5" />
-                        )}
-                        <span>{isTailorLoading ? 'Analyzing...' : 'Generate STAR'}</span>
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {/* Job-Tailoring Mode badge — shown when a specific job is active */}
+                      {currentJob?.title && currentJob.title.trim() && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-[9px] font-mono font-bold uppercase text-emerald-700 dark:text-emerald-400 tracking-widest">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Job-Tailored
+                        </span>
+                      )}
+                      {onTriggerTailor && (
+                        <button
+                          type="button"
+                          onClick={onTriggerTailor}
+                          disabled={isTailorLoading}
+                          className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all shadow-xs"
+                        >
+                          {isTailorLoading ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <ArrowUpRight className="w-3.5 h-3.5" />
+                          )}
+                          <span>{isTailorLoading ? 'Analyzing...' : 'Generate STAR'}</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
