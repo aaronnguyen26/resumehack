@@ -11,6 +11,10 @@ import {
   MessageSquare,
   CheckCircle2,
   User,
+  Sliders,
+  ShieldAlert,
+  Target,
+  Sparkles,
 } from 'lucide-react';
 
 import { NavTab } from './Navbar.js';
@@ -448,6 +452,239 @@ export const HackyWebMascot: React.FC<HackyWebMascotProps> = ({
                 <div className="font-mono font-bold text-xs text-zinc-900 dark:text-zinc-100">~{card.resumeStats.lineCount}</div>
                 <div className="text-[8px] text-zinc-400 uppercase tracking-wider">Lines</div>
               </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (card.type === 'ats_breakdown') {
+      return (
+        <div className="mt-2.5 p-2.5 rounded-xl bg-zinc-50 dark:bg-[#121215] border border-zinc-200 dark:border-zinc-800 space-y-2 text-[11px]">
+          <div className="flex items-center justify-between border-b border-zinc-200/60 dark:border-zinc-800/80 pb-1.5">
+            <span className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+              <Sliders className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
+              ATS Score Breakdown
+            </span>
+            <span className="px-2 py-0.5 rounded-full font-mono text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              {card.overallScore}% • Grade {card.grade}
+            </span>
+          </div>
+
+          <div className="space-y-1.5">
+            {card.factors.map((f, idx) => (
+              <div key={idx} className="space-y-0.5">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-zinc-600 dark:text-zinc-400">
+                    {f.name} <span className="text-[9px] text-zinc-400 font-mono">({f.weight})</span>
+                  </span>
+                  <span
+                    className={`font-mono font-semibold ${
+                      f.status === 'strong'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : f.status === 'moderate'
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : 'text-zinc-500 dark:text-zinc-400'
+                    }`}
+                  >
+                    {f.score}%
+                  </span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${
+                      f.status === 'strong'
+                        ? 'bg-emerald-500'
+                        : f.status === 'moderate'
+                        ? 'bg-amber-500'
+                        : 'bg-zinc-400'
+                    }`}
+                    style={{ width: `${Math.min(100, Math.max(8, f.score))}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {card.topPriority && (
+            <div className="pt-1.5 border-t border-zinc-200/50 dark:border-zinc-800/50 text-[10px]">
+              <span className="font-semibold text-zinc-900 dark:text-zinc-100">Top Priority Fix: </span>
+              <span className="text-zinc-600 dark:text-zinc-300">{card.topPriority}</span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (card.type === 'weak_verbs') {
+      return (
+        <div className="mt-2.5 p-2.5 rounded-xl bg-zinc-50 dark:bg-[#121215] border border-zinc-200 dark:border-zinc-800 space-y-2 text-[11px]">
+          <div className="flex items-center justify-between border-b border-zinc-200/60 dark:border-zinc-800/80 pb-1.5">
+            <span className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
+              Passive Action Verbs
+            </span>
+            <span className="px-2 py-0.5 rounded-full font-mono text-[10px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
+              {card.totalWeakCount} weak
+            </span>
+          </div>
+
+          <div className="space-y-1 text-[10px]">
+            {card.verbInstances.slice(0, 4).map((vi, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between p-1 rounded bg-white dark:bg-[#18181B] border border-zinc-200/40 dark:border-zinc-800/40"
+              >
+                <span className="line-through text-zinc-400 font-mono">"{vi.verb}"</span>
+                <span className="text-zinc-400">→</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400 font-mono">
+                  "{vi.replacement}"
+                </span>
+                <span className="text-[9px] px-1 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500">{vi.domain}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">
+            {card.recommendation}
+          </div>
+        </div>
+      );
+    }
+
+    if (card.type === 'keyword_gap') {
+      return (
+        <div className="mt-2.5 p-2.5 rounded-xl bg-zinc-50 dark:bg-[#121215] border border-zinc-200 dark:border-zinc-800 space-y-2 text-[11px]">
+          <div className="flex items-center justify-between border-b border-zinc-200/60 dark:border-zinc-800/80 pb-1.5">
+            <span className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+              <Target className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
+              Keyword Match Radar
+            </span>
+            <span className="px-2 py-0.5 rounded-full font-mono text-[10px] bg-zinc-200/60 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 truncate max-w-[130px]">
+              {card.targetRole}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-1.5">
+            <div className="p-1.5 rounded bg-white dark:bg-[#18181B] border border-zinc-200/50 dark:border-zinc-800/50">
+              <div className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold mb-1 flex items-center gap-1">
+                <CheckCircle2 className="w-2.5 h-2.5" /> Matched ({card.matchedCount})
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {card.matchedSkills.slice(0, 5).map((s, idx) => (
+                  <span
+                    key={idx}
+                    className="px-1 py-0.5 rounded text-[9px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 font-mono"
+                  >
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-1.5 rounded bg-white dark:bg-[#18181B] border border-zinc-200/50 dark:border-zinc-800/50">
+              <div className="text-[9px] text-amber-600 dark:text-amber-400 font-semibold mb-1 flex items-center gap-1">
+                <AlertCircle className="w-2.5 h-2.5" /> Missing ({card.missingCount})
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {card.missingSkills.slice(0, 5).map((s, idx) => (
+                  <span
+                    key={idx}
+                    className="px-1 py-0.5 rounded text-[9px] bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 font-mono"
+                  >
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (card.type === 'bullet_elevated') {
+      return (
+        <div className="mt-2.5 p-2.5 rounded-xl bg-zinc-50 dark:bg-[#121215] border border-zinc-200 dark:border-zinc-800 space-y-2 text-[11px]">
+          <div className="flex items-center justify-between border-b border-zinc-200/60 dark:border-zinc-800/80 pb-1.5">
+            <span className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+              STAR Bullet Transformation
+            </span>
+            <span className="px-2 py-0.5 rounded-full font-mono text-[9px] uppercase bg-zinc-200/60 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
+              {card.domain}
+            </span>
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-[9px] font-semibold text-zinc-400 uppercase tracking-wider">Before (Draft)</div>
+            <div className="p-1.5 rounded bg-white dark:bg-[#18181B] border border-zinc-200/50 dark:border-zinc-800/50 text-zinc-500 dark:text-zinc-400 text-[10px] italic">
+              "{card.originalBullet}"
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+              Elevated (Google X-Y-Z)
+            </div>
+            <div className="p-2 rounded bg-emerald-500/5 dark:bg-emerald-950/20 border border-emerald-500/20 text-zinc-900 dark:text-zinc-100 text-[11px] leading-relaxed font-medium">
+              {card.elevatedBullet}
+            </div>
+          </div>
+
+          {card.improvements && card.improvements.length > 0 && (
+            <div className="flex flex-wrap gap-1 pt-1 border-t border-zinc-200/50 dark:border-zinc-800/50">
+              {card.improvements.map((imp, idx) => (
+                <span
+                  key={idx}
+                  className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-[9px]"
+                >
+                  ✓ {imp}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (card.type === 'line_budget_detail') {
+      return (
+        <div className="mt-2.5 p-2.5 rounded-xl bg-zinc-50 dark:bg-[#121215] border border-zinc-200 dark:border-zinc-800 space-y-2 text-[11px]">
+          <div className="flex items-center justify-between border-b border-zinc-200/60 dark:border-zinc-800/80 pb-1.5">
+            <span className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
+              Line Budget & Widows
+            </span>
+            <span
+              className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-semibold ${
+                card.fitsOnePage
+                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20'
+                  : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20'
+              }`}
+            >
+              ~{card.totalLines}/54 lines
+            </span>
+          </div>
+
+          <div className="text-[10px] text-zinc-600 dark:text-zinc-300 leading-tight">{card.recommendation}</div>
+
+          {card.raggedLines && card.raggedLines.length > 0 && (
+            <div className="space-y-1 pt-1 border-t border-zinc-200/50 dark:border-zinc-800/50">
+              <div className="text-[9px] font-semibold text-zinc-500 uppercase tracking-wider">
+                Ragged Widows Detected ({card.raggedWidowCount})
+              </div>
+              {card.raggedLines.slice(0, 2).map((rl, idx) => (
+                <div
+                  key={idx}
+                  className="p-1.5 rounded bg-white dark:bg-[#18181B] border border-zinc-200/40 dark:border-zinc-800/40 space-y-0.5 text-[10px]"
+                >
+                  <div className="text-zinc-400 truncate">Orig: "{rl.original}"</div>
+                  <div className="text-emerald-600 dark:text-emerald-400 font-medium truncate">
+                    Trim: "{rl.tightened}"
+                  </div>
+                  <div className="text-[8px] text-zinc-400 font-mono">Saved {rl.charsSaved} chars (avoids spill)</div>
+                </div>
+              ))}
             </div>
           )}
         </div>

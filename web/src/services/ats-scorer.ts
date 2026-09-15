@@ -690,7 +690,7 @@ export class AtsScorerService {
     return false;
   }
 
-  private auditActionVerbs(normText: string): { strongCount: number; weakCount: number; weakVerbsFound: string[]; tier1Count: number } {
+  public auditActionVerbs(normText: string): { strongCount: number; weakCount: number; weakVerbsFound: string[]; tier1Count: number } {
     let strongCount = 0;
     let weakCount = 0;
     let tier1Count = 0;

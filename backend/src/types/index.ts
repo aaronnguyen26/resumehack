@@ -518,6 +518,49 @@ export type ChatDataCard =
         metricsCount: number;
         lineCount: number;
       };
+    }
+  | {
+      type: 'ats_breakdown';
+      overallScore: number;
+      grade: string;
+      factors: Array<{
+        name: string;
+        score: number;
+        status: 'strong' | 'moderate' | 'needs_work';
+        weight: string;
+      }>;
+      criticalGaps: string[];
+      topPriority: string;
+    }
+  | {
+      type: 'weak_verbs';
+      totalWeakCount: number;
+      uniqueWeakVerbs: string[];
+      verbInstances: Array<{ verb: string; replacement: string; domain: string }>;
+      recommendation: string;
+    }
+  | {
+      type: 'keyword_gap';
+      targetRole: string;
+      matchedCount: number;
+      missingCount: number;
+      matchedSkills: string[];
+      missingSkills: string[];
+    }
+  | {
+      type: 'bullet_elevated';
+      originalBullet: string;
+      elevatedBullet: string;
+      domain: string;
+      improvements: string[];
+    }
+  | {
+      type: 'line_budget_detail';
+      totalLines: number;
+      fitsOnePage: boolean;
+      raggedWidowCount: number;
+      raggedLines: Array<{ original: string; tightened: string; charsSaved: number }>;
+      recommendation: string;
     };
 
 export interface ChatMessage {

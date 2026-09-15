@@ -302,7 +302,7 @@ export class AtsScorerService {
     if (tutorialFlags.length > 0) {
       evidence = `Self Projects: ${score}/100 — Flagged ${tutorialFlags.length} tutorial-like phrase(s) (${tutorialFlags.map(f => `"${f}"`).join(', ')}). Evidence: "${bestQuote}" indicates coursework/tutorial-guided work rather than independent architecture.`;
     } else if (hasWorkingLinks || complexitySignals.length > 0) {
-      evidence = `Self Projects: ${score}/100 — Identified ${projectCount} project(s) with ${complexitySignals.length} complexity signal(s) (${complexitySignals.slice(0, 3).join(', ')})${hasWorkingLinks ? ` and verified repo/demo link (${linksFound[0]})` : ''}. Evidence: "${bestQuote}" demonstrates ${impactSignals.length > 0 ? 'measurable outcomes and ' : ''}technical depth.`;
+      evidence = `Self Projects: ${score}/100 — Identified ${projectCount} project(s) with ${complexitySignals.length} complexity signal(s) (${complexitySignals.slice(0, 3).join(', ')})\${hasWorkingLinks ? \` and verified repo/demo link (\${linksFound[0]})\` : ''}. Evidence: "${bestQuote}" demonstrates ${impactSignals.length > 0 ? 'measurable outcomes and ' : ''}technical depth.`;
     } else {
       evidence = `Self Projects: ${score}/100 — No dedicated repository links or complex standalone projects identified in resume text. Adding independent projects with live demo URLs will strengthen portfolio evaluation.`;
     }
@@ -690,7 +690,7 @@ export class AtsScorerService {
     return false;
   }
 
-  private auditActionVerbs(normText: string): { strongCount: number; weakCount: number; weakVerbsFound: string[]; tier1Count: number } {
+  public auditActionVerbs(normText: string): { strongCount: number; weakCount: number; weakVerbsFound: string[]; tier1Count: number } {
     let strongCount = 0;
     let weakCount = 0;
     let tier1Count = 0;
