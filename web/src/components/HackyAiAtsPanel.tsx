@@ -41,7 +41,8 @@ import {
   getStoredGeminiModel,
   setStoredGeminiModel,
   DEFAULT_GEMINI_MODEL,
-  testGeminiApiKey 
+  testGeminiApiKey,
+  type AtsAuditContext
 } from '../services/gemini-recommendations.js';
 import { 
   AtsScoreReport, 
@@ -254,12 +255,31 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
     setIsGeneratingRecs(true);
     try {
       const activeKey = forcedKey !== undefined ? forcedKey : geminiApiKey;
+
+      // Build structured ATS context from the live rule-based report to ground Gemini recommendations
+      const atsContext: AtsAuditContext = {
+        overallScore: atsReport.overallScore,
+        hardSkillsScore: atsReport.breakdown.hardSkillsScore,
+        actionVerbScore: atsReport.breakdown.actionVerbVitalityScore ?? 0,
+        metricScore: atsReport.breakdown.softSkillsScore,
+        productionScore: atsReport.breakdown.productionExperienceScore ?? 0,
+        selfProjectsScore: atsReport.breakdown.selfProjectsScore ?? 0,
+        weakVerbsFound: atsReport.actionVerbStrength?.weakVerbsFound?.slice(0, 6) ?? [],
+        missingKeywords: atsReport.keywords.filter(k => !k.foundInResume).slice(0, 8).map(k => k.keyword),
+        matchedKeywords: atsReport.keywords.filter(k => k.foundInResume).slice(0, 8).map(k => k.keyword),
+        quantifiedBullets: atsReport.quantificationStats?.quantifiedBullets ?? 0,
+        totalBullets: atsReport.quantificationStats?.totalBullets ?? 0,
+        metricPercentage: atsReport.quantificationStats?.percentage ?? 0,
+        improvementSuggestions: atsReport.improvementSuggestions?.slice(0, 5) ?? [],
+      };
+
       const result = await geminiService.generateRecommendations({
         resumeText: resumeText || 'Software Engineer Candidate',
         jobDescription: currentJob?.description,
         targetRole,
         apiKey: activeKey,
         model: selectedModel,
+        atsContext,
       });
 
       setGeminiRecommendations(result.recommendations);
@@ -270,7 +290,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
     } finally {
       setIsGeneratingRecs(false);
     }
-  }, [resumeText, currentJob?.description, targetRole, geminiApiKey, selectedModel, geminiService]);
+  }, [resumeText, currentJob?.description, targetRole, geminiApiKey, selectedModel, geminiService, atsReport]);
 
   useEffect(() => {
     handleGenerateRecommendations();

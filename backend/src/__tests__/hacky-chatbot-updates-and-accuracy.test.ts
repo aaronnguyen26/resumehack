@@ -260,7 +260,7 @@ describe('Hacky Chatbot Intent Detection & Information Updates', () => {
       targetRole: 'Software Engineer',
     };
 
-    const reply = chatbot.handleResumeQuery('How is my resume doing?', context);
+    const reply = await chatbot.handleResumeQuery('How is my resume doing?', context);
 
     expect(reply.dataCard?.type).toBe('resume_summary');
     expect(reply.dataCard?.metricsCount).toBeGreaterThanOrEqual(8);

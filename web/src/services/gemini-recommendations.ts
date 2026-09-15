@@ -41,12 +41,34 @@ export interface GeminiPersonalizedRecommendation {
   antiHallucinationVerified?: boolean;
 }
 
+/**
+ * Structured ATS audit context fed into the Gemini prompt to ground recommendations in
+ * real data from the AtsScorerService, preventing hallucinations and ensuring specificity.
+ */
+export interface AtsAuditContext {
+  overallScore: number;
+  hardSkillsScore: number;
+  actionVerbScore: number;
+  metricScore: number;
+  productionScore: number;
+  selfProjectsScore: number;
+  weakVerbsFound: string[];
+  missingKeywords: string[];
+  matchedKeywords: string[];
+  quantifiedBullets: number;
+  totalBullets: number;
+  metricPercentage: number;
+  improvementSuggestions: string[];
+}
+
 export interface GeminiRecommendationRequest {
   resumeText: string;
   jobDescription?: string;
   targetRole?: string;
   apiKey?: string;
   model?: string;
+  /** Optional: Pre-computed ATS audit report to ground Gemini recommendations in real data */
+  atsContext?: AtsAuditContext;
 }
 
 export interface GeminiRecommendationResult {
@@ -896,6 +918,50 @@ export function generatePersonalizedFallbackRecommendations(
   };
 }
 
+// ── ATS-Grounded Prompt Context Builder ──────────────────────────────────────
+
+/**
+ * Converts a structured AtsAuditContext into a rich natural-language block that
+ * is injected into the Gemini system prompt. This grounds every recommendation
+ * in real rule-based ATS data, preventing generic or hallucinated advice.
+ */
+export function buildAtsContextBlock(ats: AtsAuditContext): string {
+  const lines: string[] = [];
+
+  lines.push('── HACKY AI ATS AUDIT REPORT (Rule-Based Analysis) ──');
+  lines.push(`Overall ATS Score: ${ats.overallScore}/100`);
+  lines.push(`  • Hard Skills Coverage: ${ats.hardSkillsScore}/100`);
+  lines.push(`  • Action Verb Vitality: ${ats.actionVerbScore}/100`);
+  lines.push(`  • Quantified Metrics: ${ats.metricScore}/100 (${ats.quantifiedBullets}/${ats.totalBullets} bullets quantified, ${ats.metricPercentage}%)`);
+  lines.push(`  • Production Experience Signal: ${ats.productionScore}/100`);
+  lines.push(`  • Self Projects Signal: ${ats.selfProjectsScore}/100`);
+
+  if (ats.weakVerbsFound.length > 0) {
+    lines.push(`\nPassive/Weak Verbs Detected (MUST be eliminated): ${ats.weakVerbsFound.slice(0, 6).map(v => `"${v}"`).join(', ')}`);
+  }
+
+  if (ats.missingKeywords.length > 0) {
+    lines.push(`\nMissing Target Keywords (ATS Filter Gaps): ${ats.missingKeywords.slice(0, 8).join(', ')}`);
+  }
+
+  if (ats.matchedKeywords.length > 0) {
+    lines.push(`\nMatched Keywords (Already Present — DO NOT Duplicate): ${ats.matchedKeywords.slice(0, 8).join(', ')}`);
+  }
+
+  if (ats.improvementSuggestions.length > 0) {
+    lines.push('\nRule-Based Improvement Signals:');
+    for (const s of ats.improvementSuggestions.slice(0, 5)) {
+      lines.push(`  → ${s}`);
+    }
+  }
+
+  lines.push('\nYour Gemini recommendations MUST address the specific weaknesses above.');
+  lines.push('Prioritize fixing weak verbs, adding quantifiable metrics to unquantified bullets, and weaving in missing keywords naturally.');
+  lines.push('── END ATS AUDIT REPORT ──');
+
+  return lines.join('\n');
+}
+
 // ── Gemini API Call Engine ──────────────────────────────────────────────────
 
 export class GeminiRecommendationService {
@@ -931,28 +997,32 @@ export class GeminiRecommendationService {
     const candidateBullets = extractCandidateBullets(resumeText);
     const candidateBulletsText = candidateBullets.map((b, i) => `[Bullet ${i + 1}] (${b.section} | domain: ${b.domain}) "${b.cleanText}"`).join('\n');
 
+    // Build the ATS context block if available to ground Gemini in real rule-based data
+    const atsBlock = request.atsContext ? buildAtsContextBlock(request.atsContext) : '';
+
     const systemPrompt = `You are Hacky, an elite AI Career Architect, Principal Engineer, and Hiring Committee Leader for top tech companies (Google, Meta, Apple, Stripe, Netflix).
-Your mission is to perform a rigorous architectural and ATS audit of the candidate's resume and generate 5 to 7 deeply personalized, high-accuracy recommendations.
+Your mission is to perform a rigorous, data-driven ATS audit of the candidate's resume and generate 5 to 7 deeply personalized, high-accuracy recommendations grounded in the ATS analysis report below.
 You represent Hacky AI. Mask all outputs under Hacky AI identity. Recommendation IDs MUST follow the pattern 'hacky-rec-1', 'hacky-rec-2', etc. NEVER mention Google Gemini, OpenAI, or third-party provider names in recommendations, titles, or critiques.
 
-STRICT PERSONALIZATION & ANTI-HALLUCINATION RULES:
+${atsBlock ? `${atsBlock}\n\n` : ''}STRICT PERSONALIZATION & ANTI-HALLUCINATION RULES:
 1. Every recommendation MUST quote an ACTUAL bullet or phrase from the candidate's resume in 'originalText'. Do NOT invent fake bullets.
 2. STRICT SECTION ISOLATION: NEVER evaluate, rewrite, or inject metrics into Education, Degrees, High School Diplomas, Certifications, or Contact info. Only evaluate actual work experience or technical project bullets.
-3. DOMAIN-CALIBRATED ELEVATION:
+3. ATS-GROUNDED PRIORITY: If the ATS Audit Report above identifies specific weak verbs or missing keywords, your FIRST recommendations MUST directly address those exact items by name. Generic advice is NOT acceptable — cite the specific weak verb or missing keyword from the audit.
+4. DOMAIN-CALIBRATED ELEVATION:
    - Preserve the candidate's actual work domain.
    - If Frontend/Web UI, elevate with Frontend metrics (Largest Contentful Paint, bundle size, interactive responsiveness, WCAG AA accessibility, user session volume). DO NOT invent backend Redis caching or distributed databases!
    - If Backend, elevate with P99 latency, RPS/QPS throughput, database connection pooling, caching, or data consistency.
    - If Mobile, elevate with crash-free session rate, cold launch latency, offline synchronization, or App Store adoption.
    - If Data/AI/ML, elevate with pipeline throughput, inference latency, dataset scale, or F1/accuracy benchmarks.
    - If Academic/Research, elevate with publication presentations, benchmark dataset scale, or mathematical proof validation.
-4. GOOGLE X-Y-Z FORMULA WITH HARD METRICS:
+5. GOOGLE X-Y-Z FORMULA WITH HARD METRICS:
    - In 'improvedText', rewrite every single bullet into: "Accomplished [X] as measured by [Y] by doing [Z]".
    - ALWAYS include hard quantifiable metrics (%, ms latency, RPS, scale, users, $ impact) and causal connectors (cutting, by, reducing, sustaining, yielding, accelerating, with).
    - Use diverse, elite executive action verbs (Architected, Engineered, Spearheaded, Orchestrated, Automated, Overhauled, Streamlined) instead of passive verbs ('worked on', 'helped', 'responsible for'). NEVER repeat the same lead verb across recommendations.
-5. In 'critique', provide an incisive diagnostic explaining why the original bullet is weak or fails ATS/interviewer screens (at least 35 characters).
-6. In 'reasoning', explain why the elevated rewrite directly improves interview callback rates (at least 35 characters).
-7. If a Job Description is provided, identify missing critical skills and weave them naturally into relevant experience bullets.
-8. BREVITY & LINE BUDGETING: Identify bullets that spill onto a second or third line by only 1-3 words ('ragged widows') and offer tightened rewrites under category 'brevity_line_budget' that fit cleanly onto a single line without losing impact.`;
+6. In 'critique', provide an incisive diagnostic explaining why the original bullet is weak or fails ATS/interviewer screens (at least 35 characters). Reference the ATS score breakdown if relevant.
+7. In 'reasoning', explain why the elevated rewrite directly improves interview callback rates (at least 35 characters).
+8. KEYWORD INTEGRATION: For each missing keyword identified in the ATS report, weave it naturally into the relevant experience bullet's improvedText. Do NOT keyword-stuff — integrate contextually.
+9. BREVITY & LINE BUDGETING: Identify bullets that spill onto a second or third line by only 1-3 words ('ragged widows') and offer tightened rewrites under category 'brevity_line_budget' that fit cleanly onto a single line without losing impact.`;
 
     const userPrompt = `Target Role: ${targetRole}
 ${jobDescription ? `\nTarget Job Description:\n${jobDescription.slice(0, 3000)}\n` : ''}
@@ -967,7 +1037,8 @@ Candidate's Extracted Accomplishment Bullets (from Experience & Projects only):
 ${candidateBulletsText || 'No explicit accomplishment bullets detected; analyze experience descriptions.'}
 """
 
-Please analyze the resume against tier-1 tech hiring standards and produce structured JSON recommendations masked cleanly as Hacky AI.`;
+${atsBlock ? `ATS AUDIT CONTEXT (use this to target specific problems):\n${atsBlock}\n` : ''}
+Please analyze the resume against tier-1 tech hiring standards, addressing the specific ATS weaknesses identified above, and produce structured JSON recommendations masked cleanly as Hacky AI.`;
 
     const candidateModels = [
       request.model || this.primaryModel || DEFAULT_GEMINI_MODEL,
@@ -991,8 +1062,8 @@ Please analyze the resume against tier-1 tech hiring standards and produce struc
           },
         ],
         generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 3500,
+          temperature: 0.15,
+          maxOutputTokens: 4500,
           responseMimeType: 'application/json',
           responseSchema: GEMINI_RECOMMENDATIONS_SCHEMA,
         },

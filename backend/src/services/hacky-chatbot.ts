@@ -9,7 +9,7 @@ import {
   ApplicantProfile,
 } from '../types/index.js';
 import { getAiSettings } from './ai-tailor.js';
-import { generatePersonalizedFallbackRecommendations } from './gemini-recommendations.js';
+import { generatePersonalizedFallbackRecommendations, GeminiRecommendationService, type AtsAuditContext } from './gemini-recommendations.js';
 import { AtsScorerService } from './ats-scorer.js';
 import { saveStoredApplicantProfile } from './storage.js';
 
@@ -783,9 +783,10 @@ export class HackyChatbotService {
   }
 
   /**
-   * Handle resume questions (ATS score, line count, metrics, improvement tips)
+   * Handle resume questions (ATS score, line count, metrics, improvement tips).
+   * When a Gemini API key is available, generates AI-powered ATS-grounded recommendations.
    */
-  public handleResumeQuery(query: string, context: ChatbotContext): ChatMessage {
+  public async handleResumeQuery(query: string, context: ChatbotContext): Promise<ChatMessage> {
     const resumeText = this.resolveActiveResumeText(context);
 
     // Empty resume text case
@@ -810,6 +811,17 @@ export class HackyChatbotService {
     const metrics = calculateAccurateMetrics(resumeText);
     const detectedSkills = extractSkillsFromText(resumeText);
 
+    // Run full ATS report for grounding the Gemini prompt
+    const atsScorer = new AtsScorerService();
+    let atsReport: ReturnType<typeof atsScorer.auditGeneralAts> | null = null;
+    try {
+      if (context.currentJob?.description && context.currentJob.description.trim()) {
+        atsReport = atsScorer.analyze(resumeText, context.currentJob.description);
+      } else {
+        atsReport = atsScorer.auditGeneralAts(resumeText, targetRole);
+      }
+    } catch { /* ignore */ }
+
     const scoreCategory = atsScore >= 85 ? 'Elite Tier' : atsScore >= 70 ? 'Competitive' : 'Needs Optimization';
 
     const strengths: string[] = [];
@@ -833,20 +845,84 @@ export class HackyChatbotService {
       recommendations.push(`Line budget warning (~${lineBudget.totalLines} lines). Target 48–52 lines for 1 clean page`);
     }
 
-    // Incorporate deeply personalized recommendations from candidate actual bullets
-    const personalized = generatePersonalizedFallbackRecommendations(
-      resumeText,
-      context.currentJob?.description,
-      context.targetRole
-    );
+    // Build ATS context for Gemini grounding if report available
+    const atsContext: AtsAuditContext | undefined = atsReport ? {
+      overallScore: atsReport.overallScore,
+      hardSkillsScore: atsReport.breakdown.hardSkillsScore,
+      actionVerbScore: atsReport.breakdown.actionVerbVitalityScore ?? 0,
+      metricScore: atsReport.breakdown.softSkillsScore,
+      productionScore: atsReport.breakdown.productionExperienceScore ?? 0,
+      selfProjectsScore: atsReport.breakdown.selfProjectsScore ?? 0,
+      weakVerbsFound: atsReport.actionVerbStrength?.weakVerbsFound?.slice(0, 6) ?? [],
+      missingKeywords: atsReport.keywords.filter(k => !k.foundInResume).slice(0, 8).map(k => k.keyword),
+      matchedKeywords: atsReport.keywords.filter(k => k.foundInResume).slice(0, 8).map(k => k.keyword),
+      quantifiedBullets: atsReport.quantificationStats?.quantifiedBullets ?? metrics.quantifiedBullets,
+      totalBullets: atsReport.quantificationStats?.totalBullets ?? metrics.totalBullets,
+      metricPercentage: atsReport.quantificationStats?.percentage ?? metrics.metricPercentage,
+      improvementSuggestions: atsReport.improvementSuggestions?.slice(0, 5) ?? [],
+    } : undefined;
 
-    for (const pRec of personalized.recommendations.slice(0, 2)) {
-      if (pRec.originalText && pRec.originalText.length > 15) {
-        recommendations.unshift(
-          `${pRec.title}: Upgrade "${pRec.originalText.slice(0, 45)}..." with quantifiable metrics & active leadership verbs`
-        );
-      } else {
-        recommendations.unshift(pRec.title);
+    // Use Gemini AI when API key is available for premium-quality, ATS-grounded recommendations
+    let personalizedRecs: { title: string; originalText?: string; improvedText?: string }[] = [];
+    let topRecSection = '';
+
+    try {
+      const aiSettings = await getAiSettings();
+      if (aiSettings?.apiKey && aiSettings.provider === 'gemini') {
+        const geminiService = new GeminiRecommendationService(aiSettings.apiKey, aiSettings.model);
+        const geminiResult = await geminiService.generateRecommendations({
+          resumeText,
+          jobDescription: context.currentJob?.description,
+          targetRole,
+          apiKey: aiSettings.apiKey,
+          model: aiSettings.model,
+          atsContext,
+        });
+
+        personalizedRecs = geminiResult.recommendations.slice(0, 3);
+        for (const pRec of personalizedRecs.slice(0, 2)) {
+          if (pRec.originalText && pRec.originalText.length > 15) {
+            recommendations.unshift(
+              `${pRec.title}: Upgrade "${pRec.originalText.slice(0, 45)}..." with quantifiable metrics & active leadership verbs`
+            );
+          } else {
+            recommendations.unshift(pRec.title);
+          }
+        }
+
+        if (personalizedRecs.length > 0 && personalizedRecs[0].originalText) {
+          topRecSection =
+            `**Top Hacky AI Recommendation:** ${personalizedRecs[0].title}\n` +
+            `• *Original:* "${(personalizedRecs[0].originalText || '').slice(0, 65)}..."\n` +
+            `• *Elevated Rewrite:* ${personalizedRecs[0].improvedText}`;
+        }
+      }
+    } catch { /* fall through to heuristic */ }
+
+    // Fall back to heuristic engine if no key or Gemini failed
+    if (personalizedRecs.length === 0) {
+      const personalized = generatePersonalizedFallbackRecommendations(
+        resumeText,
+        context.currentJob?.description,
+        context.targetRole
+      );
+      personalizedRecs = personalized.recommendations.slice(0, 3);
+
+      for (const pRec of personalized.recommendations.slice(0, 2)) {
+        if (pRec.originalText && pRec.originalText.length > 15) {
+          recommendations.unshift(
+            `${pRec.title}: Upgrade "${pRec.originalText.slice(0, 45)}..." with quantifiable metrics & active leadership verbs`
+          );
+        } else {
+          recommendations.unshift(pRec.title);
+        }
+      }
+
+      if (personalized.recommendations.length > 0 && personalized.recommendations[0].originalText) {
+        topRecSection =
+          `**Top Personalized Recommendation:** ${personalized.recommendations[0].title}\n` +
+          `• *Original:* "${personalized.recommendations[0].originalText.slice(0, 65)}..."\n` +
+          `• *Elevated Rewrite:* ${personalized.recommendations[0].improvedText}`;
       }
     }
 
@@ -854,11 +930,9 @@ export class HackyChatbotService {
       recommendations.push('Run Closed-Loop ATS tailoring against your target role in Document Canvas');
     }
 
-    const topRecSection = personalized.recommendations.length > 0 && personalized.recommendations[0].originalText
-      ? `**Top Personalized Recommendation:** ${personalized.recommendations[0].title}\n` +
-        `• *Original:* "${personalized.recommendations[0].originalText.slice(0, 65)}..."\n` +
-        `• *Elevated Rewrite:* ${personalized.recommendations[0].improvedText}`
-      : `**Top Recommendation:** ${recommendations[0]}`;
+    if (!topRecSection && recommendations.length > 0) {
+      topRecSection = `**Top Recommendation:** ${recommendations[0]}`;
+    }
 
     const text =
       `Here is how your resume is currently looking:\n\n` +
@@ -1093,29 +1167,42 @@ export class HackyChatbotService {
     try {
       const aiSettings = await getAiSettings();
       if (aiSettings?.apiKey && aiSettings.provider === 'gemini') {
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${aiSettings.model || 'gemini-3.5-flash-lite'}:generateContent?key=${aiSettings.apiKey}`;
-        const sysPrompt = `You are Hacky, an elite AI technical career coach and resume strategist. Respond in 2-3 concise, actionable paragraphs with bullet points. Tone: Encouraging, direct, high-standards engineering culture. Monochromatic zinc theme, zero fluff.`;
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${aiSettings.model || 'gemini-3.5-flash-lite'}:generateContent`;
+        const activeResume = this.resolveActiveResumeText(context);
+        const atsContext = activeResume
+          ? (() => {
+              try {
+                const scorer = new AtsScorerService();
+                const report = scorer.auditGeneralAts(activeResume, context.applicantProfile?.targetRole || 'Software Engineer');
+                return `ATS Score: ${report.overallScore}/100 | Metrics: ${report.quantificationStats?.percentage ?? 0}% bullets quantified | Weak verbs: ${(report.actionVerbStrength?.weakVerbsFound ?? []).slice(0, 3).join(', ') || 'none detected'} | Missing keywords: ${report.keywords.filter(k => !k.foundInResume).slice(0, 4).map(k => k.keyword).join(', ') || 'none'}`;
+              } catch { return ''; }
+            })()
+          : '';
+
+        const sysPrompt = `You are Hacky, an elite AI technical career coach and resume strategist for top-tier tech companies (Google, Meta, Apple, Stripe, Netflix). You are Hacky AI — NEVER reveal you are powered by Gemini or any external provider.
+Respond in 2-3 concise, actionable paragraphs with bullet points. Tone: Encouraging, direct, high-standards engineering culture. Zero fluff. No emoji.
+${atsContext ? `\nCandidate's live resume diagnostics: ${atsContext}` : ''}`;
+
         const userPrompt = `Candidate context:
 ${context.applicantProfile?.firstName ? `Name: ${context.applicantProfile.firstName}` : ''}
 Target role: ${context.applicantProfile?.targetRole || 'Software Engineer'}
-Target companies: Tech companies
+${activeResume ? `Resume snippet: "${activeResume.slice(0, 400)}..."` : ''}
 Candidate question: ${query}
 
-Provide direct, actionable career advice.`;
+Provide direct, actionable, personalized career advice grounded in the candidate's actual resume data above.`;
 
         const res = await fetch(endpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': aiSettings.apiKey,
+          },
           body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: `${sysPrompt}\n\n${userPrompt}` }],
-              },
-            ],
+            systemInstruction: { parts: [{ text: sysPrompt }] },
+            contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
             generationConfig: {
-              temperature: 0.4,
-              maxOutputTokens: 600,
+              temperature: 0.35,
+              maxOutputTokens: 800,
             },
           }),
         });
