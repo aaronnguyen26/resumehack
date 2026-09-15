@@ -44,6 +44,7 @@ import {
   testGeminiApiKey,
   type AtsAuditContext
 } from '../services/gemini-recommendations.js';
+import { extractTechnicalSkills } from '../services/direct-job-ingester.js';
 import { 
   AtsScoreReport, 
   KeywordMatch, 
@@ -219,16 +220,28 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
     }
   }, [score]);
 
+  // Sync custom job state when currentJob changes from outside (e.g. DiscoveryTab)
+  useEffect(() => {
+    if (!isEditingJob && currentJob) {
+      setCustomJobDesc(currentJob.description || '');
+      setCustomJobTitle(currentJob.title || targetRole || 'Software Engineer');
+      setCustomJobCompany(currentJob.company || 'Target Tech Co');
+    }
+  }, [currentJob, targetRole, isEditingJob]);
+
   // Handle saving target job calibration
   const handleSaveJobCalibration = () => {
     if (onUpdateCurrentJob) {
+      const desc = customJobDesc.trim() || 'Software engineering requirements';
+      const parsedSkills = extractTechnicalSkills(desc);
       onUpdateCurrentJob({
         title: customJobTitle.trim() || 'Software Engineer',
         company: customJobCompany.trim() || 'Target Tech Co',
         location: currentJob?.location || 'Remote',
-        description: customJobDesc.trim() || 'Software engineering requirements',
+        description: desc,
         url: currentJob?.url || '',
-        source: 'Custom'
+        source: 'Custom',
+        extractedSkills: parsedSkills.length > 0 ? parsedSkills : undefined,
       });
     }
     setIsEditingJob(false);
@@ -275,6 +288,16 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
       // Determine if a specific job is active (vs. general mode)
       const hasActiveJob = !!(currentJob?.title && currentJob.title.trim());
 
+      // Resolve key skills: prefer currentJob.extractedSkills, fallback to atsReport hard skills or extractTechnicalSkills
+      const fallbackSkills = atsReport.keywords
+        .filter(k => k.category === 'Hard Skill' || k.category === 'Tool / Framework')
+        .slice(0, 10)
+        .map(k => k.keyword);
+
+      const resolvedKeySkills = (currentJob?.extractedSkills && currentJob.extractedSkills.length > 0)
+        ? currentJob.extractedSkills
+        : (fallbackSkills.length > 0 ? fallbackSkills : extractTechnicalSkills(currentJob?.description || ''));
+
       // Build structured ATS context from the live rule-based report to ground Gemini recommendations
       const atsContext: AtsAuditContext = {
         overallScore: atsReport.overallScore,
@@ -296,7 +319,7 @@ export const HackyAiAtsPanel: React.FC<HackyAiAtsPanelProps> = ({
           jobTitle: currentJob!.title,
           jobCompany: currentJob!.company || undefined,
           jobSeniority: currentJob!.seniorityLevel || undefined,
-          jobKeySkills: currentJob!.extractedSkills?.slice(0, 12) ?? [],
+          jobKeySkills: resolvedKeySkills.slice(0, 12),
           jobRequirements: currentJob!.requiredQualifications?.slice(0, 5) ?? [],
           jobResponsibilities: currentJob!.coreResponsibilities?.slice(0, 4) ?? [],
           criticalMissingKeywords: allCriticalMissing,

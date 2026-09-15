@@ -279,3 +279,52 @@ describe('ScrapedJobData rich field mapping — AtsAuditContext contract', () =>
     expect(block).toContain('payment APIs');
   });
 });
+
+// ── 8. generatePersonalizedFallbackRecommendations with AtsAuditContext ────────
+
+describe('generatePersonalizedFallbackRecommendations with AtsAuditContext', () => {
+  const sampleResume = `
+Jane Doe | jane@example.com
+EXPERIENCE
+Software Engineer | Acme Corp | 2022–Present
+• Built REST APIs using Node.js and PostgreSQL
+• Developed microservices for customer data
+`;
+
+  it('uses atsContext.criticalMissingKeywords over generic keyword scan', () => {
+    const atsContext: AtsAuditContext = {
+      overallScore: 70,
+      hardSkillsScore: 60,
+      actionVerbScore: 50,
+      metricScore: 50,
+      productionScore: 50,
+      selfProjectsScore: 60,
+      weakVerbsFound: [],
+      missingKeywords: ['Rust', 'WebAssembly'],
+      matchedKeywords: ['Node.js', 'PostgreSQL'],
+      quantifiedBullets: 2,
+      totalBullets: 4,
+      metricPercentage: 50,
+      improvementSuggestions: [],
+      jobTitle: 'Systems Engineer',
+      jobCompany: 'Cloudflare',
+      criticalMissingKeywords: ['Rust', 'WebAssembly'],
+    };
+
+    const result = generatePersonalizedFallbackRecommendations(
+      sampleResume,
+      'Some generic JD',
+      'Systems Engineer',
+      atsContext
+    );
+
+    const skillGap = result.recommendations.find(r => r.category === 'missing_skills');
+    expect(skillGap).toBeDefined();
+    expect(skillGap?.title).toContain('Rust, WebAssembly');
+    expect(skillGap?.title).toContain('Systems Engineer at Cloudflare');
+    expect(skillGap?.critique).toContain('Systems Engineer at Cloudflare');
+    expect(skillGap?.reasoning).toContain('Systems Engineer at Cloudflare');
+    expect(skillGap?.suggestedKeywords).toContain('Rust');
+    expect(skillGap?.suggestedKeywords).toContain('WebAssembly');
+  });
+});

@@ -524,7 +524,8 @@ export function extractCandidateBullets(resumeText: string): ExtractedCandidateB
 export function generatePersonalizedFallbackRecommendations(
   resumeText: string,
   jobDescription?: string,
-  targetRole?: string
+  targetRole?: string,
+  atsContext?: AtsAuditContext
 ): GeminiRecommendationResult {
   const extracted = extractCandidateBullets(resumeText);
   const items: GeminiPersonalizedRecommendation[] = [];
@@ -836,25 +837,36 @@ export function generatePersonalizedFallbackRecommendations(
   }
 
   // 4. Target Job Description Skill Gap Matching
-  if (jobDescription && jobDescription.trim().length > 30) {
-    const commonTechTaxonomy = [
-      { name: 'Docker', domain: 'devops' },
-      { name: 'Kubernetes', domain: 'devops' },
-      { name: 'AWS', domain: 'devops' },
-      { name: 'PostgreSQL', domain: 'backend' },
-      { name: 'Redis', domain: 'backend' },
-      { name: 'TypeScript', domain: 'frontend' },
-      { name: 'React', domain: 'frontend' },
-      { name: 'Python', domain: 'data_ai' },
-      { name: 'Go', domain: 'backend' },
-      { name: 'GraphQL', domain: 'backend' },
-      { name: 'CI/CD', domain: 'devops' },
-      { name: 'Kafka', domain: 'backend' },
-      { name: 'Terraform', domain: 'devops' },
-      { name: 'Tailwind CSS', domain: 'frontend' },
-      { name: 'Node.js', domain: 'backend' },
-    ];
+  const commonTechTaxonomy = [
+    { name: 'Docker', domain: 'devops' as const },
+    { name: 'Kubernetes', domain: 'devops' as const },
+    { name: 'AWS', domain: 'devops' as const },
+    { name: 'PostgreSQL', domain: 'backend' as const },
+    { name: 'Redis', domain: 'backend' as const },
+    { name: 'TypeScript', domain: 'frontend' as const },
+    { name: 'React', domain: 'frontend' as const },
+    { name: 'Python', domain: 'data_ai' as const },
+    { name: 'Go', domain: 'backend' as const },
+    { name: 'GraphQL', domain: 'backend' as const },
+    { name: 'CI/CD', domain: 'devops' as const },
+    { name: 'Kafka', domain: 'backend' as const },
+    { name: 'Terraform', domain: 'devops' as const },
+    { name: 'Tailwind CSS', domain: 'frontend' as const },
+    { name: 'Node.js', domain: 'backend' as const },
+  ];
 
+  let topMissingNames: string[] = [];
+  let primaryMissingDomain: RecommendationDomain = 'fullstack';
+
+  // 4A. If structured AtsAuditContext provided critical missing keywords, use those first!
+  if (atsContext?.criticalMissingKeywords && atsContext.criticalMissingKeywords.length > 0) {
+    topMissingNames = atsContext.criticalMissingKeywords.slice(0, 3);
+    const matchedTax = commonTechTaxonomy.find(t =>
+      topMissingNames.some(m => m.toLowerCase().includes(t.name.toLowerCase()))
+    );
+    primaryMissingDomain = (matchedTax?.domain as RecommendationDomain) || 'backend';
+  } else if (jobDescription && jobDescription.trim().length > 30) {
+    // 4B. Scan taxonomy against raw job description
     const missing = commonTechTaxonomy.filter(item => {
       const inJd = new RegExp(`\\b${item.name.replace(/\./g, '\\.')}\\b`, 'i').test(jobDescription);
       const inResume = new RegExp(`\\b${item.name.replace(/\./g, '\\.')}\\b`, 'i').test(resumeText);
@@ -862,41 +874,48 @@ export function generatePersonalizedFallbackRecommendations(
     });
 
     if (missing.length > 0) {
-      const topMissingNames = missing.slice(0, 3).map(m => m.name);
-      // Pair with the most contextually relevant bullet matching the missing skill's domain
-      const primaryMissingDomain = missing[0].domain;
-      const hostBullet =
-        extracted.find(b => b.domain === primaryMissingDomain) ||
-        extracted.find(b => b.section === 'projects') ||
-        extracted[0];
-
-      const orig = hostBullet ? hostBullet.cleanText : 'Developed software solutions for team projects.';
-      const cleanHost = orig
-        .replace(/^[A-Za-z]+(?:ed|ing|s)?\b/i, '')
-        .replace(/^(?:an|a|the)?\s+/i, '')
-        .replace(/\.$/, '')
-        .trim();
-
-      const leadSkill = selectLeadVerb('Standardized', ['Consolidated', 'Streamlined', 'Orchestrated']);
-      const upgraded = `• ${leadSkill} ${cleanHost}, integrating ${topMissingNames.join(' & ')} into core workflows to reduce release overhead by 48%.`;
-
-      items.push({
-        id: 'hacky-rec-fallback-skills-' + Math.abs(hashCode(topMissingNames.join('-'))),
-        category: 'missing_skills',
-        title: `Target Role Skill Gap (${topMissingNames.join(', ')})`,
-        priority: 'critical',
-        impactPts: 20,
-        sectionHint: hostBullet?.section || 'experience',
-        domain: hostBullet?.domain || 'fullstack',
-        originalText: orig,
-        improvedText: upgraded,
-        critique: `The job description demands ${topMissingNames.join(', ')}, but your resume currently lacks these core keywords. Automated ATS filters screen out resumes lacking target tech tokens.`,
-        reasoning: 'Direct keyword alignment in project bullets passes ATS semantic filters while demonstrating hands-on architectural experience to human interviewers.',
-        suggestedKeywords: topMissingNames,
-        suggestedActionLabel: 'Replace in Resume',
-        antiHallucinationVerified: true,
-      });
+      topMissingNames = missing.slice(0, 3).map(m => m.name);
+      primaryMissingDomain = missing[0].domain;
     }
+  }
+
+  if (topMissingNames.length > 0) {
+    // Pair with the most contextually relevant bullet matching the missing skill's domain
+    const hostBullet =
+      extracted.find(b => b.domain === primaryMissingDomain) ||
+      extracted.find(b => b.section === 'projects') ||
+      extracted[0];
+
+    const orig = hostBullet ? hostBullet.cleanText : 'Developed software solutions for team projects.';
+    const cleanHost = orig
+      .replace(/^[A-Za-z]+(?:ed|ing|s)?\b/i, '')
+      .replace(/^(?:an|a|the)?\s+/i, '')
+      .replace(/\.$/, '')
+      .trim();
+
+    const leadSkill = selectLeadVerb('Standardized', ['Consolidated', 'Streamlined', 'Orchestrated']);
+    const upgraded = `• ${leadSkill} ${cleanHost}, integrating ${topMissingNames.join(' & ')} into core workflows to reduce release overhead by 48%.`;
+
+    const jobHeadline = atsContext?.jobTitle
+      ? `${atsContext.jobTitle}${atsContext.jobCompany ? ` at ${atsContext.jobCompany}` : ''}`
+      : (targetRole || 'Target Role');
+
+    items.push({
+      id: 'hacky-rec-fallback-skills-' + Math.abs(hashCode(topMissingNames.join('-'))),
+      category: 'missing_skills',
+      title: `Job Skill Gap: ${topMissingNames.join(', ')} (${jobHeadline})`,
+      priority: 'critical',
+      impactPts: 20,
+      sectionHint: hostBullet?.section || 'experience',
+      domain: hostBullet?.domain || 'fullstack',
+      originalText: orig,
+      improvedText: upgraded,
+      critique: `The ${jobHeadline} position prioritizes ${topMissingNames.join(', ')}, but your resume currently lacks these core keywords. Automated ATS filters screen out resumes lacking target tech tokens.`,
+      reasoning: `Direct keyword alignment with ${jobHeadline} requirements passes ATS semantic filters while demonstrating hands-on architectural experience to human interviewers.`,
+      suggestedKeywords: topMissingNames,
+      suggestedActionLabel: 'Replace in Resume',
+      antiHallucinationVerified: true,
+    });
   }
 
   // 5. Production & Reliability Signal
@@ -1065,7 +1084,7 @@ export class GeminiRecommendationService {
 
     // If no key is provided, return instant heuristic recommendations based on real text
     if (!effectiveKey) {
-      return generatePersonalizedFallbackRecommendations(resumeText, jobDescription, targetRole);
+      return generatePersonalizedFallbackRecommendations(resumeText, jobDescription, targetRole, request.atsContext);
     }
 
     const candidateBullets = extractCandidateBullets(resumeText);
@@ -1211,7 +1230,7 @@ Please analyze the resume against tier-1 tech hiring standards, addressing the s
 
     // If all Gemini API calls failed, smoothly fall back to our personalized heuristic engine
     console.warn(`[GeminiRecommendationService] All Gemini calls failed, using personalized heuristic fallback: ${lastError}`);
-    const fallback = generatePersonalizedFallbackRecommendations(resumeText, jobDescription, targetRole);
+    const fallback = generatePersonalizedFallbackRecommendations(resumeText, jobDescription, targetRole, request.atsContext);
     fallback.error = lastError;
     return fallback;
   }
