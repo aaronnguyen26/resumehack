@@ -1,4 +1,14 @@
-import { escapeHtml } from './canvas-editor.js';
+import { isSectionHeaderLine, isBulletLine } from './canvas-editor.js';
+
+export type EditorKeyboardEvent = KeyboardEvent | {
+  key: string;
+  shiftKey?: boolean;
+  altKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  preventDefault: () => void;
+  stopPropagation?: () => void;
+};
 
 export interface SelectionMetrics {
   text: string;
@@ -161,7 +171,7 @@ export function getSelectionMetrics(editorRoot?: HTMLElement | null): SelectionM
  */
 export function handleMarkdownShortcut(
   editorRoot: HTMLElement,
-  event: React.KeyboardEvent | KeyboardEvent
+  event: EditorKeyboardEvent
 ): boolean {
   if (typeof window === 'undefined') return false;
   const sel = window.getSelection();
@@ -326,7 +336,7 @@ export function handleMarkdownShortcut(
  */
 export function handleSmartEnter(
   editorRoot: HTMLElement,
-  event: React.KeyboardEvent | KeyboardEvent
+  event: EditorKeyboardEvent
 ): boolean {
   if (typeof window === 'undefined') return false;
   const sel = window.getSelection();
@@ -407,7 +417,7 @@ export function handleSmartEnter(
  */
 export function handleSmartBackspace(
   editorRoot: HTMLElement,
-  event: React.KeyboardEvent | KeyboardEvent
+  event: EditorKeyboardEvent
 ): boolean {
   if (typeof window === 'undefined') return false;
   const sel = window.getSelection();

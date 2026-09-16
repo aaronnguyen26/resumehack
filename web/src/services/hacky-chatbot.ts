@@ -275,7 +275,7 @@ export class HackyChatbotService {
 
     // 4. Detailed 7-Factor ATS Breakdown tool
     if (
-      /\b(score\s*breakdown|explain\s*(?:my\s*)?(?:ats\s*)?score|why\s*(?:is\s*)?(?:my\s*)?(?:ats\s*)?score|score\s*factors|ats\s*rubric|audit\s*factors|7\s*factors?)\b/i.test(
+      /\b((?:ats\s*)?breakdown|explain\s*(?:my\s*)?(?:ats\s*)?score|why\s*(?:is\s*)?(?:my\s*)?(?:ats\s*)?score|score\s*factors|ats\s*rubric|audit\s*factors|7\s*factors?)\b/i.test(
         q
       )
     ) {

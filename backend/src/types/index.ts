@@ -1,5 +1,3 @@
-declare const chrome: any;
-
 export type AiProvider = 'gemini' | 'openai' | 'claude' | 'deepseek' | 'ollama' | 'custom';
 
 export interface AiSettings {
@@ -9,6 +7,57 @@ export interface AiSettings {
   baseUrl?: string;
   strictAntiHallucination?: boolean;
 }
+
+export interface ProviderPreset {
+  label: string;
+  defaultModel: string;
+  models: string[];
+  placeholderKey: string;
+  keyUrl?: string;
+}
+
+export const PROVIDER_MODEL_PRESETS: Record<AiProvider, ProviderPreset> = {
+  gemini: {
+    label: 'Google Gemini',
+    defaultModel: 'gemini-3.5-flash-lite',
+    models: ['gemini-3.5-flash-lite', 'gemini-3.6-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro'],
+    placeholderKey: 'AIzaSy...',
+    keyUrl: 'https://aistudio.google.com/app/apikey',
+  },
+  openai: {
+    label: 'OpenAI',
+    defaultModel: 'gpt-4o-mini',
+    models: ['gpt-4o-mini', 'gpt-4o', 'o3-mini', 'o1-mini'],
+    placeholderKey: 'sk-proj-...',
+    keyUrl: 'https://platform.openai.com/api-keys',
+  },
+  claude: {
+    label: 'Anthropic Claude',
+    defaultModel: 'claude-3-5-haiku-20241022',
+    models: ['claude-3-5-haiku-20241022', 'claude-3-5-sonnet-20241022'],
+    placeholderKey: 'sk-ant-...',
+    keyUrl: 'https://console.anthropic.com/settings/keys',
+  },
+  deepseek: {
+    label: 'DeepSeek',
+    defaultModel: 'deepseek-chat',
+    models: ['deepseek-chat', 'deepseek-reasoner'],
+    placeholderKey: 'sk-...',
+    keyUrl: 'https://platform.deepseek.com/api_keys',
+  },
+  ollama: {
+    label: 'Local Ollama (Offline / Private)',
+    defaultModel: 'llama3.3',
+    models: ['llama3.3', 'qwen2.5:14b', 'deepseek-r1:14b', 'mistral'],
+    placeholderKey: 'ollama-local (no key needed)',
+  },
+  custom: {
+    label: 'Custom OpenAI-Compatible',
+    defaultModel: 'default',
+    models: ['default'],
+    placeholderKey: 'sk-...',
+  },
+};
 
 export interface JobPosting {
   id: string;
@@ -101,16 +150,16 @@ export interface ProductionExperienceAudit {
 }
 
 export interface AtsScoreReport {
-  overallScore: number; // 0 - 100
+  overallScore: number;
   breakdown: {
-    hardSkillsScore: number; // 0 - 100
-    experienceRelevanceScore: number; // 0 - 100
-    softSkillsScore: number; // 0 - 100
-    formattingScore: number; // 0 - 100
+    hardSkillsScore: number;
+    experienceRelevanceScore: number;
+    softSkillsScore: number;
+    formattingScore: number;
     starImpactScore?: number;
     actionVerbVitalityScore?: number;
-    selfProjectsScore?: number; // 0 - 100 (HackerRank-inspired)
-    productionExperienceScore?: number; // 0 - 100 (HackerRank-inspired)
+    selfProjectsScore?: number;
+    productionExperienceScore?: number;
   };
   totalKeywords: number;
   matchedKeywordsCount: number;
@@ -209,7 +258,7 @@ export interface VisualLayoutIssue {
   id: string;
   category: 'visual_crowding' | 'page_overflow' | 'whitespace_rhythm' | 'section_imbalance' | 'visual_polish';
   severity: 'critical' | 'warning' | 'info';
-  sectionName: string;
+  sectionName: string; // e.g. 'EXPERIENCE', 'EDUCATION', 'HEADER', 'SKILLS', 'PROJECTS', 'GLOBAL'
   title: string;
   description: string;
   visualObservation: string;
@@ -224,7 +273,7 @@ export interface VisualLayoutIssue {
 }
 
 export interface VisualLayoutReport {
-  visualPolishScore: number;
+  visualPolishScore: number; // 0 - 100
   pageCount: number;
   pageFillAssessment: 'optimal_single_page' | 'underfilled' | 'awkward_overflow' | 'multi_page_balanced';
   pageFillDescription: string;
@@ -286,6 +335,17 @@ export interface LayoutAuditReport {
   summary: string;
 }
 
+export interface ResumeBullet {
+  id: string;
+  section: string;
+  organization: string;
+  role: string;
+  originalText: string;
+  prefix?: string;
+  startIndex?: number;
+  endIndex?: number;
+}
+
 export interface LineBudgetInfo {
   originalChars: number;
   tailoredChars: number;
@@ -295,17 +355,6 @@ export interface LineBudgetInfo {
   fitsOriginalLineBudget: boolean;
   budgetStatus: 'exact_fit' | 'fits_comfortably' | 'approaching_limit' | 'exceeds_budget';
   spilloverRisk: 'none' | 'low' | 'high';
-}
-
-export interface ResumeBullet {
-  id: string;
-  section: string; // e.g. "Experience", "Projects"
-  organization: string; // e.g. "Google", "Open Source Project"
-  role: string;
-  originalText: string;
-  prefix?: string; // e.g. "• ", "- ", "* ", "◦ "
-  startIndex?: number;
-  endIndex?: number;
 }
 
 export interface TailoredBulletDiff {
@@ -389,20 +438,6 @@ export interface ApplicationRecord {
   updatedAt: string;
 }
 
-export interface MascotNotification {
-  id: string;
-  type: 'NEW_JOBS_ALERT' | 'ATS_TIP' | 'CONTEXT_ALERT' | 'PRO_TIP' | 'FOLLOW_UP';
-  badge: string;
-  title: string;
-  body: string;
-  ctaText: string;
-  targetTab: 'discovery' | 'match' | 'tracker';
-  autoScan?: boolean;
-  count?: number;
-  companies?: string[];
-  timestamp: number;
-}
-
 export interface ScrapedJobData {
   title: string;
   company: string;
@@ -416,6 +451,20 @@ export interface ScrapedJobData {
   extractedSkills?: string[];
   coreResponsibilities?: string[];
   requiredQualifications?: string[];
+}
+
+export interface MascotNotification {
+  id: string;
+  type: 'NEW_JOBS_ALERT' | 'ATS_TIP' | 'CONTEXT_ALERT' | 'PRO_TIP' | 'FOLLOW_UP';
+  badge: string;
+  title: string;
+  body: string;
+  ctaText: string;
+  targetTab: 'discovery' | 'match' | 'tracker';
+  autoScan?: boolean;
+  count?: number;
+  companies?: string[];
+  timestamp: number;
 }
 
 export interface MascotState {
